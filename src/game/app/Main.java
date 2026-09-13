@@ -1,3 +1,15 @@
+package game.app;
+
+import game.console.Battle;
+import game.console.Shop;
+import game.model.Dungeon;
+import game.model.Item;
+import game.model.ItemCatalog;
+import game.model.Monster;
+import game.model.Player;
+import game.model.World;
+import game.save.SaveManager;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -22,13 +34,15 @@ public class Main {
             System.out.println("\n============ 마을 ============");
             System.out.println("Lv." + player.getLevel() + " " + player.getName()
                     + "   HP " + player.getHp() + "/" + player.getMaxHp()
-                    + "   골드 " + player.getGold() + "G");
+                    + "   골드 " + player.getGold() + "G"
+                    + (player.getStatPoints() > 0 ? "   [스탯 포인트 " + player.getStatPoints() + "]" : ""));
             System.out.println("1) 상태 보기");
             System.out.println("2) 상점");
             System.out.println("3) 장비 변경");
-            System.out.println("4) 던전 입장");
-            System.out.println("5) 저장하기");
-            System.out.println("6) 종료");
+            System.out.println("4) 스탯 분배");
+            System.out.println("5) 던전 입장");
+            System.out.println("6) 저장하기");
+            System.out.println("7) 종료");
             System.out.print("> ");
             String input = sc.nextLine().trim();
 
@@ -36,9 +50,10 @@ public class Main {
                 case "1": showStatus(player); break;
                 case "2": shop.open(player); break;
                 case "3": equipMenu(player, sc); break;
-                case "4": enterDungeonMenu(player, dungeons, battle, rnd, sc); break;
-                case "5": SaveManager.save(player); break;
-                case "6":
+                case "4": allocateStats(player, sc); break;
+                case "5": enterDungeonMenu(player, dungeons, battle, rnd, sc); break;
+                case "6": SaveManager.save(player); break;
+                case "7":
                     System.out.println("게임을 종료합니다. 다음에 또 만나요!");
                     playing = false;
                     break;
@@ -84,6 +99,7 @@ public class Main {
         System.out.println("공격력: " + player.getAtk() + " (기본 " + player.getBaseAtk() + ")");
         System.out.println("방어력: " + player.getDef() + " (기본 " + player.getBaseDef() + ")");
         System.out.println("행운: " + player.getLuck() + " (치명타 확률 " + player.getCritChance() + "%)");
+        System.out.println("스탯 포인트: " + player.getStatPoints());
         System.out.println("골드: " + player.getGold() + "G");
         System.out.println("무기: " + (player.getWeaponName() == null ? "없음" : player.getWeaponName()));
         System.out.println("방어구: " + (player.getArmorName() == null ? "없음" : player.getArmorName()));
@@ -97,6 +113,35 @@ public class Main {
                 System.out.println("  - " + e.getKey() + " x" + e.getValue());
             }
         }
+    }
+
+    private static void allocateStats(Player player, Scanner sc) {
+        if (player.getStatPoints() <= 0) {
+            System.out.println("분배할 스탯 포인트가 없습니다.");
+            return;
+        }
+        while (player.getStatPoints() > 0) {
+            System.out.println("\n=== 스탯 분배 (남은 포인트: " + player.getStatPoints() + ") ===");
+            System.out.println("1) 최대 HP +" + Player.HP_PER_POINT + " (현재 " + player.getMaxHp() + ")");
+            System.out.println("2) 최대 MP +" + Player.MP_PER_POINT + " (현재 " + player.getMaxMp() + ")");
+            System.out.println("3) 공격력 +" + Player.ATK_PER_POINT + " (현재 " + player.getBaseAtk() + ")");
+            System.out.println("4) 방어력 +" + Player.DEF_PER_POINT + " (현재 " + player.getBaseDef() + ")");
+            System.out.println("5) 행운 +" + Player.LUCK_PER_POINT + " (현재 " + player.getLuck() + ")");
+            System.out.println("0) 나중에 하기");
+            System.out.print("> ");
+            String input = sc.nextLine().trim();
+
+            switch (input) {
+                case "1": player.spendStatPoint(Player.Stat.HP); break;
+                case "2": player.spendStatPoint(Player.Stat.MP); break;
+                case "3": player.spendStatPoint(Player.Stat.ATK); break;
+                case "4": player.spendStatPoint(Player.Stat.DEF); break;
+                case "5": player.spendStatPoint(Player.Stat.LUCK); break;
+                case "0": return;
+                default: System.out.println("올바른 번호를 입력하세요.");
+            }
+        }
+        System.out.println("모든 스탯 포인트를 분배했습니다.");
     }
 
     private static void equipMenu(Player player, Scanner sc) {
