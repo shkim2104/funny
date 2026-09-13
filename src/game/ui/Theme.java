@@ -96,14 +96,21 @@ public final class Theme {
     public static class FlatButton extends JButton {
         private boolean hover = false;
         private final boolean primary;
+        private final boolean ghost;
 
         public FlatButton(String text, boolean primary) {
+            this(text, primary, false);
+        }
+
+        /** ghost = see-through button (for overlaying on artwork): no solid box, just a faint tint + text. */
+        public FlatButton(String text, boolean primary, boolean ghost) {
             super(text);
             this.primary = primary;
+            this.ghost = ghost;
             setContentAreaFilled(false);
             setBorderPainted(false);
             setFocusPainted(false);
-            setForeground(primary ? BG : TEXT);
+            setForeground(ghost ? (primary ? ACCENT_HOVER : TEXT) : (primary ? BG : TEXT));
             setFont(HEADER_FONT);
             setBorder(new EmptyBorder(11, 18, 11, 18));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -122,22 +129,37 @@ public final class Theme {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            Color fill;
-            if (!isEnabled()) fill = SURFACE;
-            else if (getModel().isPressed()) fill = primary ? ACCENT_PRESSED : new Color(54, 58, 67);
-            else if (hover) fill = primary ? ACCENT_HOVER : new Color(42, 45, 52);
-            else fill = primary ? ACCENT : SURFACE;
+            if (ghost) {
+                Color fill;
+                if (!isEnabled()) fill = null;
+                else if (getModel().isPressed()) fill = new Color(8, 9, 12, 150);
+                else if (hover) fill = new Color(8, 9, 12, 110);
+                else fill = new Color(8, 9, 12, 60);
 
-            g2.setColor(fill);
-            g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), RADIUS - 2, RADIUS - 2));
-
-            if (!primary) {
-                g2.setColor(BORDER);
+                if (fill != null) {
+                    g2.setColor(fill);
+                    g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), RADIUS - 2, RADIUS - 2));
+                }
+                g2.setColor(primary ? new Color(199, 168, 106, 180) : new Color(255, 255, 255, 60));
                 g2.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth() - 1, getHeight() - 1, RADIUS - 2, RADIUS - 2));
+            } else {
+                Color fill;
+                if (!isEnabled()) fill = SURFACE;
+                else if (getModel().isPressed()) fill = primary ? ACCENT_PRESSED : new Color(54, 58, 67);
+                else if (hover) fill = primary ? ACCENT_HOVER : new Color(42, 45, 52);
+                else fill = primary ? ACCENT : SURFACE;
+
+                g2.setColor(fill);
+                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), RADIUS - 2, RADIUS - 2));
+
+                if (!primary) {
+                    g2.setColor(BORDER);
+                    g2.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth() - 1, getHeight() - 1, RADIUS - 2, RADIUS - 2));
+                }
             }
 
             if (isFocusOwner() && isEnabled()) {
-                g2.setColor(primary ? Color.WHITE : ACCENT);
+                g2.setColor(ghost ? ACCENT_HOVER : (primary ? Color.WHITE : ACCENT));
                 g2.setStroke(new BasicStroke(2f));
                 g2.draw(new RoundRectangle2D.Float(1.5f, 1.5f, getWidth() - 3, getHeight() - 3, RADIUS - 3, RADIUS - 3));
             }
@@ -152,6 +174,14 @@ public final class Theme {
 
     public static JButton primaryButton(String text) {
         return new FlatButton(text, true);
+    }
+
+    public static JButton ghostButton(String text) {
+        return new FlatButton(text, false, true);
+    }
+
+    public static JButton ghostPrimaryButton(String text) {
+        return new FlatButton(text, true, true);
     }
 
     // ---------- arrow-key + enter navigation ----------

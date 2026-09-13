@@ -8,9 +8,12 @@ import game.model.Player;
 import game.model.World;
 import game.save.SaveManager;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -45,6 +48,7 @@ public class GameFrame extends JFrame {
     public GameFrame() {
         super("공책 RPG");
         Theme.apply(this);
+        setIconImages(loadAppIcons());
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(680, 560);
         setMinimumSize(new Dimension(560, 460));
@@ -92,21 +96,16 @@ public class GameFrame extends JFrame {
     }
 
     private JPanel buildTownPanel() {
-        JPanel panel = new JPanel(new BorderLayout(16, 16));
-        panel.setOpaque(false);
+        BackgroundPanel panel = new BackgroundPanel(new BorderLayout(16, 16), loadImage("images/town_bg.png"));
         panel.setBorder(new EmptyBorder(24, 32, 24, 32));
 
-        JLabel banner = Theme.title("공책 RPG — 마을");
+        JLabel banner = new JLabel("공책 RPG — 마을");
+        banner.setFont(new Font("맑은 고딕", Font.BOLD, 30));
+        banner.setForeground(new Color(150, 140, 185));
         panel.add(banner, BorderLayout.NORTH);
 
-        JPanel infoBox = Theme.panel(new BorderLayout());
-        infoBox.setBorder(new EmptyBorder(14, 16, 14, 16));
+        // The player info bar is kept updated (townInfoLabel) but not shown, so the artwork stays clear.
         townInfoLabel = Theme.header("");
-        infoBox.add(townInfoLabel, BorderLayout.CENTER);
-
-        JPanel center = new JPanel(new BorderLayout(0, 18));
-        center.setOpaque(false);
-        center.add(infoBox, BorderLayout.NORTH);
 
         JPanel buttonPanel = new JPanel(new GridLayout(7, 1, 10, 10));
         buttonPanel.setOpaque(false);
@@ -125,19 +124,61 @@ public class GameFrame extends JFrame {
         for (JButton b : townButtons) buttonPanel.add(b);
         Theme.arrowNav(townButtons);
 
-        center.add(buttonPanel, BorderLayout.CENTER);
-        panel.add(center, BorderLayout.CENTER);
+        // Center the button column vertically within the right-hand side of the screen.
+        JPanel eastWrap = new JPanel(new GridBagLayout());
+        eastWrap.setOpaque(false);
+        eastWrap.add(buttonPanel);
+        panel.add(eastWrap, BorderLayout.EAST);
+
         return panel;
     }
 
+    /** Paints a bundled image scaled to cover the panel (cropping overflow), falling back to a flat color if missing. */
+    private static class BackgroundPanel extends JPanel {
+        private final Image background;
+
+        BackgroundPanel(LayoutManager layout, Image background) {
+            super(layout);
+            this.background = background;
+            setOpaque(true);
+            setBackground(Theme.BG);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (background == null) return;
+            int pw = getWidth(), ph = getHeight();
+            int iw = background.getWidth(this), ih = background.getHeight(this);
+            if (iw <= 0 || ih <= 0) return;
+            double scale = Math.max(pw / (double) iw, ph / (double) ih);
+            int sw = (int) Math.ceil(iw * scale);
+            int sh = (int) Math.ceil(ih * scale);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2.drawImage(background, (pw - sw) / 2, (ph - sh) / 2, sw, sh, this);
+            g2.dispose();
+        }
+    }
+
+    /** Loads a bundled resource image from the classpath, relative to this class's package. */
+    private static Image loadImage(String path) {
+        try (InputStream in = GameFrame.class.getResourceAsStream(path)) {
+            if (in != null) return ImageIO.read(in);
+        } catch (Exception ignored) {
+            // Missing/unreadable resource: caller falls back to a flat background.
+        }
+        return null;
+    }
+
     private JButton makeButton(String text, Runnable action) {
-        JButton btn = Theme.button(text);
+        JButton btn = Theme.ghostButton(text);
         btn.addActionListener(e -> action.run());
         return btn;
     }
 
     private JButton makePrimaryButton(String text, Runnable action) {
-        JButton btn = Theme.primaryButton(text);
+        JButton btn = Theme.ghostPrimaryButton(text);
         btn.addActionListener(e -> action.run());
         return btn;
     }
@@ -257,6 +298,16 @@ public class GameFrame extends JFrame {
 
         Dialogs.message(this, "던전 클리어", finalMsg.toString());
         returnToTown();
+    }
+
+    /** Loads the bundled multi-resolution app icon (title bar, taskbar, alt-tab). */
+    private static List<Image> loadAppIcons() {
+        List<Image> icons = new ArrayList<>();
+        for (String size : new String[] {"16", "32", "48", "128", "256"}) {
+            Image icon = loadImage("icons/icon_" + size + ".png");
+            if (icon != null) icons.add(icon);
+        }
+        return icons;
     }
 
     private Item rollChestItem(int dungeonIndex) {
