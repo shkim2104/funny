@@ -39,9 +39,9 @@ public class StatAllocDialog {
         Runnable[] refresh = new Runnable[1];
         refresh[0] = () -> {
             pointsLabel.setText("남은 스탯 포인트: " + player.getStatPoints());
-            hpLabel.setText("<html>최대 HP&nbsp;&nbsp;" + player.getMaxHp()
+            hpLabel.setText("<html>HP&nbsp;&nbsp;" + player.getHp() + "/" + player.getMaxHp()
                     + " &nbsp;<font color='#8c8f9a'>(+" + Player.HP_PER_POINT + "/포인트)</font></html>");
-            mpLabel.setText("<html>최대 MP&nbsp;&nbsp;" + player.getMaxMp()
+            mpLabel.setText("<html>MP&nbsp;&nbsp;" + player.getMp() + "/" + player.getMaxMp()
                     + " &nbsp;<font color='#8c8f9a'>(+" + Player.MP_PER_POINT + "/포인트)</font></html>");
             atkLabel.setText("<html>공격력&nbsp;&nbsp;&nbsp;" + player.getBaseAtk()
                     + " &nbsp;<font color='#8c8f9a'>(+" + Player.ATK_PER_POINT + "/포인트)</font></html>");

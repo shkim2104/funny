@@ -12,16 +12,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SaveManager {
-    private static final String SAVE_FILE = "save.txt";
-
     private SaveManager() {}
 
+    /** Save file lives under the user's OS data folder so it works the same no matter where the game is launched from. */
+    private static File saveFile() {
+        String appData = System.getenv("APPDATA");
+        File dir = (appData != null && !appData.isEmpty())
+                ? new File(appData, "NotebookRPG")
+                : new File(System.getProperty("user.home"), ".notebookrpg");
+        if (!dir.exists()) dir.mkdirs();
+        return new File(dir, "save.txt");
+    }
+
     public static boolean hasSave() {
-        return new File(SAVE_FILE).exists();
+        return saveFile().exists();
     }
 
     public static void save(Player p) {
-        try (PrintWriter pw = new PrintWriter(new FileWriter(SAVE_FILE))) {
+        try (PrintWriter pw = new PrintWriter(new FileWriter(saveFile()))) {
             pw.println(p.getName());
             pw.println(p.getLevel());
             pw.println(p.getExp());
@@ -48,7 +56,7 @@ public class SaveManager {
     }
 
     public static Player load() {
-        try (BufferedReader br = new BufferedReader(new FileReader(SAVE_FILE))) {
+        try (BufferedReader br = new BufferedReader(new FileReader(saveFile()))) {
             String name = br.readLine();
             int level = Integer.parseInt(br.readLine());
             int exp = Integer.parseInt(br.readLine());
