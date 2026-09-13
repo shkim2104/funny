@@ -1,9 +1,12 @@
 package game.ui;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
 
 /**
  * Draws the player and monster in a Pokémon-style diagonal camera: the player is seen
@@ -144,32 +147,31 @@ public class BattleStage extends JComponent {
     }
 
     // ---------- player (seen from behind, close-up foreground) ----------
+    private static final BufferedImage PLAYER_SPRITE = loadImage("images/player.png");
+    private static final double PLAYER_SPRITE_HEIGHT = 150.0;
+
     private void drawPlayer(Graphics2D g2, int x, int groundY) {
         g2.setColor(new Color(0, 0, 0, 80));
         g2.fillOval(x - 26, groundY - 6, 52, 10);
 
-        g2.setColor(new Color(60, 64, 74));
-        g2.fillRoundRect(x - 20, groundY - 54, 15, 46, 8, 8);
-        g2.fillRoundRect(x + 5, groundY - 54, 15, 46, 8, 8);
+        if (PLAYER_SPRITE == null) return;
+        double scale = PLAYER_SPRITE_HEIGHT / PLAYER_SPRITE.getHeight();
+        int dw = (int) Math.round(PLAYER_SPRITE.getWidth() * scale);
+        int dh = (int) Math.round(PLAYER_SPRITE.getHeight() * scale);
+        Graphics2D gi = (Graphics2D) g2.create();
+        gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        gi.drawImage(PLAYER_SPRITE, x - dw / 2, groundY - dh, dw, dh, null);
+        gi.dispose();
+    }
 
-        g2.setColor(Theme.ACCENT);
-        g2.fillRoundRect(x - 28, groundY - 110, 56, 60, 18, 18);
-
-        g2.setColor(Theme.ACCENT_PRESSED);
-        g2.setStroke(new BasicStroke(3));
-        g2.drawLine(x - 14, groundY - 108, x - 6, groundY - 54);
-        g2.drawLine(x + 14, groundY - 108, x + 6, groundY - 54);
-        g2.setStroke(new BasicStroke(1));
-
-        g2.setColor(new Color(235, 205, 170));
-        g2.fillOval(x - 20, groundY - 142, 40, 38);
-        g2.setColor(new Color(70, 50, 40));
-        g2.fillArc(x - 20, groundY - 142, 40, 38, 0, 180);
-
-        g2.setStroke(new BasicStroke(4, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(new Color(200, 200, 210));
-        g2.drawLine(x + 24, groundY - 92, x + 58, groundY - 124);
-        g2.setStroke(new BasicStroke(1));
+    /** Loads a bundled resource image from the classpath, relative to this class's package. */
+    private static BufferedImage loadImage(String path) {
+        try (InputStream in = BattleStage.class.getResourceAsStream(path)) {
+            if (in != null) return ImageIO.read(in);
+        } catch (Exception ignored) {
+            // Missing/unreadable resource: caller falls back to no sprite drawn.
+        }
+        return null;
     }
 
     // ---------- monster dispatch ----------

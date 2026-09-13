@@ -96,7 +96,7 @@ public class GameFrame extends JFrame {
     }
 
     private JPanel buildTownPanel() {
-        BackgroundPanel panel = new BackgroundPanel(new BorderLayout(16, 16), loadImage("images/town_bg.png"));
+        DragonBackgroundPanel panel = new DragonBackgroundPanel(new BorderLayout(16, 16));
         panel.setBorder(new EmptyBorder(24, 32, 24, 32));
 
         JLabel banner = new JLabel("공책 RPG — 마을");
@@ -131,34 +131,6 @@ public class GameFrame extends JFrame {
         panel.add(eastWrap, BorderLayout.EAST);
 
         return panel;
-    }
-
-    /** Paints a bundled image scaled to cover the panel (cropping overflow), falling back to a flat color if missing. */
-    private static class BackgroundPanel extends JPanel {
-        private final Image background;
-
-        BackgroundPanel(LayoutManager layout, Image background) {
-            super(layout);
-            this.background = background;
-            setOpaque(true);
-            setBackground(Theme.BG);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            if (background == null) return;
-            int pw = getWidth(), ph = getHeight();
-            int iw = background.getWidth(this), ih = background.getHeight(this);
-            if (iw <= 0 || ih <= 0) return;
-            double scale = Math.max(pw / (double) iw, ph / (double) ih);
-            int sw = (int) Math.ceil(iw * scale);
-            int sh = (int) Math.ceil(ih * scale);
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g2.drawImage(background, (pw - sw) / 2, (ph - sh) / 2, sw, sh, this);
-            g2.dispose();
-        }
     }
 
     /** Loads a bundled resource image from the classpath, relative to this class's package. */
