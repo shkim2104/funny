@@ -11,7 +11,7 @@ public class World {
         List<Dungeon> list = new ArrayList<>();
 
         list.add(new Dungeon(
-                "초원",
+                "1 : 초원",
                 10,
                 Arrays.asList(
                         new Monster("들쥐", 18, 8, 1, 8, 10),
@@ -24,7 +24,7 @@ public class World {
         ));
 
         list.add(new Dungeon(
-                "어두운 동굴",
+                "2 : 어두운 동굴",
                 10,
                 Arrays.asList(
                         new Monster("박쥐", 22, 12, 2, 14, 16),
@@ -37,7 +37,7 @@ public class World {
         ));
 
         list.add(new Dungeon(
-                "잊혀진 폐허",
+                "3 : 잊혀진 폐허",
                 10,
                 Arrays.asList(
                         new Monster("해골 병사", 40, 20, 6, 24, 26),
@@ -50,7 +50,7 @@ public class World {
         ));
 
         list.add(new Dungeon(
-                "마왕성",
+                "4 : 마왕성",
                 10,
                 Arrays.asList(
                         new Monster("어둠의 기사", 55, 27, 9, 34, 36),
@@ -63,7 +63,7 @@ public class World {
         ));
 
         list.add(new Dungeon(
-                "얼음 협곡",
+                "5 : 얼음 협곡",
                 10,
                 Arrays.asList(
                         new Monster("서리 늑대", 60, 36, 7, 40, 42),
@@ -76,7 +76,7 @@ public class World {
         ));
 
         list.add(new Dungeon(
-                "불지옥 화산",
+                "6 : 불지옥 화산",
                 10,
                 Arrays.asList(
                         new Monster("화염 도마뱀", 80, 52, 11, 55, 58),
@@ -89,7 +89,7 @@ public class World {
         ));
 
         list.add(new Dungeon(
-                "천공의 성채",
+                "7 : 천공의 성채",
                 10,
                 Arrays.asList(
                         new Monster("폭풍 그리폰", 110, 68, 16, 75, 80),
