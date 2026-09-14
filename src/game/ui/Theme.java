@@ -1,5 +1,7 @@
 package game.ui;
 
+import game.model.Item;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -9,6 +11,8 @@ import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
+import javax.swing.plaf.basic.BasicScrollBarUI;
+import javax.swing.plaf.basic.BasicTabbedPaneUI;
 
 public final class Theme {
     public static final Color BG = new Color(15, 16, 20);
@@ -303,8 +307,109 @@ public final class Theme {
         JScrollPane sp = new JScrollPane(view);
         sp.getViewport().setBackground(SURFACE);
         sp.setBorder(BorderFactory.createLineBorder(BORDER));
+        sp.setBackground(PANEL);
         sp.getVerticalScrollBar().setUnitIncrement(16);
+        sp.getVerticalScrollBar().setUI(new FlatScrollBarUI());
+        sp.getVerticalScrollBar().setPreferredSize(new Dimension(10, 0));
+        sp.getHorizontalScrollBar().setUI(new FlatScrollBarUI());
+        sp.getHorizontalScrollBar().setPreferredSize(new Dimension(0, 10));
         return sp;
+    }
+
+    /** Slim flat scrollbar: no arrow buttons, rounded accent-colored thumb, transparent track. */
+    private static class FlatScrollBarUI extends BasicScrollBarUI {
+        @Override
+        protected JButton createDecreaseButton(int orientation) { return zeroButton(); }
+
+        @Override
+        protected JButton createIncreaseButton(int orientation) { return zeroButton(); }
+
+        private JButton zeroButton() {
+            JButton b = new JButton();
+            b.setPreferredSize(new Dimension(0, 0));
+            b.setMinimumSize(new Dimension(0, 0));
+            b.setMaximumSize(new Dimension(0, 0));
+            return b;
+        }
+
+        @Override
+        protected void paintTrack(Graphics g, JComponent c, Rectangle trackBounds) {
+            // transparent track: the panel's own background shows through
+        }
+
+        @Override
+        protected void paintThumb(Graphics g, JComponent c, Rectangle thumbBounds) {
+            if (thumbBounds.isEmpty() || !c.isEnabled()) return;
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            boolean hover = isThumbRollover();
+            g2.setColor(hover ? ACCENT : new Color(90, 94, 104));
+            int pad = 2;
+            int arc = Math.min(thumbBounds.width, thumbBounds.height) - pad * 2;
+            g2.fill(new RoundRectangle2D.Float(
+                    thumbBounds.x + pad, thumbBounds.y + pad,
+                    thumbBounds.width - pad * 2, thumbBounds.height - pad * 2,
+                    arc, arc));
+            g2.dispose();
+        }
+    }
+
+    // ---------- item grade colors ----------
+    public static Color gradeColor(Item item) {
+        return Color.decode(item.getGrade().getColorHex());
+    }
+
+    /** "[등급]" bracket tag colored to match the item's grade, for use inside HTML-formatted labels. */
+    public static String gradeTagHtml(Item item) {
+        Color c = gradeColor(item);
+        String hex = String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+        return "<font color='" + hex + "'><b>[" + item.getGrade().getLabel() + "]</b></font>";
+    }
+
+    // ---------- tabs ----------
+    /** Applies the dark flat tab style (no light L&F highlight) and a readable text color. */
+    public static void styleTabs(JTabbedPane tabs) {
+        tabs.setUI(new FlatTabbedPaneUI());
+        tabs.setBackground(PANEL);
+        tabs.setForeground(TEXT);
+        tabs.setFont(HEADER_FONT);
+    }
+
+    private static class FlatTabbedPaneUI extends BasicTabbedPaneUI {
+        @Override
+        protected void installDefaults() {
+            super.installDefaults();
+            lightHighlight = BORDER;
+            shadow = BORDER;
+            darkShadow = BORDER;
+            focus = ACCENT;
+            tabInsets = new Insets(10, 20, 10, 20);
+        }
+
+        @Override
+        protected void paintTabBackground(Graphics g, int tabPlacement, int tabIndex, int x, int y, int w, int h, boolean isSelected) {
+            g.setColor(isSelected ? SURFACE : PANEL);
+            g.fillRect(x, y, w, h);
+        }
+
+        @Override
+        protected void paintTabBorder(Graphics g, int tabPlacement, int tabIndex, int x, int y, int w, int h, boolean isSelected) {
+            if (isSelected) {
+                g.setColor(ACCENT);
+                g.fillRect(x, y + h - 3, w, 3);
+            }
+        }
+
+        @Override
+        protected void paintFocusIndicator(Graphics g, int tabPlacement, Rectangle[] rects, int tabIndex,
+                                            Rectangle iconRect, Rectangle textRect, boolean isSelected) {
+            // no focus ring
+        }
+
+        @Override
+        protected void paintContentBorder(Graphics g, int tabPlacement, int selectedIndex) {
+            // the content (a bordered scroll pane) draws its own edge
+        }
     }
 
     // ---------- text field ----------

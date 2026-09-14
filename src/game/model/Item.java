@@ -56,4 +56,24 @@ public class Item {
         }
         return base;
     }
+
+    public String getTypeLabel() {
+        switch (type) {
+            case WEAPON: return "무기";
+            case ARMOR: return "방어구";
+            case POTION: return "포션";
+            case ETHER: return "에테르";
+            default: return "";
+        }
+    }
+
+    public String getStatText() {
+        switch (type) {
+            case WEAPON: return "공격력 +" + value;
+            case ARMOR: return "방어력 +" + value;
+            case POTION: return "HP " + value + " 회복";
+            case ETHER: return "MP " + value + " 회복";
+            default: return "";
+        }
+    }
 }
