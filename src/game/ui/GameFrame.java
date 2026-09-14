@@ -96,13 +96,19 @@ public class GameFrame extends JFrame {
     }
 
     private JPanel buildTownPanel() {
-        DragonBackgroundPanel panel = new DragonBackgroundPanel(new BorderLayout(16, 16));
+        BackgroundPanel panel = new BackgroundPanel(new BorderLayout(16, 16), loadImage("images/town_bg.png"));
         panel.setBorder(new EmptyBorder(24, 32, 24, 32));
 
         JLabel banner = new JLabel("공책 RPG — 마을");
-        banner.setFont(new Font("맑은 고딕", Font.BOLD, 30));
-        banner.setForeground(new Color(150, 140, 185));
-        panel.add(banner, BorderLayout.NORTH);
+        banner.setFont(new Font("맑은 고딕", Font.BOLD, 26));
+        banner.setForeground(Color.WHITE);
+        JPanel bannerPill = new TranslucentPill();
+        bannerPill.setBorder(new EmptyBorder(8, 16, 8, 16));
+        bannerPill.add(banner);
+        JPanel bannerWrap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        bannerWrap.setOpaque(false);
+        bannerWrap.add(bannerPill);
+        panel.add(bannerWrap, BorderLayout.NORTH);
 
         // The player info bar is kept updated (townInfoLabel) but not shown, so the artwork stays clear.
         townInfoLabel = Theme.header("");
@@ -131,6 +137,51 @@ public class GameFrame extends JFrame {
         panel.add(eastWrap, BorderLayout.EAST);
 
         return panel;
+    }
+
+    /** Paints a bundled image scaled to cover the panel (cropping overflow), falling back to a flat color if missing. */
+    private static class BackgroundPanel extends JPanel {
+        private final Image background;
+
+        BackgroundPanel(LayoutManager layout, Image background) {
+            super(layout);
+            this.background = background;
+            setOpaque(true);
+            setBackground(Theme.BG);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (background == null) return;
+            int pw = getWidth(), ph = getHeight();
+            int iw = background.getWidth(this), ih = background.getHeight(this);
+            if (iw <= 0 || ih <= 0) return;
+            double scale = Math.max(pw / (double) iw, ph / (double) ih);
+            int sw = (int) Math.ceil(iw * scale);
+            int sh = (int) Math.ceil(ih * scale);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2.drawImage(background, (pw - sw) / 2, (ph - sh) / 2, sw, sh, this);
+            g2.dispose();
+        }
+    }
+
+    /** A soft translucent dark rounded backing, so overlaid text stays readable on any background art. */
+    private static class TranslucentPill extends JPanel {
+        TranslucentPill() {
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(10, 12, 16, 140));
+            g2.fill(new java.awt.geom.RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 14, 14));
+            g2.dispose();
+            super.paintComponent(g);
+        }
     }
 
     /** Loads a bundled resource image from the classpath, relative to this class's package. */

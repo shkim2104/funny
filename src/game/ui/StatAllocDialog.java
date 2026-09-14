@@ -14,61 +14,53 @@ public class StatAllocDialog {
     public static void show(JFrame owner, Player player) {
         JDialog dialog = new JDialog(owner, "스탯 분배", Dialog.ModalityType.APPLICATION_MODAL);
         Theme.styleDialog(dialog);
-        dialog.setLayout(new BorderLayout(16, 16));
-        ((JComponent) dialog.getContentPane()).setBorder(new EmptyBorder(20, 22, 18, 22));
+        dialog.setLayout(new BorderLayout(14, 14));
+        ((JComponent) dialog.getContentPane()).setBorder(new EmptyBorder(18, 18, 16, 18));
 
-        JLabel header = Theme.header("스탯 분배");
-        header.setForeground(Theme.ACCENT);
-        dialog.add(header, BorderLayout.NORTH);
+        JLabel pointsLabel = new JLabel();
+        pointsLabel.setForeground(Theme.ACCENT);
+        pointsLabel.setFont(Theme.TITLE_FONT.deriveFont(20f));
+        dialog.add(pointsLabel, BorderLayout.NORTH);
 
-        JPanel center = new JPanel();
-        center.setOpaque(false);
-        center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
-
-        JLabel pointsLabel = Theme.header("");
-        center.add(pointsLabel);
-        center.add(Box.createVerticalStrut(12));
+        JPanel card = Theme.panel(new GridLayout(5, 1));
+        card.setBorder(new EmptyBorder(4, 4, 4, 4));
 
         List<JButton> plusButtons = new ArrayList<>();
-        JLabel hpLabel = Theme.body("");
-        JLabel mpLabel = Theme.body("");
-        JLabel atkLabel = Theme.body("");
-        JLabel defLabel = Theme.body("");
-        JLabel luckLabel = Theme.body("");
+        JLabel hpLabel = new JLabel();
+        JLabel mpLabel = new JLabel();
+        JLabel atkLabel = new JLabel();
+        JLabel defLabel = new JLabel();
+        JLabel luckLabel = new JLabel();
 
         Runnable[] refresh = new Runnable[1];
         refresh[0] = () -> {
             pointsLabel.setText("남은 스탯 포인트: " + player.getStatPoints());
-            hpLabel.setText("<html>HP&nbsp;&nbsp;" + player.getHp() + "/" + player.getMaxHp()
-                    + " &nbsp;<font color='#8c8f9a'>(+" + Player.HP_PER_POINT + "/포인트)</font></html>");
-            mpLabel.setText("<html>MP&nbsp;&nbsp;" + player.getMp() + "/" + player.getMaxMp()
-                    + " &nbsp;<font color='#8c8f9a'>(+" + Player.MP_PER_POINT + "/포인트)</font></html>");
-            atkLabel.setText("<html>공격력&nbsp;&nbsp;&nbsp;" + player.getBaseAtk()
-                    + " &nbsp;<font color='#8c8f9a'>(+" + Player.ATK_PER_POINT + "/포인트)</font></html>");
-            defLabel.setText("<html>방어력&nbsp;&nbsp;&nbsp;" + player.getBaseDef()
-                    + " &nbsp;<font color='#8c8f9a'>(+" + Player.DEF_PER_POINT + "/포인트)</font></html>");
-            luckLabel.setText("<html>행운&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + player.getLuck()
-                    + " &nbsp;<font color='#8c8f9a'>(+" + Player.LUCK_PER_POINT + "/포인트)</font></html>");
+            hpLabel.setText("<html>HP&nbsp;&nbsp;" + player.getHp() + "/" + player.getMaxHp() + "</html>");
+            mpLabel.setText("<html>MP&nbsp;&nbsp;" + player.getMp() + "/" + player.getMaxMp() + "</html>");
+            atkLabel.setText("<html>공격력&nbsp;&nbsp;" + player.getBaseAtk() + "</html>");
+            defLabel.setText("<html>방어력&nbsp;&nbsp;" + player.getBaseDef() + "</html>");
+            luckLabel.setText("<html>행운&nbsp;&nbsp;" + player.getLuck() + "</html>");
             boolean has = player.getStatPoints() > 0;
             for (JButton b : plusButtons) b.setEnabled(has);
         };
 
-        center.add(row(hpLabel, plusButtons, () -> { player.spendStatPoint(Player.Stat.HP); refresh[0].run(); }));
-        center.add(Box.createVerticalStrut(6));
-        center.add(row(mpLabel, plusButtons, () -> { player.spendStatPoint(Player.Stat.MP); refresh[0].run(); }));
-        center.add(Box.createVerticalStrut(6));
-        center.add(row(atkLabel, plusButtons, () -> { player.spendStatPoint(Player.Stat.ATK); refresh[0].run(); }));
-        center.add(Box.createVerticalStrut(6));
-        center.add(row(defLabel, plusButtons, () -> { player.spendStatPoint(Player.Stat.DEF); refresh[0].run(); }));
-        center.add(Box.createVerticalStrut(6));
-        center.add(row(luckLabel, plusButtons, () -> { player.spendStatPoint(Player.Stat.LUCK); refresh[0].run(); }));
+        card.add(statRow(hpLabel, "+" + Player.HP_PER_POINT + "/포인트", plusButtons,
+                () -> { player.spendStatPoint(Player.Stat.HP); refresh[0].run(); }));
+        card.add(statRow(mpLabel, "+" + Player.MP_PER_POINT + "/포인트", plusButtons,
+                () -> { player.spendStatPoint(Player.Stat.MP); refresh[0].run(); }));
+        card.add(statRow(atkLabel, "+" + Player.ATK_PER_POINT + "/포인트", plusButtons,
+                () -> { player.spendStatPoint(Player.Stat.ATK); refresh[0].run(); }));
+        card.add(statRow(defLabel, "+" + Player.DEF_PER_POINT + "/포인트", plusButtons,
+                () -> { player.spendStatPoint(Player.Stat.DEF); refresh[0].run(); }));
+        card.add(statRow(luckLabel, "+" + Player.LUCK_PER_POINT + "/포인트", plusButtons,
+                () -> { player.spendStatPoint(Player.Stat.LUCK); refresh[0].run(); }));
 
         refresh[0].run();
-        dialog.add(center, BorderLayout.CENTER);
+        dialog.add(card, BorderLayout.CENTER);
 
-        JButton close = Theme.primaryButton("닫기");
+        JButton close = Theme.button("나가기");
         close.addActionListener(e -> dialog.dispose());
-        JPanel south = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        JPanel south = new JPanel(new FlowLayout(FlowLayout.CENTER));
         south.setOpaque(false);
         south.add(close);
         dialog.add(south, BorderLayout.SOUTH);
@@ -80,20 +72,39 @@ public class StatAllocDialog {
         Theme.arrowNav(navButtons);
         Theme.focusFirst(navButtons);
 
-        dialog.setSize(400, 400);
+        dialog.setSize(460, 440);
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
     }
 
-    private static JPanel row(JLabel label, List<JButton> plusButtons, Runnable onPlus) {
-        JPanel r = new JPanel(new BorderLayout(10, 0));
-        r.setOpaque(false);
-        r.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
-        r.add(label, BorderLayout.CENTER);
-        JButton plus = Theme.button("+1");
+    private static JPanel statRow(JLabel valueLabel, String hint, List<JButton> plusButtons, Runnable onPlus) {
+        JPanel row = new JPanel(new BorderLayout(10, 0));
+        row.setOpaque(true);
+        row.setBackground(Theme.SURFACE);
+        row.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER),
+                new EmptyBorder(0, 16, 0, 14)));
+
+        JPanel left = new JPanel();
+        left.setOpaque(false);
+        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
+        valueLabel.setFont(Theme.HEADER_FONT);
+        valueLabel.setForeground(Theme.TEXT);
+        valueLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel hintLabel = Theme.body(hint);
+        hintLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        left.add(valueLabel);
+        left.add(hintLabel);
+        row.add(left, BorderLayout.WEST);
+
+        JButton plus = Theme.primaryButton("+1");
         plus.addActionListener(e -> onPlus.run());
         plusButtons.add(plus);
-        r.add(plus, BorderLayout.EAST);
-        return r;
+        JPanel btnWrap = new JPanel(new GridBagLayout());
+        btnWrap.setOpaque(false);
+        btnWrap.add(plus);
+        row.add(btnWrap, BorderLayout.EAST);
+
+        return row;
     }
 }
