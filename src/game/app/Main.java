@@ -99,6 +99,7 @@ public class Main {
         System.out.println("공격력: " + player.getAtk() + " (기본 " + player.getBaseAtk() + ")");
         System.out.println("방어력: " + player.getDef() + " (기본 " + player.getBaseDef() + ")");
         System.out.println("행운: " + player.getLuck() + " (치명타 확률 " + player.getCritChance() + "%)");
+        System.out.println("공격속도: " + player.getSpd() + " (높을수록 먼저 공격)");
         System.out.println("스탯 포인트: " + player.getStatPoints());
         System.out.println("골드: " + player.getGold() + "G");
         System.out.println("무기: " + (player.getWeaponName() == null ? "없음" : player.getWeaponName()));
@@ -127,6 +128,7 @@ public class Main {
             System.out.println("3) 공격력 +" + Player.ATK_PER_POINT + " (현재 " + player.getBaseAtk() + ")");
             System.out.println("4) 방어력 +" + Player.DEF_PER_POINT + " (현재 " + player.getBaseDef() + ")");
             System.out.println("5) 행운 +" + Player.LUCK_PER_POINT + " (현재 " + player.getLuck() + ")");
+            System.out.println("6) 공격속도 +" + Player.SPD_PER_POINT + " (현재 " + player.getSpd() + ")");
             System.out.println("0) 나중에 하기");
             System.out.print("> ");
             String input = sc.nextLine().trim();
@@ -137,6 +139,7 @@ public class Main {
                 case "3": player.spendStatPoint(Player.Stat.ATK); break;
                 case "4": player.spendStatPoint(Player.Stat.DEF); break;
                 case "5": player.spendStatPoint(Player.Stat.LUCK); break;
+                case "6": player.spendStatPoint(Player.Stat.SPD); break;
                 case "0": return;
                 default: System.out.println("올바른 번호를 입력하세요.");
             }

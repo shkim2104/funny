@@ -15,8 +15,9 @@ public class Player {
     public static final int ATK_PER_POINT = 2;
     public static final int DEF_PER_POINT = 2;
     public static final int LUCK_PER_POINT = 1;
+    public static final int SPD_PER_POINT = 1;
 
-    public enum Stat { HP, MP, ATK, DEF, LUCK }
+    public enum Stat { HP, MP, ATK, DEF, LUCK, SPD }
 
     private final String name;
     private int level;
@@ -29,6 +30,7 @@ public class Player {
     private int baseAtk;
     private int baseDef;
     private int luck;
+    private int baseSpd;
     private int statPoints;
     private int gold;
     private int unlockedDungeon;
@@ -49,6 +51,7 @@ public class Player {
         this.baseAtk = 6 + rnd.nextInt(5);   // 6~10
         this.baseDef = 3 + rnd.nextInt(3);   // 3~5
         this.luck = 3 + rnd.nextInt(6);      // 3~8
+        this.baseSpd = 4 + rnd.nextInt(6);   // 4~9
         this.statPoints = 0;
         this.gold = 50;
         this.unlockedDungeon = 0;
@@ -57,7 +60,7 @@ public class Player {
     }
 
     public Player(String name, int level, int exp, int expToNext, int maxHp, int hp, int maxMp, int mp,
-                  int baseAtk, int baseDef, int luck, int statPoints, int gold, int unlockedDungeon,
+                  int baseAtk, int baseDef, int luck, int baseSpd, int statPoints, int gold, int unlockedDungeon,
                   String weaponName, String armorName, List<String> inventory) {
         this.name = name;
         this.level = level;
@@ -70,6 +73,7 @@ public class Player {
         this.baseAtk = baseAtk;
         this.baseDef = baseDef;
         this.luck = luck;
+        this.baseSpd = baseSpd;
         this.statPoints = statPoints;
         this.gold = gold;
         this.unlockedDungeon = unlockedDungeon;
@@ -89,6 +93,7 @@ public class Player {
     public int getBaseAtk() { return baseAtk; }
     public int getBaseDef() { return baseDef; }
     public int getLuck() { return luck; }
+    public int getSpd() { return baseSpd; }
     public int getStatPoints() { return statPoints; }
     public int getGold() { return gold; }
     public int getUnlockedDungeon() { return unlockedDungeon; }
@@ -193,6 +198,9 @@ public class Player {
                 break;
             case LUCK:
                 luck += LUCK_PER_POINT;
+                break;
+            case SPD:
+                baseSpd += SPD_PER_POINT;
                 break;
         }
         statPoints--;

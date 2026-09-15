@@ -22,7 +22,7 @@ public class StatAllocDialog {
         pointsLabel.setFont(Theme.TITLE_FONT.deriveFont(20f));
         dialog.add(pointsLabel, BorderLayout.NORTH);
 
-        JPanel card = Theme.panel(new GridLayout(5, 1));
+        JPanel card = Theme.panel(new GridLayout(6, 1));
         card.setBorder(new EmptyBorder(4, 4, 4, 4));
 
         List<JButton> plusButtons = new ArrayList<>();
@@ -31,6 +31,7 @@ public class StatAllocDialog {
         JLabel atkLabel = new JLabel();
         JLabel defLabel = new JLabel();
         JLabel luckLabel = new JLabel();
+        JLabel spdLabel = new JLabel();
 
         Runnable[] refresh = new Runnable[1];
         refresh[0] = () -> {
@@ -40,6 +41,7 @@ public class StatAllocDialog {
             atkLabel.setText("<html>공격력&nbsp;&nbsp;" + player.getBaseAtk() + "</html>");
             defLabel.setText("<html>방어력&nbsp;&nbsp;" + player.getBaseDef() + "</html>");
             luckLabel.setText("<html>행운&nbsp;&nbsp;" + player.getLuck() + "</html>");
+            spdLabel.setText("<html>공격속도&nbsp;&nbsp;" + player.getSpd() + "</html>");
             boolean has = player.getStatPoints() > 0;
             for (JButton b : plusButtons) b.setEnabled(has);
         };
@@ -54,6 +56,8 @@ public class StatAllocDialog {
                 () -> { player.spendStatPoint(Player.Stat.DEF); refresh[0].run(); }));
         card.add(statRow(luckLabel, "+" + Player.LUCK_PER_POINT + "/포인트", plusButtons,
                 () -> { player.spendStatPoint(Player.Stat.LUCK); refresh[0].run(); }));
+        card.add(statRow(spdLabel, "+" + Player.SPD_PER_POINT + "/포인트", plusButtons,
+                () -> { player.spendStatPoint(Player.Stat.SPD); refresh[0].run(); }));
 
         refresh[0].run();
         dialog.add(card, BorderLayout.CENTER);
@@ -72,7 +76,7 @@ public class StatAllocDialog {
         Theme.arrowNav(navButtons);
         Theme.focusFirst(navButtons);
 
-        dialog.setSize(460, 440);
+        dialog.setSize(460, 500);
         dialog.setLocationRelativeTo(owner);
         dialog.setVisible(true);
     }

@@ -19,6 +19,7 @@ public class StatusDialog {
         sb.append("공격력 : ").append(player.getAtk()).append(" (기본 ").append(player.getBaseAtk()).append(")\n");
         sb.append("방어력 : ").append(player.getDef()).append(" (기본 ").append(player.getBaseDef()).append(")\n");
         sb.append("행운   : ").append(player.getLuck()).append(" (치명타 확률 ").append(player.getCritChance()).append("%)\n");
+        sb.append("공격속도: ").append(player.getSpd()).append(" (높을수록 먼저 공격)\n");
         sb.append("스탯P  : ").append(player.getStatPoints()).append(player.getStatPoints() > 0 ? "  (마을에서 '스탯 분배'로 사용하세요)" : "").append("\n");
         sb.append("골드   : ").append(player.getGold()).append("G\n");
         sb.append("무기   : ").append(player.getWeaponName() == null ? "없음" : player.getWeaponName()).append("\n");

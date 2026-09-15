@@ -123,6 +123,33 @@ public class BattlePanel extends JPanel {
 
     private void onAttack() {
         setButtonsEnabled(false);
+        if (monster.getSpd() > player.getSpd()) {
+            appendLog(monster.getName() + "이(가) 더 빨라 선제공격!");
+            monsterStrike(() -> {
+                if (!player.isAlive()) {
+                    finishBattle(Result.LOSE);
+                    return;
+                }
+                playerStrike(() -> {
+                    if (!monster.isAlive()) finishBattle(Result.WIN);
+                    else setButtonsEnabled(true);
+                });
+            });
+        } else {
+            playerStrike(() -> {
+                if (!monster.isAlive()) {
+                    finishBattle(Result.WIN);
+                    return;
+                }
+                monsterStrike(() -> {
+                    if (!player.isAlive()) finishBattle(Result.LOSE);
+                    else setButtonsEnabled(true);
+                });
+            });
+        }
+    }
+
+    private void playerStrike(Runnable onDone) {
         stage.animateAttack(true, () -> {
             int dmg = computeDamage(player.getAtk(), monster.getDef());
             boolean crit = rnd.nextInt(100) < player.getCritChance();
@@ -131,13 +158,16 @@ public class BattlePanel extends JPanel {
             appendLog(player.getName() + "의 공격! " + (crit ? "치명타! " : "")
                     + monster.getName() + "에게 " + finalDmg + "의 피해!");
             refreshStatus();
-        }, () -> {
-            if (!monster.isAlive()) {
-                finishBattle(Result.WIN);
-            } else {
-                monsterTurn();
-            }
-        });
+        }, onDone);
+    }
+
+    private void monsterStrike(Runnable onDone) {
+        stage.animateAttack(false, () -> {
+            int dmg = computeDamage(monster.getAtk(), player.getDef());
+            player.takeDamage(dmg);
+            appendLog(monster.getName() + "의 공격! " + player.getName() + "이(가) " + dmg + "의 피해를 입었다!");
+            refreshStatus();
+        }, onDone);
     }
 
     private void onItem() {
@@ -184,12 +214,7 @@ public class BattlePanel extends JPanel {
             return;
         }
         setButtonsEnabled(false);
-        stage.animateAttack(false, () -> {
-            int dmg = computeDamage(monster.getAtk(), player.getDef());
-            player.takeDamage(dmg);
-            appendLog(monster.getName() + "의 공격! " + player.getName() + "이(가) " + dmg + "의 피해를 입었다!");
-            refreshStatus();
-        }, () -> {
+        monsterStrike(() -> {
             if (!player.isAlive()) {
                 finishBattle(Result.LOSE);
             } else {

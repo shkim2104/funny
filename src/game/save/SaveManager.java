@@ -49,6 +49,7 @@ public class SaveManager {
             List<String> inv = p.getInventory();
             pw.println(inv.size());
             for (String item : inv) pw.println(item);
+            pw.println(p.getSpd());
             System.out.println("게임을 저장했습니다.");
         } catch (IOException e) {
             System.out.println("저장에 실패했습니다: " + e.getMessage());
@@ -79,8 +80,12 @@ public class SaveManager {
             List<String> inventory = new ArrayList<>();
             for (int i = 0; i < invSize; i++) inventory.add(br.readLine());
 
+            // Older saves predate the speed stat: default to a mid-range value when the line is missing.
+            String spdLine = br.readLine();
+            int spd = spdLine != null ? Integer.parseInt(spdLine) : 6;
+
             return new Player(name, level, exp, expToNext, maxHp, hp, maxMp, mp,
-                    baseAtk, baseDef, luck, statPoints, gold, unlockedDungeon, weaponName, armorName, inventory);
+                    baseAtk, baseDef, luck, spd, statPoints, gold, unlockedDungeon, weaponName, armorName, inventory);
         } catch (IOException | NumberFormatException e) {
             System.out.println("불러오기에 실패했습니다: " + e.getMessage());
             return null;

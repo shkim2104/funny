@@ -28,8 +28,15 @@ public class Battle {
             System.out.print("> ");
             String input = sc.nextLine().trim();
 
+            boolean monsterActed = false;
             switch (input) {
                 case "1":
+                    if (monster.getSpd() > player.getSpd()) {
+                        System.out.println(monster.getName() + "이(가) 더 빨라 선제공격!");
+                        monsterAttack(player, monster);
+                        monsterActed = true;
+                        if (!player.isAlive()) break;
+                    }
                     playerAttack(player, monster);
                     break;
                 case "2":
@@ -48,8 +55,9 @@ public class Battle {
                     continue;
             }
 
+            if (!player.isAlive()) break;
             if (!monster.isAlive()) break;
-            monsterAttack(player, monster);
+            if (!monsterActed) monsterAttack(player, monster);
         }
 
         if (!player.isAlive()) {
