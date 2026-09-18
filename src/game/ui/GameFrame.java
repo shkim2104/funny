@@ -285,7 +285,7 @@ public class GameFrame extends JFrame {
         if (player.getLevel() > beforeLevel) {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
             msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! (스탯 포인트 +")
-                    .append(gained).append(", 마을에서 분배하세요)");
+                    .append(gained).append(",마을에서 분배하세요)");
         }
 
         if (!bossStage) {

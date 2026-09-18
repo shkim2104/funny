@@ -143,16 +143,18 @@ public final class Dialogs {
         dialog.setVisible(true);
     }
 
+    /**
+     * A plain wrapping JTextArea computes its preferred size before it has a real width to wrap
+     * against, so dialog.pack() can undersize it and clip the tail of longer messages. An HTML
+     * label with an explicit wrap width doesn't have that chicken-and-egg problem.
+     */
     private static JComponent bodyLabel(String text) {
-        JTextArea area = new JTextArea(text);
-        area.setEditable(false);
-        area.setOpaque(false);
-        area.setLineWrap(true);
-        area.setWrapStyleWord(true);
-        area.setFont(Theme.BODY_FONT);
-        area.setForeground(Theme.TEXT);
-        area.setFocusable(false);
-        return area;
+        String escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\n", "<br>");
+        JLabel label = new JLabel("<html><body style='width:300px'>" + escaped + "</body></html>");
+        label.setFont(Theme.BODY_FONT);
+        label.setForeground(Theme.TEXT);
+        return label;
     }
 
     private static JPanel buttonRow(JButton... buttons) {
