@@ -100,7 +100,7 @@ public class GameFrame extends JFrame {
         panel.setBorder(new EmptyBorder(24, 32, 24, 32));
 
         JLabel banner = new JLabel("공책 RPG — 마을");
-        banner.setFont(new Font("맑은 고딕", Font.BOLD, 26));
+        banner.setFont(Theme.dosFont(Font.BOLD, 26));
         banner.setForeground(Color.WHITE);
         JPanel bannerPill = new TranslucentPill();
         bannerPill.setBorder(new EmptyBorder(8, 16, 8, 16));

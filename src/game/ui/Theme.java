@@ -11,6 +11,7 @@ import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
+import java.io.InputStream;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.plaf.basic.BasicTabbedPaneUI;
 
@@ -36,7 +37,26 @@ public final class Theme {
     public static final Font SMALL_FONT = new Font("맑은 고딕", Font.PLAIN, 12);
     public static final Font MONO_FONT = new Font("맑은 고딕", Font.PLAIN, 13);
 
+    private static final Font DOS_GOTHIC_BASE = loadCustomFont("fonts/DOSGothic.ttf");
+
     private Theme() {}
+
+    /** Loads and registers a bundled .ttf resource (relative to this class's package); falls back to the default UI font if missing. */
+    private static Font loadCustomFont(String resourcePath) {
+        try (InputStream in = Theme.class.getResourceAsStream(resourcePath)) {
+            if (in == null) throw new java.io.IOException("font resource not found: " + resourcePath);
+            Font font = Font.createFont(Font.TRUETYPE_FONT, in);
+            GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(font);
+            return font;
+        } catch (Exception e) {
+            return new Font("맑은 고딕", Font.PLAIN, 12);
+        }
+    }
+
+    /** The bundled DOS Gothic font at the given style/size, for spots that want a distinct retro look. */
+    public static Font dosFont(int style, float size) {
+        return DOS_GOTHIC_BASE.deriveFont(style, size);
+    }
 
     public static void apply(JFrame frame) {
         frame.getContentPane().setBackground(BG);
