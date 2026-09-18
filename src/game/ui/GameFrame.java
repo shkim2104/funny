@@ -45,6 +45,9 @@ public class GameFrame extends JFrame {
     private int currentFloor;
     private boolean bossStage;
 
+    private boolean fullscreen;
+    private Rectangle windowedBounds;
+
     public GameFrame() {
         super("공책 RPG");
         Theme.apply(this);
@@ -58,9 +61,44 @@ public class GameFrame extends JFrame {
         cards.add(buildTownPanel(), "TOWN");
         cards.add(battlePanel, "BATTLE");
         setContentPane(cards);
+        bindFullscreenToggle();
 
         startGame();
-        setVisible(true);
+        toggleFullscreen();
+    }
+
+    /** Binds F11 to toggle a borderless "windowed fullscreen" mode, a common convenience shortcut. */
+    private void bindFullscreenToggle() {
+        JRootPane root = getRootPane();
+        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke("F11"), "toggleFullscreen");
+        root.getActionMap().put("toggleFullscreen", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                toggleFullscreen();
+            }
+        });
+    }
+
+    private void toggleFullscreen() {
+        if (!fullscreen) {
+            windowedBounds = getBounds();
+            // Borderless window stretched to the current monitor's bounds, instead of OS exclusive
+            // full-screen mode: exclusive mode auto-minimizes whenever the window loses focus
+            // (e.g. alt-tab, a native dialog), which made the game appear to "bounce" away.
+            Rectangle screenBounds = getGraphicsConfiguration().getBounds();
+            dispose();
+            setUndecorated(true);
+            setBounds(screenBounds);
+            setVisible(true);
+            fullscreen = true;
+        } else {
+            dispose();
+            setUndecorated(false);
+            if (windowedBounds != null) setBounds(windowedBounds);
+            setVisible(true);
+            fullscreen = false;
+        }
     }
 
     private void startGame() {
@@ -99,7 +137,7 @@ public class GameFrame extends JFrame {
         BackgroundPanel panel = new BackgroundPanel(new BorderLayout(16, 16), loadImage("images/town_bg.png"));
         panel.setBorder(new EmptyBorder(24, 32, 24, 32));
 
-        JLabel banner = new JLabel("공책 RPG — 마을");
+        JLabel banner = new JLabel("공책 RPG");
         banner.setFont(Theme.dosFont(Font.BOLD, 26));
         banner.setForeground(Color.WHITE);
         JPanel bannerPill = new TranslucentPill();
