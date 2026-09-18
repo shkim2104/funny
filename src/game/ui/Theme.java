@@ -25,6 +25,7 @@ public final class Theme {
     public static final Color TEXT = new Color(230, 230, 235);
     public static final Color TEXT_DIM = new Color(140, 143, 154);
     public static final Color HP = new Color(200, 96, 96);
+    public static final Color PLAYER_HP = new Color(96, 190, 120);
     public static final Color MP = new Color(96, 140, 202);
 
     public static final int RADIUS = 14;

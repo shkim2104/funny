@@ -21,7 +21,8 @@ public class BattlePanel extends JPanel {
     private Consumer<Result> onFinish;
 
     private final JLabel playerLabel = Theme.header("");
-    private final Theme.Meter playerHpBar = Theme.bar(Theme.HP);
+    private final Theme.Meter playerHpBar = Theme.bar(Theme.PLAYER_HP);
+    private final Theme.Meter playerMpBar = Theme.bar(Theme.MP);
     private final JLabel monsterLabel = Theme.header("");
     private final Theme.Meter monsterHpBar = Theme.bar(Theme.HP);
     private final BattleStage stage = new BattleStage();
@@ -35,21 +36,32 @@ public class BattlePanel extends JPanel {
         setBackground(Theme.BG);
         setBorder(new EmptyBorder(16, 16, 16, 16));
 
-        JPanel statusPanel = Theme.panel(new GridLayout(2, 1, 6, 6));
-        statusPanel.setBorder(new EmptyBorder(10, 12, 10, 12));
+        JPanel statusPanel = new JPanel(new GridLayout(1, 2, 12, 0));
+        statusPanel.setOpaque(false);
 
-        JPanel pRow = new JPanel(new BorderLayout(10, 2));
-        pRow.setOpaque(false);
-        pRow.add(playerLabel, BorderLayout.NORTH);
-        pRow.add(playerHpBar, BorderLayout.CENTER);
+        JPanel pContent = new JPanel();
+        pContent.setOpaque(false);
+        pContent.setLayout(new BoxLayout(pContent, BoxLayout.Y_AXIS));
+        playerLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        pContent.add(badge("아군", Theme.PLAYER_HP));
+        pContent.add(Box.createVerticalStrut(2));
+        pContent.add(playerLabel);
+        pContent.add(Box.createVerticalStrut(6));
+        pContent.add(meterRow("HP", playerHpBar));
+        pContent.add(Box.createVerticalStrut(4));
+        pContent.add(meterRow("MP", playerMpBar));
+        statusPanel.add(accentCard(Theme.PLAYER_HP, pContent));
 
-        JPanel mRow = new JPanel(new BorderLayout(10, 2));
-        mRow.setOpaque(false);
-        mRow.add(monsterLabel, BorderLayout.NORTH);
-        mRow.add(monsterHpBar, BorderLayout.CENTER);
-
-        statusPanel.add(pRow);
-        statusPanel.add(mRow);
+        JPanel mContent = new JPanel();
+        mContent.setOpaque(false);
+        mContent.setLayout(new BoxLayout(mContent, BoxLayout.Y_AXIS));
+        monsterLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        mContent.add(badge("몬스터", Theme.HP));
+        mContent.add(Box.createVerticalStrut(2));
+        mContent.add(monsterLabel);
+        mContent.add(Box.createVerticalStrut(6));
+        mContent.add(meterRow("HP", monsterHpBar));
+        statusPanel.add(accentCard(Theme.HP, mContent));
 
         JPanel topPanel = new JPanel(new BorderLayout(0, 10));
         topPanel.setOpaque(false);
@@ -91,13 +103,50 @@ public class BattlePanel extends JPanel {
     }
 
     private void refreshStatus() {
-        playerLabel.setText(player.getName() + "   HP " + player.getHp() + "/" + player.getMaxHp()
-                + "   MP " + player.getMp() + "/" + player.getMaxMp());
+        playerLabel.setText(player.getName());
         playerHpBar.setMaximum(player.getMaxHp());
         playerHpBar.setValue(player.getHp());
-        monsterLabel.setText(monster.getName() + "   HP " + monster.getHp() + "/" + monster.getMaxHp());
+        playerMpBar.setMaximum(player.getMaxMp());
+        playerMpBar.setValue(player.getMp());
+        monsterLabel.setText(monster.getName());
         monsterHpBar.setMaximum(monster.getMaxHp());
         monsterHpBar.setValue(monster.getHp());
+    }
+
+    /** Small bold role tag ("아군"/"몬스터") colored to match that side's HP bar. */
+    private static JLabel badge(String text, Color color) {
+        JLabel l = new JLabel(text);
+        l.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
+        l.setForeground(color);
+        l.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return l;
+    }
+
+    /** Caption + meter row; the caption identifies which stat the bar represents (HP vs MP). */
+    private static JPanel meterRow(String caption, Theme.Meter meter) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setOpaque(false);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel tag = new JLabel(caption);
+        tag.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
+        tag.setForeground(Theme.TEXT_DIM);
+        tag.setPreferredSize(new Dimension(26, tag.getPreferredSize().height));
+        row.add(tag, BorderLayout.WEST);
+        row.add(meter, BorderLayout.CENTER);
+        return row;
+    }
+
+    /** Card with a colored left accent stripe so the player and monster panels read as separate, distinct blocks. */
+    private static JPanel accentCard(Color accent, JComponent content) {
+        JPanel card = Theme.panel(new BorderLayout(10, 0));
+        card.setBorder(new EmptyBorder(10, 10, 10, 12));
+        JPanel stripe = new JPanel();
+        stripe.setOpaque(true);
+        stripe.setBackground(accent);
+        stripe.setPreferredSize(new Dimension(4, 0));
+        card.add(stripe, BorderLayout.WEST);
+        card.add(content, BorderLayout.CENTER);
+        return card;
     }
 
     private void appendLog(String text) {
