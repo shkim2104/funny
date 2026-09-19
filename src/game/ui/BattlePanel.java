@@ -36,8 +36,22 @@ public class BattlePanel extends JPanel {
         setBackground(Theme.BG);
         setBorder(new EmptyBorder(16, 16, 16, 16));
 
-        JPanel statusPanel = new JPanel(new GridLayout(1, 2, 12, 0));
-        statusPanel.setOpaque(false);
+        // Monster card sits above the stage (it appears far/top-right on the stage);
+        // the player card sits below the stage (it appears close/bottom-left) — matching
+        // positions make it obvious at a glance which side is which.
+        JPanel mContent = new JPanel();
+        mContent.setOpaque(false);
+        mContent.setLayout(new BoxLayout(mContent, BoxLayout.Y_AXIS));
+        monsterLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        mContent.add(badge("몬스터", Theme.HP));
+        mContent.add(Box.createVerticalStrut(2));
+        mContent.add(monsterLabel);
+        mContent.add(Box.createVerticalStrut(6));
+        mContent.add(meterRow("HP", monsterHpBar));
+        JPanel monsterCard = accentCard(Theme.HP, mContent);
+        add(monsterCard, BorderLayout.NORTH);
+
+        add(stage, BorderLayout.CENTER);
 
         JPanel pContent = new JPanel();
         pContent.setOpaque(false);
@@ -50,33 +64,18 @@ public class BattlePanel extends JPanel {
         pContent.add(meterRow("HP", playerHpBar));
         pContent.add(Box.createVerticalStrut(4));
         pContent.add(meterRow("MP", playerMpBar));
-        statusPanel.add(accentCard(Theme.PLAYER_HP, pContent));
-
-        JPanel mContent = new JPanel();
-        mContent.setOpaque(false);
-        mContent.setLayout(new BoxLayout(mContent, BoxLayout.Y_AXIS));
-        monsterLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        mContent.add(badge("몬스터", Theme.HP));
-        mContent.add(Box.createVerticalStrut(2));
-        mContent.add(monsterLabel);
-        mContent.add(Box.createVerticalStrut(6));
-        mContent.add(meterRow("HP", monsterHpBar));
-        statusPanel.add(accentCard(Theme.HP, mContent));
-
-        JPanel topPanel = new JPanel(new BorderLayout(0, 10));
-        topPanel.setOpaque(false);
-        topPanel.add(statusPanel, BorderLayout.NORTH);
-        topPanel.add(stage, BorderLayout.CENTER);
-        add(topPanel, BorderLayout.NORTH);
+        JPanel playerCard = accentCard(Theme.PLAYER_HP, pContent);
 
         log.setEditable(false);
         log.setLineWrap(true);
         log.setWrapStyleWord(true);
+        log.setRows(3);
         log.setBackground(Theme.PANEL);
         log.setForeground(Theme.TEXT);
         log.setFont(Theme.MONO_FONT);
         log.setBorder(new EmptyBorder(10, 10, 10, 10));
-        add(Theme.scroll(log), BorderLayout.CENTER);
+        JScrollPane logScroll = Theme.scroll(log);
+        logScroll.setPreferredSize(new Dimension(0, 92));
 
         JPanel btnRow = new JPanel(new GridLayout(1, 3, 10, 10));
         btnRow.setOpaque(false);
@@ -86,8 +85,17 @@ public class BattlePanel extends JPanel {
         btnRow.add(attackBtn);
         btnRow.add(itemBtn);
         btnRow.add(fleeBtn);
-        add(btnRow, BorderLayout.SOUTH);
         Theme.arrowNav(attackBtn, itemBtn, fleeBtn);
+
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setOpaque(false);
+        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS));
+        bottomPanel.add(playerCard);
+        bottomPanel.add(Box.createVerticalStrut(10));
+        bottomPanel.add(logScroll);
+        bottomPanel.add(Box.createVerticalStrut(10));
+        bottomPanel.add(btnRow);
+        add(bottomPanel, BorderLayout.SOUTH);
     }
 
     public void startBattle(Player player, Monster monster, Consumer<Result> onFinish) {

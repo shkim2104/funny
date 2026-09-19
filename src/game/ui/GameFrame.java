@@ -46,7 +46,6 @@ public class GameFrame extends JFrame {
     private boolean bossStage;
 
     private boolean fullscreen;
-    private Rectangle windowedBounds;
 
     public GameFrame() {
         super("공책 RPG");
@@ -65,9 +64,10 @@ public class GameFrame extends JFrame {
 
         startGame();
         toggleFullscreen();
+        setVisible(true);
     }
 
-    /** Binds F11 to toggle a borderless "windowed fullscreen" mode, a common convenience shortcut. */
+    /** Binds F11 to toggle maximized mode, a common convenience shortcut. */
     private void bindFullscreenToggle() {
         JRootPane root = getRootPane();
         root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
@@ -80,25 +80,14 @@ public class GameFrame extends JFrame {
         });
     }
 
+    // Maximizes via setExtendedState rather than a dispose()+setUndecorated() borderless toggle:
+    // that approach turned out to (1) auto-minimize whenever the window lost focus in true
+    // exclusive full-screen mode, and (2) occasionally let AWT see zero displayable windows
+    // mid-toggle and tear down the whole JVM. Plain maximize keeps the title bar but never
+    // disposes the frame, so neither failure mode can happen.
     private void toggleFullscreen() {
-        if (!fullscreen) {
-            windowedBounds = getBounds();
-            // Borderless window stretched to the current monitor's bounds, instead of OS exclusive
-            // full-screen mode: exclusive mode auto-minimizes whenever the window loses focus
-            // (e.g. alt-tab, a native dialog), which made the game appear to "bounce" away.
-            Rectangle screenBounds = getGraphicsConfiguration().getBounds();
-            dispose();
-            setUndecorated(true);
-            setBounds(screenBounds);
-            setVisible(true);
-            fullscreen = true;
-        } else {
-            dispose();
-            setUndecorated(false);
-            if (windowedBounds != null) setBounds(windowedBounds);
-            setVisible(true);
-            fullscreen = false;
-        }
+        setExtendedState(fullscreen ? JFrame.NORMAL : JFrame.MAXIMIZED_BOTH);
+        fullscreen = !fullscreen;
     }
 
     private void startGame() {
