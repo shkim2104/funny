@@ -24,6 +24,7 @@ public class BattlePanel extends JPanel {
     private final Theme.Meter playerHpBar = Theme.bar(Theme.PLAYER_HP);
     private final Theme.Meter playerMpBar = Theme.bar(Theme.MP);
     private final Theme.Meter playerExpBar = Theme.bar(Theme.EXP);
+    private final JLabel goldLabel = new JLabel();
     private final JLabel monsterLabel = Theme.header("");
     private final Theme.Meter monsterHpBar = Theme.bar(Theme.HP);
     private final BattleStage stage = new BattleStage();
@@ -61,10 +62,17 @@ public class BattlePanel extends JPanel {
         JPanel pContent = new JPanel();
         pContent.setOpaque(false);
         pContent.setLayout(new BoxLayout(pContent, BoxLayout.Y_AXIS));
-        playerLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Name on the left, current gold small on the right of the same row.
+        goldLabel.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
+        goldLabel.setForeground(Theme.EXP);
+        JPanel nameRow = new JPanel(new BorderLayout(8, 0));
+        nameRow.setOpaque(false);
+        nameRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        nameRow.add(playerLabel, BorderLayout.WEST);
+        nameRow.add(goldLabel, BorderLayout.EAST);
         pContent.add(badge("아군", Theme.PLAYER_HP));
         pContent.add(Box.createVerticalStrut(2));
-        pContent.add(playerLabel);
+        pContent.add(nameRow);
         pContent.add(Box.createVerticalStrut(6));
         pContent.add(meterRow("HP", playerHpBar));
         pContent.add(Box.createVerticalStrut(4));
@@ -154,6 +162,9 @@ public class BattlePanel extends JPanel {
      */
     public void endRun(String text, Runnable onReturn) {
         appendLog(text);
+        // Only gold is refreshed here: on defeat the player is already revived, and the HP bar
+        // should keep showing the knockout rather than a full bar.
+        refreshGold();
         this.onReturn = onReturn;
         setButtonsEnabled(false);
         actionCards.show(actionArea, "RETURN");
@@ -173,9 +184,14 @@ public class BattlePanel extends JPanel {
         playerMpBar.setValue(player.getMp());
         playerExpBar.setMaximum(player.getExpToNext());
         playerExpBar.setValue(player.getExp());
+        refreshGold();
         monsterLabel.setText(monster.getName());
         monsterHpBar.setMaximum(monster.getMaxHp());
         monsterHpBar.setValue(monster.getHp());
+    }
+
+    private void refreshGold() {
+        goldLabel.setText("소지금 " + player.getGold() + "G");
     }
 
     /** Small bold role tag ("아군"/"몬스터") colored to match that side's HP bar. */
@@ -344,6 +360,7 @@ public class BattlePanel extends JPanel {
         stage.stopIdle();
         if (result == Result.WIN) {
             appendLog(monster.getName() + "을(를) 물리쳤다!");
+            stage.showRewards(monster.getExpReward(), monster.getGoldReward());
         } else if (result == Result.LOSE) {
             appendLog(player.getName() + "은(는) 쓰러졌다...");
         }

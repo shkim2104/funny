@@ -30,6 +30,14 @@ public class BattleStage extends JComponent {
     private static final String LEVEL_UP_TEXT = "LEVEL UP!";
     private static final long LETTER_STAGGER = 55;   // ms between each letter dropping in
     private static final long LETTER_DROP = 320;     // ms for one letter's drop + bounce
+    private static final long COIN_FLIGHT = 560;
+    private static final long REWARD_LABEL_DELAY = COIN_FLIGHT;   // pop up as the first coin lands
+    private static final long REWARD_LABEL_DURATION = 1400;
+    private static final Color COIN_LIGHT = new Color(255, 236, 130);
+    private static final Color COIN_DARK = new Color(214, 150, 30);
+    private static final Color COIN_RIM = new Color(120, 72, 10);
+    private static final Color EXP_BADGE = new Color(70, 150, 230);
+    private static final Color EXP_TEXT = new Color(150, 210, 255);
 
     private String monsterName = "";
     private int playerOffsetX = 0;
@@ -40,6 +48,42 @@ public class BattleStage extends JComponent {
     private Timer idleTimer;
     private final List<DamageText> damageTexts = new ArrayList<>();
     private LevelUpFx levelUpFx;
+    private final List<RewardFx> rewardFxs = new ArrayList<>();
+
+    /** One coin flying from the defeated monster into the player, on its own arc. */
+    private static final class Coin {
+        final long delay;
+        final double spreadX;
+        final double arcHeight;
+        final double spinPhase;
+
+        Coin(long delay, double spreadX, double arcHeight, double spinPhase) {
+            this.delay = delay;
+            this.spreadX = spreadX;
+            this.arcHeight = arcHeight;
+            this.spinPhase = spinPhase;
+        }
+    }
+
+    /** Kill reward: coins fly from the monster to the player, then "+gold" / "+EXP" pop up beside the player. */
+    private static final class RewardFx {
+        final long start = System.currentTimeMillis();
+        final int exp;
+        final int gold;
+        final Coin[] coins;
+
+        RewardFx(int exp, int gold) {
+            this.exp = exp;
+            this.gold = gold;
+            java.util.Random r = new java.util.Random();
+            int count = gold > 0 ? Math.min(10, 3 + gold / 15) : 0;
+            coins = new Coin[count];
+            for (int i = 0; i < count; i++) {
+                coins[i] = new Coin(i * 45L + r.nextInt(30), (r.nextDouble() - 0.5) * 50,
+                        50 + r.nextDouble() * 50, r.nextDouble() * Math.PI * 2);
+            }
+        }
+    }
 
     private static final class DamageText {
         final String text;
@@ -137,6 +181,12 @@ public class BattleStage extends JComponent {
         repaint();
     }
 
+    /** Plays the kill reward: coins fly into the player, then gained gold and EXP pop up beside them. */
+    public void showRewards(int exp, int gold) {
+        rewardFxs.add(new RewardFx(exp, gold));
+        repaint();
+    }
+
     /** Plays the old-MapleStory-style level-up effect over the player. */
     public void playLevelUp() {
         levelUpFx = new LevelUpFx();
@@ -217,6 +267,7 @@ public class BattleStage extends JComponent {
         if (monsterHitFlash > 0) monsterHitFlash = Math.max(0, monsterHitFlash - 0.1f);
 
         drawDamageTexts(g2, px, playerGroundY, mx, monsterGroundY);
+        drawRewards(g2, px, playerGroundY, mx, monsterGroundY);
         drawLevelUp(g2, px, playerGroundY);
 
         g2.dispose();
@@ -237,11 +288,8 @@ public class BattleStage extends JComponent {
         float t = elapsed / (float) LEVEL_UP_DURATION;
         float fadeOut = t > 0.75f ? Math.max(0f, 1f - (t - 0.75f) / 0.25f) : 1f;
 
-        double spriteScale = PLAYER_SPRITE != null ? PLAYER_SPRITE_HEIGHT / PLAYER_SPRITE.getHeight() : 1.0;
-        int bodyH = (int) Math.round(PLAYER_SPRITE_HEIGHT * PLAYER_SCALE);
-        int bodyW = PLAYER_SPRITE != null
-                ? (int) Math.round(PLAYER_SPRITE.getWidth() * spriteScale * PLAYER_SCALE)
-                : (int) Math.round(bodyH * 0.6);
+        int bodyH = playerBodyH();
+        int bodyW = playerBodyW();
         int bodyTop = playerGroundY - bodyH;
 
         // 1) Light pillar: shoots up to the top of the stage in the first 200ms, then slowly thins out.
@@ -339,6 +387,112 @@ public class BattleStage extends JComponent {
         }
         gt.dispose();
         repaint();
+    }
+
+    /** Draws flying coins and the "+gold" / "+EXP" pop-ups, expiring each reward once all its parts finish. */
+    private void drawRewards(Graphics2D g2, int playerCx, int playerGroundY, int monsterCx, int monsterGroundY) {
+        if (rewardFxs.isEmpty()) return;
+        int bodyH = playerBodyH();
+        int bodyW = playerBodyW();
+        long now = System.currentTimeMillis();
+        Iterator<RewardFx> it = rewardFxs.iterator();
+        while (it.hasNext()) {
+            RewardFx fx = it.next();
+            long elapsed = now - fx.start;
+            if (elapsed >= REWARD_LABEL_DELAY + REWARD_LABEL_DURATION) {
+                it.remove();
+                continue;
+            }
+
+            // Coins pop out of the monster and arc into the player's chest.
+            double endX = playerCx + bodyW * 0.15;
+            double endY = playerGroundY - bodyH * 0.5;
+            double startY = monsterGroundY - 24;
+            for (Coin c : fx.coins) {
+                long ce = elapsed - c.delay;
+                if (ce < 0 || ce >= COIN_FLIGHT) continue;
+                double p = ce / (double) COIN_FLIGHT;
+                double eased = p * p * (3 - 2 * p);
+                double x = (monsterCx + c.spreadX) + (endX - monsterCx - c.spreadX) * eased;
+                double y = startY + (endY - startY) * eased - c.arcHeight * 4 * p * (1 - p);
+                double spin = Math.abs(Math.cos(ce / 70.0 + c.spinPhase));
+                drawCoin(g2, (float) x, (float) y, 7f, (float) Math.max(0.2, spin));
+            }
+
+            // "+gold" and "+EXP" rows rise beside the player once the coins have landed.
+            long le = elapsed - REWARD_LABEL_DELAY;
+            if (le < 0) continue;
+            float lp = le / (float) REWARD_LABEL_DURATION;
+            float alpha = lp < 0.6f ? 1f : Math.max(0f, 1f - (lp - 0.6f) / 0.4f);
+            float pop = Math.min(1f, le / 160f);
+            int rise = Math.round(lp * 30);
+            int x = playerCx + bodyW / 2 + 8;
+            int y = (int) Math.round(playerGroundY - bodyH * 0.62) - rise;
+
+            Graphics2D gl = (Graphics2D) g2.create();
+            gl.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha * pop));
+            Font valueFont = Theme.dosFont(Font.BOLD, 17f);
+            if (fx.gold > 0) {
+                drawCoin(gl, x + 8, y - 6, 8f, 1f);
+                drawOutlinedText(gl, "+" + fx.gold + "G", valueFont, x + 22, y, new Color(255, 214, 80));
+                y += 22;
+            }
+            if (fx.exp > 0) {
+                Font badgeFont = Theme.dosFont(Font.BOLD, 10f);
+                FontMetrics bfm = gl.getFontMetrics(badgeFont);
+                int bw = bfm.stringWidth("EXP") + 8;
+                int bh = 14;
+                gl.setColor(EXP_BADGE);
+                gl.fillRoundRect(x, y - bh + 1, bw, bh, 6, 6);
+                gl.setColor(new Color(20, 50, 90));
+                gl.drawRoundRect(x, y - bh + 1, bw, bh, 6, 6);
+                gl.setFont(badgeFont);
+                gl.setColor(Color.WHITE);
+                gl.drawString("EXP", x + 4, y - 2);
+                drawOutlinedText(gl, "+" + fx.exp, valueFont, x + bw + 6, y, EXP_TEXT);
+            }
+            gl.dispose();
+        }
+        repaint();
+    }
+
+    /** A spinning gold coin; xScale < 1 squashes it horizontally to fake rotation. */
+    private static void drawCoin(Graphics2D g2, float cx, float cy, float r, float xScale) {
+        float rw = r * xScale;
+        Ellipse2D.Float body = new Ellipse2D.Float(cx - rw, cy - r, rw * 2, r * 2);
+        g2.setPaint(new GradientPaint(cx, cy - r, COIN_LIGHT, cx, cy + r, COIN_DARK));
+        g2.fill(body);
+        g2.setStroke(new BasicStroke(1.5f));
+        g2.setColor(COIN_RIM);
+        g2.draw(body);
+        if (xScale > 0.5f) {
+            // Inner ring + highlight so it reads as a coin rather than a plain yellow dot.
+            float ir = r * 0.55f, irw = ir * xScale;
+            g2.setColor(new Color(COIN_RIM.getRed(), COIN_RIM.getGreen(), COIN_RIM.getBlue(), 140));
+            g2.draw(new Ellipse2D.Float(cx - irw, cy - ir, irw * 2, ir * 2));
+            g2.setColor(new Color(255, 255, 255, 190));
+            g2.fill(new Ellipse2D.Float(cx - rw * 0.55f, cy - r * 0.7f, rw * 0.45f, r * 0.4f));
+        }
+    }
+
+    /** Text with a dark outline so it stays readable over any background art. */
+    private static void drawOutlinedText(Graphics2D g2, String text, Font font, float x, float y, Color fill) {
+        Shape s = font.createGlyphVector(g2.getFontRenderContext(), text).getOutline(x, y);
+        g2.setStroke(new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(20, 16, 10));
+        g2.draw(s);
+        g2.setColor(fill);
+        g2.fill(s);
+    }
+
+    private static int playerBodyH() {
+        return (int) Math.round(PLAYER_SPRITE_HEIGHT * PLAYER_SCALE);
+    }
+
+    private static int playerBodyW() {
+        if (PLAYER_SPRITE == null) return (int) Math.round(playerBodyH() * 0.6);
+        double spriteScale = PLAYER_SPRITE_HEIGHT / PLAYER_SPRITE.getHeight();
+        return (int) Math.round(PLAYER_SPRITE.getWidth() * spriteScale * PLAYER_SCALE);
     }
 
     /** A four-pointed sparkle star centered at (cx, cy). */
