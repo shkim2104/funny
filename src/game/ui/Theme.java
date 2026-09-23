@@ -28,6 +28,7 @@ public final class Theme {
     public static final Color HP = new Color(200, 96, 96);
     public static final Color PLAYER_HP = new Color(96, 190, 120);
     public static final Color MP = new Color(96, 140, 202);
+    public static final Color EXP = new Color(199, 168, 106);
 
     public static final int RADIUS = 14;
 

@@ -7,6 +7,9 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * Draws the player and monster in a Pokémon-style diagonal camera: the player is seen
@@ -20,6 +23,14 @@ public class BattleStage extends JComponent {
     private static final double PLAYER_SCALE = 1.15;
     private static final double MONSTER_SCALE = 0.72;
 
+    private static final long DAMAGE_TEXT_DURATION = 750;
+    private static final long LEVEL_UP_DURATION = 2400;
+    private static final int LEVEL_UP_STREAKS = 14;
+    private static final int LEVEL_UP_TWINKLES = 12;
+    private static final String LEVEL_UP_TEXT = "LEVEL UP!";
+    private static final long LETTER_STAGGER = 55;   // ms between each letter dropping in
+    private static final long LETTER_DROP = 320;     // ms for one letter's drop + bounce
+
     private String monsterName = "";
     private int playerOffsetX = 0;
     private int monsterOffsetX = 0;
@@ -27,6 +38,70 @@ public class BattleStage extends JComponent {
     private float monsterHitFlash = 0f;
     private long startTime = System.currentTimeMillis();
     private Timer idleTimer;
+    private final List<DamageText> damageTexts = new ArrayList<>();
+    private LevelUpFx levelUpFx;
+
+    private static final class DamageText {
+        final String text;
+        final boolean onMonster;
+        final boolean crit;
+        final long start = System.currentTimeMillis();
+
+        DamageText(String text, boolean onMonster, boolean crit) {
+            this.text = text;
+            this.onMonster = onMonster;
+            this.crit = crit;
+        }
+    }
+
+    /** A thin golden light streak shooting up from the player's feet. */
+    private static final class Streak {
+        final double xOff;     // horizontal offset from the player's center, as a fraction of body width
+        final long delay;      // ms after the effect starts before this streak launches
+        final double speed;    // px per ms
+        final int length;
+
+        Streak(double xOff, long delay, double speed, int length) {
+            this.xOff = xOff;
+            this.delay = delay;
+            this.speed = speed;
+            this.length = length;
+        }
+    }
+
+    /** A four-pointed twinkle star that drifts up around the player's body. */
+    private static final class Twinkle {
+        final double xOff;     // fraction of body width from center
+        final double yFrac;    // 0 = feet, 1 = head
+        final double phase;
+        final float size;
+
+        Twinkle(double xOff, double yFrac, double phase, float size) {
+            this.xOff = xOff;
+            this.yFrac = yFrac;
+            this.phase = phase;
+            this.size = size;
+        }
+    }
+
+    /** Old-MapleStory-style level-up: light pillar, rising streaks, twinkles and bouncing "LEVEL UP!" letters. Randomness is rolled once so playback is stable. */
+    private static final class LevelUpFx {
+        final long start = System.currentTimeMillis();
+        final Streak[] streaks = new Streak[LEVEL_UP_STREAKS];
+        final Twinkle[] twinkles = new Twinkle[LEVEL_UP_TWINKLES];
+
+        LevelUpFx() {
+            java.util.Random r = new java.util.Random();
+            for (int i = 0; i < streaks.length; i++) {
+                streaks[i] = new Streak((r.nextDouble() - 0.5) * 1.1, r.nextInt(900),
+                        0.35 + r.nextDouble() * 0.3, 28 + r.nextInt(40));
+            }
+            for (int i = 0; i < twinkles.length; i++) {
+                twinkles[i] = new Twinkle((r.nextDouble() - 0.5) * 1.5, r.nextDouble(),
+                        r.nextDouble() * Math.PI * 2, 5 + r.nextFloat() * 6);
+            }
+        }
+    }
 
     public BattleStage() {
         setOpaque(false);
@@ -54,6 +129,18 @@ public class BattleStage extends JComponent {
             idleTimer.stop();
             idleTimer = null;
         }
+    }
+
+    /** Spawns a floating damage number over the player (onMonster=false) or monster (onMonster=true). */
+    public void showDamage(int amount, boolean onMonster, boolean crit) {
+        damageTexts.add(new DamageText(String.valueOf(amount), onMonster, crit));
+        repaint();
+    }
+
+    /** Plays the old-MapleStory-style level-up effect over the player. */
+    public void playLevelUp() {
+        levelUpFx = new LevelUpFx();
+        repaint();
     }
 
     /** Animates a lunge attack. onImpact fires at the peak of the lunge (apply damage there); onDone fires after the return. */
@@ -129,7 +216,184 @@ public class BattleStage extends JComponent {
         if (playerHitFlash > 0) playerHitFlash = Math.max(0, playerHitFlash - 0.1f);
         if (monsterHitFlash > 0) monsterHitFlash = Math.max(0, monsterHitFlash - 0.1f);
 
+        drawDamageTexts(g2, px, playerGroundY, mx, monsterGroundY);
+        drawLevelUp(g2, px, playerGroundY);
+
         g2.dispose();
+    }
+
+    /**
+     * Draws the old-MapleStory-style level-up effect centered on the player: a golden light
+     * pillar bursting up from the feet, thin light streaks shooting upward, twinkling stars
+     * around the body, and "LEVEL UP!" letters dropping in one by one above the head.
+     */
+    private void drawLevelUp(Graphics2D g2, int playerCx, int playerGroundY) {
+        if (levelUpFx == null) return;
+        long elapsed = System.currentTimeMillis() - levelUpFx.start;
+        if (elapsed >= LEVEL_UP_DURATION) {
+            levelUpFx = null;
+            return;
+        }
+        float t = elapsed / (float) LEVEL_UP_DURATION;
+        float fadeOut = t > 0.75f ? Math.max(0f, 1f - (t - 0.75f) / 0.25f) : 1f;
+
+        double spriteScale = PLAYER_SPRITE != null ? PLAYER_SPRITE_HEIGHT / PLAYER_SPRITE.getHeight() : 1.0;
+        int bodyH = (int) Math.round(PLAYER_SPRITE_HEIGHT * PLAYER_SCALE);
+        int bodyW = PLAYER_SPRITE != null
+                ? (int) Math.round(PLAYER_SPRITE.getWidth() * spriteScale * PLAYER_SCALE)
+                : (int) Math.round(bodyH * 0.6);
+        int bodyTop = playerGroundY - bodyH;
+
+        // 1) Light pillar: shoots up to the top of the stage in the first 200ms, then slowly thins out.
+        float grow = Math.min(1f, elapsed / 200f);
+        float pillarAlpha = (t < 0.5f ? 1f : Math.max(0f, 1f - (t - 0.5f) / 0.35f));
+        if (pillarAlpha > 0) {
+            int pillarTop = Math.round(playerGroundY - playerGroundY * grow);
+            int pillarH = playerGroundY - pillarTop;
+            // Narrows over time, like the beam collapsing back into the character.
+            float widthFactor = 1f - 0.45f * Math.max(0f, (t - 0.3f) / 0.5f);
+            int[] widths = {Math.round(bodyW * 1.1f * widthFactor), Math.round(bodyW * 0.7f * widthFactor),
+                    Math.round(bodyW * 0.32f * widthFactor)};
+            Color[] cores = {new Color(255, 214, 90), new Color(255, 236, 150), new Color(255, 252, 225)};
+            int[] alphas = {70, 90, 150};
+            for (int i = 0; i < widths.length; i++) {
+                int a = Math.round(alphas[i] * pillarAlpha);
+                if (a <= 0 || widths[i] <= 0 || pillarH <= 0) continue;
+                Color base = cores[i];
+                g2.setPaint(new GradientPaint(0, playerGroundY, new Color(base.getRed(), base.getGreen(), base.getBlue(), a),
+                        0, pillarTop, new Color(base.getRed(), base.getGreen(), base.getBlue(), 0)));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(playerCx - widths[i] / 2f, pillarTop,
+                        widths[i], pillarH, widths[i], widths[i]));
+            }
+        }
+
+        // 2) Burst ring at the feet on the first beat.
+        if (elapsed < 600) {
+            float rp = elapsed / 600f;
+            int rx = Math.round(bodyW * 0.4f + rp * bodyW * 0.9f);
+            int ry = Math.max(4, rx / 4);
+            g2.setStroke(new BasicStroke(3f));
+            g2.setColor(new Color(255, 230, 120, Math.round(220 * (1 - rp))));
+            g2.drawOval(playerCx - rx, playerGroundY - ry, rx * 2, ry * 2);
+        }
+
+        // 3) Thin light streaks racing upward from the feet.
+        g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (Streak s : levelUpFx.streaks) {
+            long se = elapsed - s.delay;
+            if (se < 0) continue;
+            int x = playerCx + (int) Math.round(s.xOff * bodyW);
+            int headY = playerGroundY - (int) Math.round(se * s.speed);
+            int tailY = headY + s.length;
+            if (tailY < 0) continue;
+            int a = Math.round(230 * fadeOut);
+            if (a <= 0) continue;
+            g2.setPaint(new GradientPaint(0, headY, new Color(255, 250, 215, a),
+                    0, tailY, new Color(255, 200, 70, 0)));
+            g2.drawLine(x, headY, x, Math.min(tailY, playerGroundY));
+        }
+
+        // 4) Twinkling four-pointed stars around the body, drifting upward.
+        for (Twinkle tw : levelUpFx.twinkles) {
+            double twinkle = Math.abs(Math.sin(elapsed / 110.0 + tw.phase));
+            float size = (float) (tw.size * (0.35 + 0.65 * twinkle));
+            int sx = playerCx + (int) Math.round(tw.xOff * bodyW);
+            int sy = playerGroundY - (int) Math.round(tw.yFrac * bodyH) - Math.round(elapsed * 0.03f);
+            int a = Math.round(255 * fadeOut * (float) (0.4 + 0.6 * twinkle));
+            if (a <= 0) continue;
+            g2.setColor(new Color(255, 245, 190, a));
+            g2.fill(starShape(sx, sy, size));
+        }
+
+        // 5) "LEVEL UP!" letters drop in one by one with a bounce, above the player's head.
+        Font font = Theme.dosFont(Font.BOLD, 32f);
+        java.awt.font.FontRenderContext frc = g2.getFontRenderContext();
+        java.awt.font.GlyphVector whole = font.createGlyphVector(frc, LEVEL_UP_TEXT);
+        java.awt.geom.Rectangle2D wb = whole.getVisualBounds();
+        float textAlpha = fadeOut;
+        // Float up a little while fading out, like the original.
+        int lift = t > 0.75f ? Math.round((t - 0.75f) / 0.25f * 18) : 0;
+        int baseY = Math.max((int) Math.ceil(wb.getHeight()) + 8, bodyTop - 6) - lift;
+        float startX = (float) (playerCx - wb.getWidth() / 2 - wb.getX());
+
+        Graphics2D gt = (Graphics2D) g2.create();
+        gt.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, textAlpha));
+        for (int i = 0; i < LEVEL_UP_TEXT.length(); i++) {
+            long le = elapsed - i * LETTER_STAGGER;
+            if (le < 0) break;
+            float p = Math.min(1f, le / (float) LETTER_DROP);
+            float dropOffset = (1f - easeOutBack(p)) * -36f;
+            Shape glyph = whole.getGlyphOutline(i, startX, baseY + dropOffset);
+            if (glyph.getBounds().isEmpty()) continue;
+            java.awt.geom.Rectangle2D gb = glyph.getBounds2D();
+
+            gt.setStroke(new BasicStroke(6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            gt.setColor(new Color(92, 38, 8));
+            gt.draw(glyph);
+            gt.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            gt.setColor(new Color(255, 250, 220));
+            gt.draw(glyph);
+            gt.setPaint(new GradientPaint(0, (float) gb.getMinY(), new Color(255, 246, 130),
+                    0, (float) gb.getMaxY(), new Color(255, 140, 20)));
+            gt.fill(glyph);
+        }
+        gt.dispose();
+        repaint();
+    }
+
+    /** A four-pointed sparkle star centered at (cx, cy). */
+    private static Shape starShape(float cx, float cy, float r) {
+        float inner = r * 0.28f;
+        Path2D.Float p = new Path2D.Float();
+        p.moveTo(cx, cy - r);
+        p.lineTo(cx + inner, cy - inner);
+        p.lineTo(cx + r, cy);
+        p.lineTo(cx + inner, cy + inner);
+        p.lineTo(cx, cy + r);
+        p.lineTo(cx - inner, cy + inner);
+        p.lineTo(cx - r, cy);
+        p.lineTo(cx - inner, cy - inner);
+        p.closePath();
+        return p;
+    }
+
+    /** Overshoots slightly past 1 then settles, giving each dropped letter a small bounce. */
+    private static float easeOutBack(float x) {
+        float c1 = 1.70158f, c3 = c1 + 1;
+        return 1 + c3 * (float) Math.pow(x - 1, 3) + c1 * (float) Math.pow(x - 1, 2);
+    }
+
+    /** Draws and expires floating damage numbers that rise and fade above whichever side took the hit. */
+    private void drawDamageTexts(Graphics2D g2, int playerCx, int playerGroundY, int monsterCx, int monsterGroundY) {
+        if (damageTexts.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        Iterator<DamageText> it = damageTexts.iterator();
+        while (it.hasNext()) {
+            DamageText dt = it.next();
+            long elapsed = now - dt.start;
+            if (elapsed >= DAMAGE_TEXT_DURATION) {
+                it.remove();
+                continue;
+            }
+            float progress = elapsed / (float) DAMAGE_TEXT_DURATION;
+            int cx = dt.onMonster ? monsterCx : playerCx;
+            int baseY = (dt.onMonster ? monsterGroundY : playerGroundY) - 70;
+            int y = baseY - Math.round(progress * 34);
+            int alpha = Math.round(255 * (1 - progress));
+
+            Font font = Theme.dosFont(Font.BOLD, dt.crit ? 24f : 18f);
+            g2.setFont(font);
+            FontMetrics fm = g2.getFontMetrics();
+            int tw = fm.stringWidth(dt.text);
+
+            g2.setColor(new Color(0, 0, 0, Math.round(alpha * 0.55f)));
+            g2.drawString(dt.text, cx - tw / 2 + 2, y + 2);
+
+            Color color = dt.crit ? new Color(255, 200, 60, alpha) : new Color(255, 255, 255, alpha);
+            g2.setColor(color);
+            g2.drawString(dt.text, cx - tw / 2, y);
+        }
+        repaint();
     }
 
     private void drawPlatform(Graphics2D g2, int cx, int groundY, int width, int height, Color fill) {

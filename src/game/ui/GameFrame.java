@@ -282,13 +282,15 @@ public class GameFrame extends JFrame {
         currentFloor = 1;
         bossStage = false;
         cardLayout.show(cards, "BATTLE");
-        startNextFight();
+        Dungeon dungeon = dungeons.get(currentDungeonIndex);
+        Monster monster = dungeon.randomMonster(rnd);
+        battlePanel.startBattle(player, monster, result -> onFightFinished(result, monster));
     }
 
     private void startNextFight() {
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
         Monster monster = bossStage ? dungeon.spawnBoss() : dungeon.randomMonster(rnd);
-        battlePanel.startBattle(player, monster, result -> onFightFinished(result, monster));
+        battlePanel.nextBattle(monster, result -> onFightFinished(result, monster));
     }
 
     private void onFightFinished(BattlePanel.Result result, Monster monster) {
@@ -299,9 +301,8 @@ public class GameFrame extends JFrame {
             return;
         }
         if (result == BattlePanel.Result.FLEE) {
-            Dialogs.message(this, "후퇴",
-                    bossStage ? "보스에게서 도망쳤습니다. 던전 클리어에 실패했습니다." : "던전에서 물러납니다.");
-            returnToTown();
+            battlePanel.endRun(bossStage ? "보스에게서 도망쳤다. 던전 클리어에 실패했다." : "던전에서 물러난다.",
+                    this::returnToTown);
             return;
         }
 
@@ -313,21 +314,22 @@ public class GameFrame extends JFrame {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
             msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! (스탯 포인트 +")
                     .append(gained).append(",마을에서 분배하세요)");
+            battlePanel.showLevelUp();
         }
 
         if (!bossStage) {
             if (currentFloor >= dungeon.getFloors()) {
-                Dialogs.message(this, "전투 승리", msg + "\n\n>>> 보스 등장! <<<");
+                battlePanel.logResult(msg + "\n>>> 보스 등장! <<<");
                 bossStage = true;
             } else {
-                Dialogs.message(this, "전투 승리", msg.toString());
+                battlePanel.logResult(msg.toString());
                 currentFloor++;
             }
             startNextFight();
             return;
         }
 
-        StringBuilder finalMsg = new StringBuilder("보스전 승리! " + msg);
+        StringBuilder finalMsg = new StringBuilder("=== 던전 클리어! ===\n보스전 승리! " + msg);
         if (dungeon.getRewardGold() > 0 || dungeon.getRewardExp() > 0) {
             player.gainExp(dungeon.getRewardExp());
             player.earnGold(dungeon.getRewardGold());
@@ -337,17 +339,16 @@ public class GameFrame extends JFrame {
 
         Item chestItem = rollChestItem(currentDungeonIndex);
         player.addItem(chestItem.getName());
-        finalMsg.append("\n\n보물 상자를 발견했다! ").append(chestItem.describe()).append(" 획득!");
+        finalMsg.append("\n보물 상자를 발견했다! ").append(chestItem.describe()).append(" 획득!");
 
         if (currentDungeonIndex == player.getUnlockedDungeon() && currentDungeonIndex + 1 < dungeons.size()) {
             player.setUnlockedDungeon(currentDungeonIndex + 1);
             finalMsg.append("\n새로운 던전이 해금되었습니다: ").append(dungeons.get(currentDungeonIndex + 1).getName());
         } else if (currentDungeonIndex == dungeons.size() - 1) {
-            finalMsg.append("\n\n*** 축하합니다! 모든 던전을 클리어했습니다! ***");
+            finalMsg.append("\n*** 축하합니다! 모든 던전을 클리어했습니다! ***");
         }
 
-        Dialogs.message(this, "던전 클리어", finalMsg.toString());
-        returnToTown();
+        battlePanel.endRun(finalMsg.toString(), this::returnToTown);
     }
 
     /** Loads the bundled multi-resolution app icon (title bar, taskbar, alt-tab). */
@@ -383,8 +384,7 @@ public class GameFrame extends JFrame {
         int penalty = player.getGold() / 4;
         player.spendGold(penalty);
         player.reviveAtTown();
-        Dialogs.message(this, "패배", "정신을 잃고 마을로 실려왔습니다...\n골드 " + penalty + "G를 잃었습니다.");
-        returnToTown();
+        battlePanel.endRun("정신을 잃고 마을로 실려간다...\n골드 " + penalty + "G를 잃었다.", this::returnToTown);
     }
 
     private void returnToTown() {

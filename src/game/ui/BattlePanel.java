@@ -23,6 +23,7 @@ public class BattlePanel extends JPanel {
     private final JLabel playerLabel = Theme.header("");
     private final Theme.Meter playerHpBar = Theme.bar(Theme.PLAYER_HP);
     private final Theme.Meter playerMpBar = Theme.bar(Theme.MP);
+    private final Theme.Meter playerExpBar = Theme.bar(Theme.EXP);
     private final JLabel monsterLabel = Theme.header("");
     private final Theme.Meter monsterHpBar = Theme.bar(Theme.HP);
     private final BattleStage stage = new BattleStage();
@@ -30,6 +31,10 @@ public class BattlePanel extends JPanel {
     private final JButton attackBtn = Theme.primaryButton("공격");
     private final JButton itemBtn = Theme.button("아이템 사용");
     private final JButton fleeBtn = Theme.button("도망");
+    private final JButton returnBtn = Theme.primaryButton("마을로 돌아가기");
+    private final CardLayout actionCards = new CardLayout();
+    private final JPanel actionArea = new JPanel(actionCards);
+    private Runnable onReturn;
 
     public BattlePanel() {
         setLayout(new BorderLayout(12, 12));
@@ -64,6 +69,8 @@ public class BattlePanel extends JPanel {
         pContent.add(meterRow("HP", playerHpBar));
         pContent.add(Box.createVerticalStrut(4));
         pContent.add(meterRow("MP", playerMpBar));
+        pContent.add(Box.createVerticalStrut(4));
+        pContent.add(meterRow("EXP", playerExpBar));
         JPanel playerCard = accentCard(Theme.PLAYER_HP, pContent);
 
         log.setEditable(false);
@@ -87,6 +94,17 @@ public class BattlePanel extends JPanel {
         btnRow.add(fleeBtn);
         Theme.arrowNav(attackBtn, itemBtn, fleeBtn);
 
+        // The action row swaps to a single "return" button once the dungeon run ends, so the
+        // run's outcome stays readable in the log instead of being shown in a modal dialog.
+        returnBtn.addActionListener(e -> {
+            Runnable r = onReturn;
+            onReturn = null;
+            if (r != null) r.run();
+        });
+        actionArea.setOpaque(false);
+        actionArea.add(btnRow, "ACTIONS");
+        actionArea.add(returnBtn, "RETURN");
+
         JPanel bottomPanel = new JPanel();
         bottomPanel.setOpaque(false);
         bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS));
@@ -94,7 +112,7 @@ public class BattlePanel extends JPanel {
         bottomPanel.add(Box.createVerticalStrut(10));
         bottomPanel.add(logScroll);
         bottomPanel.add(Box.createVerticalStrut(10));
-        bottomPanel.add(btnRow);
+        bottomPanel.add(actionArea);
         add(bottomPanel, BorderLayout.SOUTH);
     }
 
@@ -103,11 +121,48 @@ public class BattlePanel extends JPanel {
         this.monster = monster;
         this.onFinish = onFinish;
         log.setText("");
+        actionCards.show(actionArea, "ACTIONS");
         setButtonsEnabled(true);
         stage.setMonsterName(monster.getName());
         stage.startIdle();
         appendLog("=== " + monster.getName() + " 이(가) 나타났다! ===");
         refreshStatus();
+    }
+
+    /**
+     * Continues the same dungeon run against a new monster without clearing the log or
+     * popping a dialog, so floor results read as a running log instead of a click-through.
+     */
+    public void nextBattle(Monster monster, Consumer<Result> onFinish) {
+        this.monster = monster;
+        this.onFinish = onFinish;
+        setButtonsEnabled(true);
+        stage.setMonsterName(monster.getName());
+        stage.startIdle();
+        appendLog("=== " + monster.getName() + " 이(가) 나타났다! ===");
+        refreshStatus();
+    }
+
+    /** Writes a floor/battle result line into the log instead of showing a dialog. */
+    public void logResult(String text) {
+        appendLog(text);
+    }
+
+    /**
+     * Ends the dungeon run: logs the outcome and replaces the action buttons with a single
+     * "return to town" button, which runs onReturn when pressed.
+     */
+    public void endRun(String text, Runnable onReturn) {
+        appendLog(text);
+        this.onReturn = onReturn;
+        setButtonsEnabled(false);
+        actionCards.show(actionArea, "RETURN");
+        returnBtn.requestFocusInWindow();
+    }
+
+    /** Plays the level-up banner over the stage. */
+    public void showLevelUp() {
+        stage.playLevelUp();
     }
 
     private void refreshStatus() {
@@ -116,6 +171,8 @@ public class BattlePanel extends JPanel {
         playerHpBar.setValue(player.getHp());
         playerMpBar.setMaximum(player.getMaxMp());
         playerMpBar.setValue(player.getMp());
+        playerExpBar.setMaximum(player.getExpToNext());
+        playerExpBar.setValue(player.getExp());
         monsterLabel.setText(monster.getName());
         monsterHpBar.setMaximum(monster.getMaxHp());
         monsterHpBar.setValue(monster.getHp());
@@ -138,7 +195,7 @@ public class BattlePanel extends JPanel {
         JLabel tag = new JLabel(caption);
         tag.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
         tag.setForeground(Theme.TEXT_DIM);
-        tag.setPreferredSize(new Dimension(26, tag.getPreferredSize().height));
+        tag.setPreferredSize(new Dimension(Math.max(26, tag.getPreferredSize().width), tag.getPreferredSize().height));
         row.add(tag, BorderLayout.WEST);
         row.add(meter, BorderLayout.CENTER);
         return row;
@@ -212,6 +269,7 @@ public class BattlePanel extends JPanel {
             boolean crit = rnd.nextInt(100) < player.getCritChance();
             int finalDmg = crit ? Math.round(dmg * 1.75f) : dmg;
             monster.takeDamage(finalDmg);
+            stage.showDamage(finalDmg, true, crit);
             appendLog(player.getName() + "의 공격! " + (crit ? "치명타! " : "")
                     + monster.getName() + "에게 " + finalDmg + "의 피해!");
             refreshStatus();
@@ -222,6 +280,7 @@ public class BattlePanel extends JPanel {
         stage.animateAttack(false, () -> {
             int dmg = computeDamage(monster.getAtk(), player.getDef());
             player.takeDamage(dmg);
+            stage.showDamage(dmg, false, false);
             appendLog(monster.getName() + "의 공격! " + player.getName() + "이(가) " + dmg + "의 피해를 입었다!");
             refreshStatus();
         }, onDone);
