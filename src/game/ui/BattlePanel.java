@@ -32,7 +32,7 @@ public class BattlePanel extends JPanel {
     private final JButton attackBtn = Theme.primaryButton("공격");
     private final JButton itemBtn = Theme.button("아이템 사용");
     private final JButton fleeBtn = Theme.button("도망");
-    private final JButton returnBtn = Theme.primaryButton("마을로 돌아가기");
+    private final JButton returnBtn = Theme.primaryButton("");
     private final CardLayout actionCards = new CardLayout();
     private final JPanel actionArea = new JPanel(actionCards);
     private Runnable onReturn;
@@ -158,10 +158,11 @@ public class BattlePanel extends JPanel {
 
     /**
      * Ends the dungeon run: logs the outcome and replaces the action buttons with a single
-     * "return to town" button, which runs onReturn when pressed.
+     * return button labeled returnLabel, which runs onReturn when pressed.
      */
-    public void endRun(String text, Runnable onReturn) {
+    public void endRun(String text, String returnLabel, Runnable onReturn) {
         appendLog(text);
+        returnBtn.setText(returnLabel);
         // Only gold is refreshed here: on defeat the player is already revived, and the HP bar
         // should keep showing the knockout rather than a full bar.
         refreshGold();

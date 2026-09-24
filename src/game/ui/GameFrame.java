@@ -38,8 +38,25 @@ public class GameFrame extends JFrame {
     private final JPanel cards = new JPanel(cardLayout);
     private final BattlePanel battlePanel = new BattlePanel();
 
+    /** Clickable regions on dungeonentrence.png (artwork pixels), in the same order as World.buildDungeons(). */
+    private static final int[][] DUNGEON_MAP_AREAS = {
+            {60, 600, 410, 260},    // 1 초원
+            {470, 700, 260, 300},   // 2 어두운 동굴
+            {490, 460, 330, 230},   // 3 잊혀진 폐허
+            {860, 360, 340, 280},   // 4 마왕성
+            {760, 690, 370, 320},   // 5 얼음 협곡
+            {180, 220, 380, 300},   // 6 불화산
+            {450, 20, 450, 240},    // 7 천공의 성채
+    };
+    private static final String NOT_READY = "아직 개발중인 컨텐츠입니다.";
+
     private JLabel townInfoLabel;
     private JButton[] townButtons;
+    private JButton[] titleButtons;
+    private JButton continueButton;
+    private MapScreen townMap;
+    private MapScreen dungeonMap;
+    private JButton dungeonBackButton;
 
     private int currentDungeonIndex;
     private int currentFloor;
@@ -57,12 +74,14 @@ public class GameFrame extends JFrame {
         setLocationRelativeTo(null);
 
         cards.setOpaque(false);
+        cards.add(buildTitlePanel(), "TITLE");
         cards.add(buildTownPanel(), "TOWN");
+        cards.add(buildDungeonMapPanel(), "DUNGEON_MAP");
         cards.add(battlePanel, "BATTLE");
         setContentPane(cards);
         bindFullscreenToggle();
 
-        startGame();
+        showTitle();
         toggleFullscreen();
         setVisible(true);
     }
@@ -90,23 +109,36 @@ public class GameFrame extends JFrame {
         fullscreen = !fullscreen;
     }
 
-    private void startGame() {
-        if (SaveManager.hasSave()) {
-            boolean load = Dialogs.confirm(this, "이어하기", "이어하기 데이터가 있습니다. 불러올까요?");
-            if (load) {
-                Player loaded = SaveManager.load();
-                if (loaded != null) {
-                    player = loaded;
-                    Dialogs.message(this, "환영합니다", loaded.getName() + "님, 다시 오신 것을 환영합니다!");
-                }
-            }
+    private void showTitle() {
+        continueButton.setEnabled(SaveManager.hasSave());
+        cardLayout.show(cards, "TITLE");
+        Theme.focusFirst(titleButtons);
+    }
+
+    private void newGame() {
+        if (SaveManager.hasSave() && !Dialogs.confirm(this, "새로 시작",
+                "저장된 모험이 있습니다.\n새로 시작하면 다음 저장 때 기존 데이터를 덮어씁니다. 계속할까요?")) {
+            return;
         }
-        if (player == null) {
-            createNewPlayer();
+        createNewPlayer();
+        returnToTown();
+    }
+
+    private void continueGame() {
+        Player loaded = SaveManager.load();
+        if (loaded == null) {
+            Dialogs.message(this, "이어하기", "저장 데이터를 불러오지 못했습니다.");
+            return;
         }
-        refreshTown();
-        cardLayout.show(cards, "TOWN");
-        Theme.focusFirst(townButtons);
+        player = loaded;
+        returnToTown();
+        townMap.toast(loaded.getName() + "님, 다시 오신 것을 환영합니다!");
+    }
+
+    private void backToTitle() {
+        if (Dialogs.confirm(this, "타이틀로", "저장하지 않은 진행 상황은 사라집니다.\n타이틀 화면으로 돌아갈까요?")) {
+            showTitle();
+        }
     }
 
     private void createNewPlayer() {
@@ -122,47 +154,115 @@ public class GameFrame extends JFrame {
                 + "\n행운 " + player.getLuck() + " (치명타 확률 " + player.getCritChance() + "%)");
     }
 
-    private JPanel buildTownPanel() {
-        BackgroundPanel panel = new BackgroundPanel(new BorderLayout(16, 16), loadImage("images/town_bg.png"));
-        panel.setBorder(new EmptyBorder(24, 32, 24, 32));
+    /** Title screen: the old town artwork with the game's name and start/continue/quit. */
+    private JPanel buildTitlePanel() {
+        BackgroundPanel panel = new BackgroundPanel(new GridBagLayout(), loadImage("images/town_bg.png"));
 
-        JLabel banner = new JLabel("공책 RPG");
-        banner.setFont(Theme.dosFont(Font.BOLD, 26));
+        JLabel banner = new JLabel("공책 RPG", SwingConstants.CENTER);
+        banner.setFont(Theme.dosFont(Font.BOLD, 52));
         banner.setForeground(Color.WHITE);
         JPanel bannerPill = new TranslucentPill();
-        bannerPill.setBorder(new EmptyBorder(8, 16, 8, 16));
+        bannerPill.setBorder(new EmptyBorder(14, 36, 14, 36));
         bannerPill.add(banner);
-        JPanel bannerWrap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        bannerWrap.setOpaque(false);
-        bannerWrap.add(bannerPill);
-        panel.add(bannerWrap, BorderLayout.NORTH);
 
-        // The player info bar is kept updated (townInfoLabel) but not shown, so the artwork stays clear.
-        townInfoLabel = Theme.header("");
-
-        JPanel buttonPanel = new JPanel(new GridLayout(7, 1, 10, 10));
-        buttonPanel.setOpaque(false);
-        townButtons = new JButton[] {
-                makeButton("상태 보기", () -> showStatus()),
-                makeButton("상점", () -> openShop()),
-                makeButton("장비 변경", () -> openEquip()),
-                makeButton("스탯 분배", () -> openStatAlloc()),
-                makePrimaryButton("던전 입장", () -> openDungeonSelect()),
-                makeButton("저장하기", () -> {
-                    SaveManager.save(player);
-                    Dialogs.message(this, "저장 완료", "게임을 저장했습니다.");
-                }),
+        continueButton = makeButton("이어하기", this::continueGame);
+        titleButtons = new JButton[] {
+                makePrimaryButton("새로 시작", this::newGame),
+                continueButton,
                 makeButton("종료", () -> System.exit(0))
         };
-        for (JButton b : townButtons) buttonPanel.add(b);
-        Theme.arrowNav(townButtons);
+        JPanel buttonPanel = new JPanel(new GridLayout(titleButtons.length, 1, 10, 10));
+        buttonPanel.setOpaque(false);
+        for (JButton b : titleButtons) buttonPanel.add(b);
+        Theme.arrowNav(titleButtons);
 
-        // Center the button column vertically within the right-hand side of the screen.
-        JPanel eastWrap = new JPanel(new GridBagLayout());
-        eastWrap.setOpaque(false);
-        eastWrap.add(buttonPanel);
-        panel.add(eastWrap, BorderLayout.EAST);
+        JPanel column = new JPanel();
+        column.setOpaque(false);
+        column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+        bannerPill.setAlignmentX(Component.CENTER_ALIGNMENT);
+        buttonPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        buttonPanel.setMaximumSize(new Dimension(240, buttonPanel.getPreferredSize().height));
+        column.add(bannerPill);
+        column.add(Box.createVerticalStrut(36));
+        column.add(buttonPanel);
+        panel.add(column);
+        return panel;
+    }
 
+    /** Town: click buildings on town.png; character management lives in the side menu. */
+    private JPanel buildTownPanel() {
+        townMap = new MapScreen(loadImage("images/town.png"));
+        townMap.addHotspot("대장간", 130, 200, 430, 350, () -> townMap.toast(NOT_READY));
+        townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
+        townMap.addHotspot("상점", 725, 630, 345, 340, this::openShop);
+        townMap.addHotspot("던전 입구", 860, 990, 330, 260, this::openDungeonMap);
+
+        townInfoLabel = Theme.body("");
+        townButtons = new JButton[] {
+                menuButton("상태 보기", this::showStatus),
+                menuButton("장비 변경", this::openEquip),
+                menuButton("스탯 분배", this::openStatAlloc),
+                menuButton("저장하기", () -> {
+                    SaveManager.save(player);
+                    townMap.toast("게임을 저장했습니다.");
+                }),
+                menuButton("타이틀로", this::backToTitle)
+        };
+        return mapWithSideMenu(townMap, "마을", townInfoLabel, "건물을 클릭해 이동하세요", townButtons);
+    }
+
+    /** Dungeon select: click a region on the world map; regions past the unlocked one are dimmed. */
+    private JPanel buildDungeonMapPanel() {
+        dungeonMap = new MapScreen(loadImage("images/dungeonentrence.png"));
+        for (int i = 0; i < Math.min(DUNGEON_MAP_AREAS.length, dungeons.size()); i++) {
+            final int idx = i;
+            int[] a = DUNGEON_MAP_AREAS[i];
+            Dungeon d = dungeons.get(i);
+            dungeonMap.addHotspot(d.getName() + "  (" + d.getFloors() + "층 + 보스)", a[0], a[1], a[2], a[3],
+                    () -> tryEnterDungeon(idx),
+                    () -> player != null && idx > player.getUnlockedDungeon());
+        }
+        dungeonBackButton = menuButton("마을로 돌아가기", this::returnToTown);
+        return mapWithSideMenu(dungeonMap, "던전 입구", null, "지역을 클릭해 입장하세요", dungeonBackButton);
+    }
+
+    /** Map on the left, a slim menu column on the right (title, optional info, hint, buttons). */
+    private JPanel mapWithSideMenu(MapScreen map, String title, JLabel info, String hint, JButton... buttons) {
+        JPanel side = new JPanel();
+        side.setBackground(Theme.PANEL);
+        side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
+        side.setBorder(new EmptyBorder(24, 20, 24, 20));
+
+        JLabel titleLabel = Theme.title(title);
+        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        side.add(titleLabel);
+        side.add(Box.createVerticalStrut(12));
+        if (info != null) {
+            info.setAlignmentX(Component.LEFT_ALIGNMENT);
+            side.add(info);
+            side.add(Box.createVerticalStrut(12));
+        }
+        JLabel hintLabel = new JLabel(hint);
+        hintLabel.setFont(Theme.SMALL_FONT);
+        hintLabel.setForeground(Theme.TEXT_DIM);
+        hintLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        side.add(hintLabel);
+        side.add(Box.createVerticalStrut(20));
+
+        for (JButton b : buttons) {
+            b.setAlignmentX(Component.LEFT_ALIGNMENT);
+            b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height));
+            side.add(b);
+            side.add(Box.createVerticalStrut(10));
+        }
+        side.add(Box.createVerticalGlue());
+        Theme.arrowNav(buttons);
+        side.setPreferredSize(new Dimension(220, 0));
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(Theme.BG);
+        panel.add(map, BorderLayout.CENTER);
+        panel.add(side, BorderLayout.EAST);
         return panel;
     }
 
@@ -233,13 +333,19 @@ public class GameFrame extends JFrame {
         return btn;
     }
 
+    private JButton menuButton(String text, Runnable action) {
+        JButton btn = Theme.button(text);
+        btn.addActionListener(e -> action.run());
+        return btn;
+    }
+
     private void refreshTown() {
         String statPointsNote = player.getStatPoints() > 0
-                ? "&nbsp;&nbsp;&nbsp; <font color='#c7a86a'>스탯 포인트 " + player.getStatPoints() + "</font>"
+                ? "<br><font color='#c7a86a'>스탯 포인트 " + player.getStatPoints() + "</font>"
                 : "";
         townInfoLabel.setText("<html>Lv." + player.getLevel() + " " + player.getName()
-                + "&nbsp;&nbsp;&nbsp; HP " + player.getHp() + "/" + player.getMaxHp()
-                + "&nbsp;&nbsp;&nbsp; 골드 " + player.getGold() + "G"
+                + "<br>HP " + player.getHp() + "/" + player.getMaxHp()
+                + "<br>골드 " + player.getGold() + "G"
                 + statPointsNote + "</html>");
     }
 
@@ -264,17 +370,19 @@ public class GameFrame extends JFrame {
         refreshTown();
     }
 
-    private void openDungeonSelect() {
-        int maxIdx = Math.min(player.getUnlockedDungeon(), dungeons.size() - 1);
-        String[] options = new String[maxIdx + 1];
-        for (int i = 0; i <= maxIdx; i++) {
-            Dungeon d = dungeons.get(i);
-            options[i] = d.getName() + "  (" + d.getFloors() + "층 + 보스)";
+    private void openDungeonMap() {
+        cardLayout.show(cards, "DUNGEON_MAP");
+        dungeonMap.repaint();
+        Theme.focusFirst(dungeonBackButton);
+    }
+
+    /** Only the next dungeon after the last one cleared (and everything before it) can be entered. */
+    private void tryEnterDungeon(int dungeonIndex) {
+        if (dungeonIndex > player.getUnlockedDungeon()) {
+            dungeonMap.toast("아직 때가 아니다..");
+            return;
         }
-        int idx = Dialogs.choose(this, "던전 선택", "입장할 던전을 선택하세요", options);
-        if (idx >= 0) {
-            enterDungeon(idx);
-        }
+        enterDungeon(dungeonIndex);
     }
 
     private void enterDungeon(int dungeonIndex) {
@@ -302,7 +410,7 @@ public class GameFrame extends JFrame {
         }
         if (result == BattlePanel.Result.FLEE) {
             battlePanel.endRun(bossStage ? "보스에게서 도망쳤다. 던전 클리어에 실패했다." : "던전에서 물러난다.",
-                    this::returnToTown);
+                    "던전 지도로", this::returnToDungeonMap);
             return;
         }
 
@@ -343,12 +451,12 @@ public class GameFrame extends JFrame {
 
         if (currentDungeonIndex == player.getUnlockedDungeon() && currentDungeonIndex + 1 < dungeons.size()) {
             player.setUnlockedDungeon(currentDungeonIndex + 1);
-            finalMsg.append("\n새로운 던전이 해금되었습니다: ").append(dungeons.get(currentDungeonIndex + 1).getName());
+            finalMsg.append("\n다음 던전이 개방되었습니다. (").append(dungeons.get(currentDungeonIndex + 1).getName()).append(")");
         } else if (currentDungeonIndex == dungeons.size() - 1) {
             finalMsg.append("\n*** 축하합니다! 모든 던전을 클리어했습니다! ***");
         }
 
-        battlePanel.endRun(finalMsg.toString(), this::returnToTown);
+        battlePanel.endRun(finalMsg.toString(), "던전 지도로", this::returnToDungeonMap);
     }
 
     /** Loads the bundled multi-resolution app icon (title bar, taskbar, alt-tab). */
@@ -384,7 +492,13 @@ public class GameFrame extends JFrame {
         int penalty = player.getGold() / 4;
         player.spendGold(penalty);
         player.reviveAtTown();
-        battlePanel.endRun("정신을 잃고 마을로 실려간다...\n골드 " + penalty + "G를 잃었다.", this::returnToTown);
+        battlePanel.endRun("정신을 잃고 던전 밖으로 실려나왔다...\n골드 " + penalty + "G를 잃었다.", "던전 지도로", this::returnToDungeonMap);
+    }
+
+    /** After a cleared or abandoned run: back on the world map, so the next dungeon is one click away. */
+    private void returnToDungeonMap() {
+        refreshTown();
+        openDungeonMap();
     }
 
     private void returnToTown() {
