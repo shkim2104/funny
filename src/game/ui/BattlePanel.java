@@ -2,6 +2,7 @@ package game.ui;
 
 import game.model.Item;
 import game.model.ItemCatalog;
+import game.model.Job;
 import game.model.Monster;
 import game.model.Player;
 import game.model.Skill;
@@ -32,11 +33,30 @@ public class BattlePanel extends JPanel {
     private final JTextArea log = new JTextArea();
     private final JButton attackBtn = Theme.primaryButton("공격");
     private final JButton itemBtn = Theme.button("아이템 사용");
-    private final JButton skillBtn = Theme.button("스킬");
     private final JButton fleeBtn = Theme.button("도망");
     private final JButton returnBtn = Theme.primaryButton("");
     private final CardLayout actionCards = new CardLayout();
-    private final JPanel actionArea = new JPanel(actionCards);
+    /** Sized to whichever card is showing, so the taller attack menu doesn't leave the plain button row padded out. */
+    private final JPanel actionArea = new JPanel(actionCards) {
+        @Override
+        public Dimension getPreferredSize() {
+            for (Component c : getComponents()) {
+                if (c.isVisible()) {
+                    Insets in = getInsets();
+                    Dimension d = c.getPreferredSize();
+                    return new Dimension(d.width + in.left + in.right, d.height + in.top + in.bottom);
+                }
+            }
+            return super.getPreferredSize();
+        }
+    };
+
+    // Attack menu (after job advancement): basic attack on the left, 2x2 skill slots, back on the right.
+    private static final int SKILL_SLOTS = 4;
+    private final JButton basicAttackBtn = Theme.primaryButton("기본 공격");
+    private final JButton[] skillSlotBtns = new JButton[SKILL_SLOTS];
+    private final JButton menuBackBtn = Theme.button("뒤로");
+    private final Skill[] slotSkills = new Skill[SKILL_SLOTS];
     private Runnable onReturn;
 
     public BattlePanel() {
@@ -94,17 +114,15 @@ public class BattlePanel extends JPanel {
         JScrollPane logScroll = Theme.scroll(log);
         logScroll.setPreferredSize(new Dimension(0, 92));
 
-        JPanel btnRow = new JPanel(new GridLayout(1, 4, 10, 10));
+        JPanel btnRow = new JPanel(new GridLayout(1, 3, 10, 10));
         btnRow.setOpaque(false);
         attackBtn.addActionListener(e -> onAttack());
-        skillBtn.addActionListener(e -> onSkill());
         itemBtn.addActionListener(e -> onItem());
         fleeBtn.addActionListener(e -> onFlee());
         btnRow.add(attackBtn);
-        btnRow.add(skillBtn);
         btnRow.add(itemBtn);
         btnRow.add(fleeBtn);
-        Theme.arrowNav(attackBtn, skillBtn, itemBtn, fleeBtn);
+        Theme.arrowNav(attackBtn, itemBtn, fleeBtn);
 
         // The action row swaps to a single "return" button once the dungeon run ends, so the
         // run's outcome stays readable in the log instead of being shown in a modal dialog.
@@ -116,6 +134,7 @@ public class BattlePanel extends JPanel {
         actionArea.setOpaque(false);
         actionArea.add(btnRow, "ACTIONS");
         actionArea.add(returnBtn, "RETURN");
+        actionArea.add(buildAttackMenu(), "ATTACK_MENU");
 
         JPanel bottomPanel = new JPanel();
         bottomPanel.setOpaque(false);
@@ -134,6 +153,7 @@ public class BattlePanel extends JPanel {
         this.onFinish = onFinish;
         log.setText("");
         actionCards.show(actionArea, "ACTIONS");
+        actionArea.revalidate();
         setButtonsEnabled(true);
         stage.setMonsterName(monster.getName());
         stage.startIdle();
@@ -167,12 +187,15 @@ public class BattlePanel extends JPanel {
     public void endRun(String text, String returnLabel, Runnable onReturn) {
         appendLog(text);
         returnBtn.setText(returnLabel);
-        // Only gold is refreshed here: on defeat the player is already revived, and the HP bar
-        // should keep showing the knockout rather than a full bar.
+        // Only gold and MP are refreshed here: on defeat the player is already revived, and the HP
+        // bar should keep showing the knockout rather than a full bar. MP is refilled on the way out.
         refreshGold();
+        playerMpBar.setMaximum(player.getMaxMp());
+        playerMpBar.setValue(player.getMp());
         this.onReturn = onReturn;
         setButtonsEnabled(false);
         actionCards.show(actionArea, "RETURN");
+        actionArea.revalidate();
         returnBtn.requestFocusInWindow();
     }
 
@@ -242,11 +265,10 @@ public class BattlePanel extends JPanel {
 
     private void setButtonsEnabled(boolean enabled) {
         attackBtn.setEnabled(enabled);
-        skillBtn.setEnabled(enabled);
         itemBtn.setEnabled(enabled);
         fleeBtn.setEnabled(enabled);
         if (enabled) {
-            Theme.focusFirst(attackBtn, skillBtn, itemBtn, fleeBtn);
+            Theme.focusFirst(attackBtn, itemBtn, fleeBtn);
         }
     }
 
@@ -257,8 +279,109 @@ public class BattlePanel extends JPanel {
         return Math.max(1, dmg);
     }
 
+    /** Beginners just attack; once advanced, 공격 opens the attack menu to pick a basic attack or a skill. */
     private void onAttack() {
-        exchange(this::playerStrike);
+        if (player.getJob() == Job.BEGINNER) {
+            exchange(this::playerStrike);
+        } else {
+            openAttackMenu();
+        }
+    }
+
+    private JPanel buildAttackMenu() {
+        basicAttackBtn.addActionListener(e -> {
+            closeAttackMenu();
+            exchange(this::playerStrike);
+        });
+        basicAttackBtn.setPreferredSize(new Dimension(170, 0));
+
+        JPanel grid = new JPanel(new GridLayout(2, 2, 8, 8));
+        grid.setOpaque(false);
+        for (int i = 0; i < SKILL_SLOTS; i++) {
+            final int slot = i;
+            JButton b = Theme.button("");
+            b.addActionListener(e -> useSlot(slot));
+            skillSlotBtns[i] = b;
+            grid.add(b);
+        }
+
+        menuBackBtn.addActionListener(e -> {
+            closeAttackMenu();
+            setButtonsEnabled(true);
+        });
+        menuBackBtn.setPreferredSize(new Dimension(80, 0));
+
+        JButton[] nav = new JButton[SKILL_SLOTS + 2];
+        nav[0] = basicAttackBtn;
+        System.arraycopy(skillSlotBtns, 0, nav, 1, SKILL_SLOTS);
+        nav[nav.length - 1] = menuBackBtn;
+        Theme.arrowNav(nav);
+
+        JPanel menu = new JPanel(new BorderLayout(10, 0));
+        menu.setOpaque(false);
+        menu.add(basicAttackBtn, BorderLayout.WEST);
+        menu.add(grid, BorderLayout.CENTER);
+        menu.add(menuBackBtn, BorderLayout.EAST);
+        // Esc backs out of the menu, like the back button.
+        menu.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke("ESCAPE"), "menu-back");
+        menu.getActionMap().put("menu-back", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                menuBackBtn.doClick();
+            }
+        });
+        return menu;
+    }
+
+    /**
+     * Fills the four slots with the player's skills (the newest four if there are more, e.g. after
+     * a 2nd job), greys out ones the player can't afford, and shows the menu.
+     */
+    private void openAttackMenu() {
+        List<Skill> skills = player.getSkills();
+        int from = Math.max(0, skills.size() - SKILL_SLOTS);
+        for (int i = 0; i < SKILL_SLOTS; i++) {
+            int idx = from + i;
+            Skill s = idx < skills.size() ? skills.get(idx) : null;
+            slotSkills[i] = s;
+            JButton b = skillSlotBtns[i];
+            if (s == null) {
+                // Plain text on purpose: Swing greys out plain labels when disabled, but not HTML ones.
+                b.setText("빈 슬롯");
+                b.setToolTipText(null);
+                b.setEnabled(false);
+            } else {
+                // Unaffordable skills stay clickable (dimmed) so pressing one explains the MP shortage in the log.
+                boolean affordable = player.getMp() >= s.getMpCost();
+                String nameColor = affordable ? "#e6e6eb" : "#6e717b";
+                String mpColor = affordable ? "#7fa6dc" : "#8a5a5a";
+                b.setText("<html><center><font color='" + nameColor + "'>" + s.getName() + "</font><br>"
+                        + "<font size='2' color='" + mpColor + "'>MP " + s.getMpCost()
+                        + (affordable ? "" : " (부족)") + "</font></center></html>");
+                b.setToolTipText(s.getDescription());
+                b.setEnabled(true);
+            }
+        }
+        actionCards.show(actionArea, "ATTACK_MENU");
+        actionArea.revalidate();
+        basicAttackBtn.requestFocusInWindow();
+    }
+
+    private void closeAttackMenu() {
+        actionCards.show(actionArea, "ACTIONS");
+        actionArea.revalidate();
+        actionArea.revalidate();
+    }
+
+    private void useSlot(int slot) {
+        Skill skill = slotSkills[slot];
+        if (skill == null) return;
+        if (player.getMp() < skill.getMpCost()) {
+            appendLog("MP가 부족하다! (" + skill.getName() + ": MP " + skill.getMpCost() + " 필요)");
+            return;
+        }
+        closeAttackMenu();
+        exchange(done -> castSkill(skill, done));
     }
 
     /**
@@ -304,29 +427,6 @@ public class BattlePanel extends JPanel {
                     + monster.getName() + "에게 " + finalDmg + "의 피해!");
             refreshStatus();
         }, onDone);
-    }
-
-    private void onSkill() {
-        List<Skill> skills = player.getSkills();
-        if (skills.isEmpty()) {
-            appendLog(player.getJob().getParent() == null
-                    ? "아직 사용할 수 있는 스킬이 없다. (Lv.10에 마을 전직소에서 전직하면 스킬을 배운다)"
-                    : "아직 사용할 수 있는 스킬이 없다.");
-            return;
-        }
-        String[] options = new String[skills.size()];
-        for (int i = 0; i < skills.size(); i++) {
-            Skill s = skills.get(i);
-            options[i] = s.getName() + "  (MP " + s.getMpCost() + ")  " + s.getDescription();
-        }
-        int idx = Dialogs.choose(this, "스킬", "사용할 스킬을 선택하세요  (MP " + player.getMp() + "/" + player.getMaxMp() + ")", options);
-        if (idx < 0) return;
-        Skill skill = skills.get(idx);
-        if (player.getMp() < skill.getMpCost()) {
-            appendLog("MP가 부족하다! (" + skill.getName() + ": MP " + skill.getMpCost() + " 필요)");
-            return;
-        }
-        exchange(done -> castSkill(skill, done));
     }
 
     private void castSkill(Skill skill, Runnable onDone) {

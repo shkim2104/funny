@@ -469,8 +469,7 @@ public class GameFrame extends JFrame {
             return;
         }
         if (result == BattlePanel.Result.FLEE) {
-            battlePanel.endRun(bossStage ? "보스에게서 도망쳤다. 던전 클리어에 실패했다." : "던전에서 물러난다.",
-                    "던전 지도로", this::returnToDungeonMap);
+            endDungeonRun(bossStage ? "보스에게서 도망쳤다. 던전 클리어에 실패했다." : "던전에서 물러난다.");
             return;
         }
 
@@ -519,7 +518,7 @@ public class GameFrame extends JFrame {
             finalMsg.append("\n*** 축하합니다! 모든 던전을 클리어했습니다! ***");
         }
 
-        battlePanel.endRun(finalMsg.toString(), "던전 지도로", this::returnToDungeonMap);
+        endDungeonRun(finalMsg.toString());
     }
 
     /** After a level-up: announce newly learned skills and a newly reachable job advancement. */
@@ -565,7 +564,13 @@ public class GameFrame extends JFrame {
         int penalty = player.getGold() / 4;
         player.spendGold(penalty);
         player.reviveAtTown();
-        battlePanel.endRun("정신을 잃고 던전 밖으로 실려나왔다...\n골드 " + penalty + "G를 잃었다.", "던전 지도로", this::returnToDungeonMap);
+        endDungeonRun("정신을 잃고 던전 밖으로 실려나왔다...\n골드 " + penalty + "G를 잃었다.");
+    }
+
+    /** Every way out of a dungeon (clear, retreat, defeat) ends here: MP is fully restored on the way out. */
+    private void endDungeonRun(String outcome) {
+        player.restoreMp(player.getMaxMp());
+        battlePanel.endRun(outcome + "\n던전을 나서며 MP가 모두 회복되었다.", "던전 지도로", this::returnToDungeonMap);
     }
 
     /** After a cleared or abandoned run: back on the world map, so the next dungeon is one click away. */
