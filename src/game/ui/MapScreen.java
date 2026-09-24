@@ -19,7 +19,6 @@ public class MapScreen extends JPanel {
     private static final long TOAST_DURATION = 1800;
     private static final Color HOVER_FILL = new Color(255, 236, 160, 60);
     private static final Color HOVER_LINE = new Color(255, 214, 90, 230);
-    private static final Color LOCKED_FILL = new Color(20, 20, 30, 85);
 
     private static final class Hotspot {
         final String label;
@@ -89,7 +88,7 @@ public class MapScreen extends JPanel {
         addHotspot(label, x, y, w, h, onClick, () -> false);
     }
 
-    /** Adds a clickable area that is drawn dimmed while locked returns true (it still receives clicks). */
+    /** Adds a clickable area that is drawn wrapped in chains while locked returns true (it still receives clicks). */
     public void addHotspot(String label, int x, int y, int w, int h, Runnable onClick, BooleanSupplier locked) {
         hotspots.add(new Hotspot(label, new Rectangle(x, y, w, h), onClick, locked));
     }
@@ -171,8 +170,6 @@ public class MapScreen extends JPanel {
         for (Hotspot h : hotspots) {
             if (!h.locked.getAsBoolean()) continue;
             Rectangle r = toScreen(h.area);
-            g2.setColor(LOCKED_FILL);
-            g2.fill(new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 24, 24));
             drawChainedLock(g2, r, s);
         }
 
