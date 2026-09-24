@@ -3,8 +3,10 @@ package game.ui;
 import game.model.Dungeon;
 import game.model.Item;
 import game.model.ItemCatalog;
+import game.model.Job;
 import game.model.Monster;
 import game.model.Player;
+import game.model.Skill;
 import game.model.World;
 import game.save.SaveManager;
 
@@ -199,11 +201,14 @@ public class GameFrame extends JFrame {
 
     /** Town: click buildings on town.png; character management lives in the side menu. */
     private JPanel buildTownPanel() {
-        townMap = new MapScreen(loadImage("images/town.png"));
+        // The job hall (전직소) is drawn into an empty corner of the town art.
+        townMap = new MapScreen(JobHallArt.paintOnto(loadImage("images/town.png")));
         townMap.addHotspot("대장간", 130, 200, 430, 350, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("상점", 725, 630, 345, 340, this::openShop);
         townMap.addHotspot("던전 입구", 860, 990, 330, 260, () -> openDungeonMap(true));
+        Rectangle hall = JobHallArt.AREA;
+        townMap.addHotspot("전직소", hall.x, hall.y, hall.width, hall.height, this::openAdvancement);
 
         townInfoLabel = Theme.body("");
         townButtons = new JButton[] {
@@ -351,7 +356,7 @@ public class GameFrame extends JFrame {
         String statPointsNote = player.getStatPoints() > 0
                 ? "<br><font color='#c7a86a'>스탯 포인트 " + player.getStatPoints() + "</font>"
                 : "";
-        townInfoLabel.setText("<html>Lv." + player.getLevel() + " " + player.getName()
+        townInfoLabel.setText("<html>Lv." + player.getLevel() + " " + player.getJob().getDisplayName() + " " + player.getName()
                 + "<br>HP " + player.getHp() + "/" + player.getMaxHp()
                 + "<br>골드 " + player.getGold() + "G"
                 + statPointsNote + "</html>");
@@ -366,6 +371,46 @@ public class GameFrame extends JFrame {
         pageTurner.turnToBlankPage(() -> {
             StatAllocDialog.show(this, player);
             refreshTown();
+        });
+    }
+
+    /** Job advancement: toasts why it isn't possible yet, otherwise lets the player pick the next job. */
+    private void openAdvancement() {
+        Job current = player.getJob();
+        List<Job> next = current.children();
+        if (next.isEmpty()) {
+            townMap.toast(current.getDisplayName() + "의 다음 전직은 아직 준비 중입니다.");
+            return;
+        }
+        List<Job> available = player.getAvailableAdvancements();
+        if (available.isEmpty()) {
+            townMap.toast("Lv." + next.get(0).getRequiredLevel() + "부터 전직할 수 있습니다. (현재 Lv." + player.getLevel() + ")");
+            return;
+        }
+        pageTurner.turnToBlankPage(() -> {
+            String[] options = new String[available.size()];
+            for (int i = 0; i < available.size(); i++) {
+                Job j = available.get(i);
+                StringBuilder skills = new StringBuilder();
+                for (Skill s : j.getOwnSkills()) {
+                    if (skills.length() > 0) skills.append(", ");
+                    skills.append(s.getName()).append("(Lv.").append(s.getRequiredLevel()).append(")");
+                }
+                options[i] = j.getDisplayName() + "  -  " + j.getDescription() + "   [" + skills + "]";
+            }
+            int idx = Dialogs.choose(this, "전직", "어떤 길을 걸으시겠습니까?", options);
+            if (idx < 0) return;
+            Job chosen = available.get(idx);
+            if (!Dialogs.confirm(this, "전직", chosen.getDisplayName() + "(으)로 전직할까요?\n한 번 정하면 바꿀 수 없습니다.")) return;
+            player.advanceTo(chosen);
+            refreshTown();
+            StringBuilder learned = new StringBuilder();
+            for (Skill s : player.getSkills()) {
+                if (learned.length() > 0) learned.append(", ");
+                learned.append(s.getName());
+            }
+            Dialogs.message(this, "전직 완료", player.getName() + "은(는) " + chosen.getDisplayName() + "이(가) 되었다!"
+                    + (learned.length() > 0 ? "\n\n사용 가능한 스킬: " + learned : ""));
         });
     }
 
@@ -430,6 +475,8 @@ public class GameFrame extends JFrame {
         }
 
         int beforeLevel = player.getLevel();
+        List<Skill> beforeSkills = player.getSkills();
+        boolean couldAdvance = !player.getAvailableAdvancements().isEmpty();
         player.gainExp(monster.getExpReward());
         player.earnGold(monster.getGoldReward());
         StringBuilder msg = new StringBuilder("EXP " + monster.getExpReward() + ", 골드 " + monster.getGoldReward() + "G 획득!");
@@ -437,6 +484,7 @@ public class GameFrame extends JFrame {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
             msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! (스탯 포인트 +")
                     .append(gained).append(",마을에서 분배하세요)");
+            appendGrowthNotes(msg, beforeSkills, couldAdvance);
             battlePanel.showLevelUp();
         }
 
@@ -472,6 +520,16 @@ public class GameFrame extends JFrame {
         }
 
         battlePanel.endRun(finalMsg.toString(), "던전 지도로", this::returnToDungeonMap);
+    }
+
+    /** After a level-up: announce newly learned skills and a newly reachable job advancement. */
+    private void appendGrowthNotes(StringBuilder msg, List<Skill> beforeSkills, boolean couldAdvance) {
+        for (Skill s : player.getSkills()) {
+            if (!beforeSkills.contains(s)) msg.append("\n새로운 스킬을 배웠다: ").append(s.getName());
+        }
+        if (!couldAdvance && !player.getAvailableAdvancements().isEmpty()) {
+            msg.append("\n>>> 전직할 수 있게 되었습니다! 마을의 전직소를 찾아가 보세요. <<<");
+        }
     }
 
     /** Loads the bundled multi-resolution app icon (title bar, taskbar, alt-tab). */

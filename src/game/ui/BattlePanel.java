@@ -4,6 +4,7 @@ import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Monster;
 import game.model.Player;
+import game.model.Skill;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -31,6 +32,7 @@ public class BattlePanel extends JPanel {
     private final JTextArea log = new JTextArea();
     private final JButton attackBtn = Theme.primaryButton("공격");
     private final JButton itemBtn = Theme.button("아이템 사용");
+    private final JButton skillBtn = Theme.button("스킬");
     private final JButton fleeBtn = Theme.button("도망");
     private final JButton returnBtn = Theme.primaryButton("");
     private final CardLayout actionCards = new CardLayout();
@@ -92,15 +94,17 @@ public class BattlePanel extends JPanel {
         JScrollPane logScroll = Theme.scroll(log);
         logScroll.setPreferredSize(new Dimension(0, 92));
 
-        JPanel btnRow = new JPanel(new GridLayout(1, 3, 10, 10));
+        JPanel btnRow = new JPanel(new GridLayout(1, 4, 10, 10));
         btnRow.setOpaque(false);
         attackBtn.addActionListener(e -> onAttack());
+        skillBtn.addActionListener(e -> onSkill());
         itemBtn.addActionListener(e -> onItem());
         fleeBtn.addActionListener(e -> onFlee());
         btnRow.add(attackBtn);
+        btnRow.add(skillBtn);
         btnRow.add(itemBtn);
         btnRow.add(fleeBtn);
-        Theme.arrowNav(attackBtn, itemBtn, fleeBtn);
+        Theme.arrowNav(attackBtn, skillBtn, itemBtn, fleeBtn);
 
         // The action row swaps to a single "return" button once the dungeon run ends, so the
         // run's outcome stays readable in the log instead of being shown in a modal dialog.
@@ -178,7 +182,7 @@ public class BattlePanel extends JPanel {
     }
 
     private void refreshStatus() {
-        playerLabel.setText(player.getName());
+        playerLabel.setText(player.getName() + "  ·  " + player.getJob().getDisplayName());
         playerHpBar.setMaximum(player.getMaxHp());
         playerHpBar.setValue(player.getHp());
         playerMpBar.setMaximum(player.getMaxMp());
@@ -238,10 +242,11 @@ public class BattlePanel extends JPanel {
 
     private void setButtonsEnabled(boolean enabled) {
         attackBtn.setEnabled(enabled);
+        skillBtn.setEnabled(enabled);
         itemBtn.setEnabled(enabled);
         fleeBtn.setEnabled(enabled);
         if (enabled) {
-            Theme.focusFirst(attackBtn, itemBtn, fleeBtn);
+            Theme.focusFirst(attackBtn, skillBtn, itemBtn, fleeBtn);
         }
     }
 
@@ -253,6 +258,14 @@ public class BattlePanel extends JPanel {
     }
 
     private void onAttack() {
+        exchange(this::playerStrike);
+    }
+
+    /**
+     * One round: the player's action and the monster's attack, in speed order (the faster side
+     * goes first). playerAction receives the callback to run once it has finished animating.
+     */
+    private void exchange(Consumer<Runnable> playerAction) {
         setButtonsEnabled(false);
         if (monster.getSpd() > player.getSpd()) {
             appendLog(monster.getName() + "이(가) 더 빨라 선제공격!");
@@ -261,13 +274,13 @@ public class BattlePanel extends JPanel {
                     finishBattle(Result.LOSE);
                     return;
                 }
-                playerStrike(() -> {
+                playerAction.accept(() -> {
                     if (!monster.isAlive()) finishBattle(Result.WIN);
                     else setButtonsEnabled(true);
                 });
             });
         } else {
-            playerStrike(() -> {
+            playerAction.accept(() -> {
                 if (!monster.isAlive()) {
                     finishBattle(Result.WIN);
                     return;
@@ -291,6 +304,89 @@ public class BattlePanel extends JPanel {
                     + monster.getName() + "에게 " + finalDmg + "의 피해!");
             refreshStatus();
         }, onDone);
+    }
+
+    private void onSkill() {
+        List<Skill> skills = player.getSkills();
+        if (skills.isEmpty()) {
+            appendLog(player.getJob().getParent() == null
+                    ? "아직 사용할 수 있는 스킬이 없다. (Lv.10에 마을 전직소에서 전직하면 스킬을 배운다)"
+                    : "아직 사용할 수 있는 스킬이 없다.");
+            return;
+        }
+        String[] options = new String[skills.size()];
+        for (int i = 0; i < skills.size(); i++) {
+            Skill s = skills.get(i);
+            options[i] = s.getName() + "  (MP " + s.getMpCost() + ")  " + s.getDescription();
+        }
+        int idx = Dialogs.choose(this, "스킬", "사용할 스킬을 선택하세요  (MP " + player.getMp() + "/" + player.getMaxMp() + ")", options);
+        if (idx < 0) return;
+        Skill skill = skills.get(idx);
+        if (player.getMp() < skill.getMpCost()) {
+            appendLog("MP가 부족하다! (" + skill.getName() + ": MP " + skill.getMpCost() + " 필요)");
+            return;
+        }
+        exchange(done -> castSkill(skill, done));
+    }
+
+    private void castSkill(Skill skill, Runnable onDone) {
+        player.useMp(skill.getMpCost());
+        appendLog(player.getName() + "의 " + skill.getName() + "!");
+        refreshStatus();
+        switch (skill.getEffect()) {
+            case HEAL_PERCENT: {
+                int amount = (int) Math.round(player.getMaxHp() * skill.getAmount());
+                int before = player.getHp();
+                player.heal(amount);
+                appendLog("HP를 " + (player.getHp() - before) + " 회복했다!");
+                refreshStatus();
+                Timer pause = new Timer(350, e -> onDone.run());
+                pause.setRepeats(false);
+                pause.start();
+                break;
+            }
+            case DOUBLE_HIT:
+                skillHits(skill, 2, 0, onDone);
+                break;
+            case TRIPLE_HIT:
+                skillHits(skill, 3, 0, onDone);
+                break;
+            case RECKLESS_MULT: {
+                // Never lethal to the caster: it always leaves at least 1 HP.
+                int cost = Math.min(player.getHp() - 1, (int) Math.round(player.getMaxHp() * 0.1));
+                if (cost > 0) {
+                    player.takeDamage(cost);
+                    stage.showDamage(cost, false, false);
+                    appendLog(player.getName() + "은(는) HP " + cost + "을(를) 바쳤다!");
+                    refreshStatus();
+                }
+                skillHits(skill, 1, 0, onDone);
+                break;
+            }
+            default:
+                skillHits(skill, 1, 0, onDone);
+        }
+    }
+
+    /** Plays `hits` lunges in a row, stopping early if the monster falls. */
+    private void skillHits(Skill skill, int hits, int index, Runnable onDone) {
+        stage.animateAttack(true, () -> {
+            Skill.Effect effect = skill.getEffect();
+            boolean magic = effect == Skill.Effect.MAGIC_MULT || effect == Skill.Effect.MAGIC_MULT_PIERCE;
+            int power = (int) Math.round((magic ? player.getMagicAtk() : player.getAtk()) * skill.getAmount());
+            int def = effect == Skill.Effect.MAGIC_MULT_PIERCE ? 0 : monster.getDef();
+            int dmg = computeDamage(power, def);
+            boolean crit = effect == Skill.Effect.GUARANTEED_CRIT_MULT || rnd.nextInt(100) < player.getCritChance();
+            int finalDmg = crit ? Math.round(dmg * 1.75f) : dmg;
+            monster.takeDamage(finalDmg);
+            stage.showDamage(finalDmg, true, crit);
+            appendLog((hits > 1 ? (index + 1) + "타! " : "") + (crit ? "치명타! " : "")
+                    + monster.getName() + "에게 " + finalDmg + "의 피해!");
+            refreshStatus();
+        }, () -> {
+            if (index + 1 < hits && monster.isAlive()) skillHits(skill, hits, index + 1, onDone);
+            else onDone.run();
+        });
     }
 
     private void monsterStrike(Runnable onDone) {

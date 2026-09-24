@@ -1,9 +1,12 @@
 package game.ui;
 
+import game.model.Job;
 import game.model.Player;
+import game.model.Skill;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import java.util.List;
 import java.util.Map;
 
 public class StatusDialog {
@@ -12,6 +15,7 @@ public class StatusDialog {
     public static void show(JFrame owner, Player player) {
         StringBuilder sb = new StringBuilder();
         sb.append("이름   : ").append(player.getName()).append("\n");
+        sb.append("직업   : ").append(player.getJob().getDisplayName()).append("\n");
         sb.append("레벨   : ").append(player.getLevel())
                 .append("  (EXP ").append(player.getExp()).append("/").append(player.getExpToNext()).append(")\n");
         sb.append("HP     : ").append(player.getHp()).append("/").append(player.getMaxHp()).append("\n");
@@ -24,6 +28,17 @@ public class StatusDialog {
         sb.append("골드   : ").append(player.getGold()).append("G\n");
         sb.append("무기   : ").append(player.getWeaponName() == null ? "없음" : player.getWeaponName()).append("\n");
         sb.append("방어구 : ").append(player.getArmorName() == null ? "없음" : player.getArmorName()).append("\n\n");
+        sb.append("스킬:\n");
+        List<Skill> skills = player.getSkills();
+        if (skills.isEmpty()) {
+            sb.append(player.getJob() == Job.BEGINNER ? "  (Lv.10에 마을 전직소에서 전직하면 배웁니다)\n" : "  (없음)\n");
+        } else {
+            for (Skill s : skills) {
+                sb.append("  - ").append(s.getName()).append(" (MP ").append(s.getMpCost()).append(") ")
+                        .append(s.getDescription()).append("\n");
+            }
+        }
+        sb.append("\n");
         sb.append("소지품:\n");
 
         Map<String, Integer> counts = player.getItemCounts();

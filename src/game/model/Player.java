@@ -37,6 +37,7 @@ public class Player {
     private String weaponName;
     private String armorName;
     private final List<String> inventory = new ArrayList<>();
+    private Job job = Job.BEGINNER;
 
     public Player(String name) {
         this.name = name;
@@ -104,6 +105,48 @@ public class Player {
     public void setWeaponName(String weaponName) { this.weaponName = weaponName; }
     public void setArmorName(String armorName) { this.armorName = armorName; }
     public void setUnlockedDungeon(int unlockedDungeon) { this.unlockedDungeon = unlockedDungeon; }
+
+    public Job getJob() { return job; }
+    /** Used when loading a save; gameplay goes through advanceTo(). */
+    public void setJob(Job job) { this.job = job; }
+
+    /** Next jobs the player may pick right now (empty if the level isn't reached or none exist yet). */
+    public List<Job> getAvailableAdvancements() {
+        List<Job> result = new ArrayList<>();
+        for (Job next : job.children()) {
+            if (level >= next.getRequiredLevel()) result.add(next);
+        }
+        return result;
+    }
+
+    public boolean advanceTo(Job next) {
+        if (!getAvailableAdvancements().contains(next)) return false;
+        job = next;
+        return true;
+    }
+
+    /** Skills usable at the current level, from this job and every job before it, lowest level first. */
+    public List<Skill> getSkills() {
+        List<Skill> result = new ArrayList<>();
+        for (Job j = job; j != null; j = j.getParent()) {
+            for (Skill s : j.getOwnSkills()) {
+                if (level >= s.getRequiredLevel()) result.add(s);
+            }
+        }
+        result.sort((a, b) -> Integer.compare(a.getRequiredLevel(), b.getRequiredLevel()));
+        return result;
+    }
+
+    /** Power behind magic skills: weapon attack plus a share of max MP, so MP investment pays off for mages. */
+    public int getMagicAtk() {
+        return getAtk() + maxMp / 4;
+    }
+
+    public boolean useMp(int amount) {
+        if (mp < amount) return false;
+        mp -= amount;
+        return true;
+    }
 
     public int getAtk() {
         Item weapon = weaponName != null ? ItemCatalog.get(weaponName) : null;

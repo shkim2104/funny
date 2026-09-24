@@ -1,5 +1,6 @@
 package game.save;
 
+import game.model.Job;
 import game.model.Player;
 
 import java.io.BufferedReader;
@@ -50,6 +51,7 @@ public class SaveManager {
             pw.println(inv.size());
             for (String item : inv) pw.println(item);
             pw.println(p.getSpd());
+            pw.println(p.getJob().name());
             System.out.println("게임을 저장했습니다.");
         } catch (IOException e) {
             System.out.println("저장에 실패했습니다: " + e.getMessage());
@@ -84,8 +86,19 @@ public class SaveManager {
             String spdLine = br.readLine();
             int spd = spdLine != null ? Integer.parseInt(spdLine) : 6;
 
-            return new Player(name, level, exp, expToNext, maxHp, hp, maxMp, mp,
+            Player player = new Player(name, level, exp, expToNext, maxHp, hp, maxMp, mp,
                     baseAtk, baseDef, luck, spd, statPoints, gold, unlockedDungeon, weaponName, armorName, inventory);
+
+            // Saves from before jobs existed load as a beginner, free to advance once eligible.
+            String jobLine = br.readLine();
+            if (jobLine != null) {
+                try {
+                    player.setJob(Job.valueOf(jobLine.trim()));
+                } catch (IllegalArgumentException unknownJob) {
+                    player.setJob(Job.BEGINNER);
+                }
+            }
+            return player;
         } catch (IOException | NumberFormatException e) {
             System.out.println("불러오기에 실패했습니다: " + e.getMessage());
             return null;
