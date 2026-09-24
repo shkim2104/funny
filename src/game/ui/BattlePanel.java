@@ -429,54 +429,49 @@ public class BattlePanel extends JPanel {
         }, onDone);
     }
 
+    /** Order of a skill: pay HP (if any) -> hits -> heal (if any). Every part is optional data on the skill. */
     private void castSkill(Skill skill, Runnable onDone) {
         player.useMp(skill.getMpCost());
         appendLog(player.getName() + "의 " + skill.getName() + "!");
         refreshStatus();
-        switch (skill.getEffect()) {
-            case HEAL_PERCENT: {
-                int amount = (int) Math.round(player.getMaxHp() * skill.getAmount());
+
+        if (skill.getHpCostRatio() > 0) {
+            // Never lethal to the caster: it always leaves at least 1 HP.
+            int cost = Math.min(player.getHp() - 1, (int) Math.round(player.getMaxHp() * skill.getHpCostRatio()));
+            if (cost > 0) {
+                player.takeDamage(cost);
+                stage.showDamage(cost, false, false);
+                appendLog(player.getName() + "은(는) HP " + cost + "을(를) 바쳤다!");
+                refreshStatus();
+            }
+        }
+
+        Runnable afterHits = () -> {
+            if (skill.getHealRatio() > 0) {
                 int before = player.getHp();
-                player.heal(amount);
+                player.heal((int) Math.round(player.getMaxHp() * skill.getHealRatio()));
                 appendLog("HP를 " + (player.getHp() - before) + " 회복했다!");
                 refreshStatus();
-                Timer pause = new Timer(350, e -> onDone.run());
-                pause.setRepeats(false);
-                pause.start();
-                break;
             }
-            case DOUBLE_HIT:
-                skillHits(skill, 2, 0, onDone);
-                break;
-            case TRIPLE_HIT:
-                skillHits(skill, 3, 0, onDone);
-                break;
-            case RECKLESS_MULT: {
-                // Never lethal to the caster: it always leaves at least 1 HP.
-                int cost = Math.min(player.getHp() - 1, (int) Math.round(player.getMaxHp() * 0.1));
-                if (cost > 0) {
-                    player.takeDamage(cost);
-                    stage.showDamage(cost, false, false);
-                    appendLog(player.getName() + "은(는) HP " + cost + "을(를) 바쳤다!");
-                    refreshStatus();
-                }
-                skillHits(skill, 1, 0, onDone);
-                break;
-            }
-            default:
-                skillHits(skill, 1, 0, onDone);
+            onDone.run();
+        };
+
+        if (skill.isAttack()) {
+            skillHits(skill, skill.getHits(), 0, afterHits);
+        } else {
+            // Pure support skill: a short pause so the turn doesn't feel instant.
+            Timer pause = new Timer(350, e -> afterHits.run());
+            pause.setRepeats(false);
+            pause.start();
         }
     }
 
     /** Plays `hits` lunges in a row, stopping early if the monster falls. */
     private void skillHits(Skill skill, int hits, int index, Runnable onDone) {
         stage.animateAttack(true, () -> {
-            Skill.Effect effect = skill.getEffect();
-            boolean magic = effect == Skill.Effect.MAGIC_MULT || effect == Skill.Effect.MAGIC_MULT_PIERCE;
-            int power = (int) Math.round((magic ? player.getMagicAtk() : player.getAtk()) * skill.getAmount());
-            int def = effect == Skill.Effect.MAGIC_MULT_PIERCE ? 0 : monster.getDef();
-            int dmg = computeDamage(power, def);
-            boolean crit = effect == Skill.Effect.GUARANTEED_CRIT_MULT || rnd.nextInt(100) < player.getCritChance();
+            int def = skill.isIgnoreDefense() ? 0 : monster.getDef();
+            int dmg = computeDamage(skill.powerFor(player), def);
+            boolean crit = skill.isAlwaysCrit() || rnd.nextInt(100) < player.getCritChance();
             int finalDmg = crit ? Math.round(dmg * 1.75f) : dmg;
             monster.takeDamage(finalDmg);
             stage.showDamage(finalDmg, true, crit);

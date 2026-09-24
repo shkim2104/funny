@@ -51,7 +51,13 @@ public class SaveManager {
             pw.println(inv.size());
             for (String item : inv) pw.println(item);
             pw.println(p.getSpd());
-            pw.println(p.getJob().name());
+            // Job path as comma-separated enum names in tier order, e.g. "SWORDSMAN,PAGE" (empty = beginner).
+            StringBuilder path = new StringBuilder();
+            for (Job j : p.getJobPath()) {
+                if (path.length() > 0) path.append(',');
+                path.append(j.name());
+            }
+            pw.println(path);
             System.out.println("게임을 저장했습니다.");
         } catch (IOException e) {
             System.out.println("저장에 실패했습니다: " + e.getMessage());
@@ -86,18 +92,32 @@ public class SaveManager {
             String spdLine = br.readLine();
             int spd = spdLine != null ? Integer.parseInt(spdLine) : 6;
 
+            // The EXP curve is recomputed from the level rather than trusting the saved value, so
+            // saves made under an older curve pick up the current one. Progress toward the next
+            // level is kept but capped just below it (no surprise level-ups on load).
+            expToNext = Player.expRequiredFor(level);
+            exp = Math.min(exp, expToNext - 1);
             Player player = new Player(name, level, exp, expToNext, maxHp, hp, maxMp, mp,
                     baseAtk, baseDef, luck, spd, statPoints, gold, unlockedDungeon, weaponName, armorName, inventory);
 
-            // Saves from before jobs existed load as a beginner, free to advance once eligible.
+            // Saves from before jobs existed (no line) load as a beginner, free to advance once eligible.
+            // The path stops at the first unknown/out-of-order job (e.g. a job renamed since), so
+            // the player can simply re-pick that tier.
             String jobLine = br.readLine();
-            if (jobLine != null) {
-                try {
-                    player.setJob(Job.valueOf(jobLine.trim()));
-                } catch (IllegalArgumentException unknownJob) {
-                    player.setJob(Job.BEGINNER);
+            List<Job> path = new ArrayList<>();
+            if (jobLine != null && !jobLine.trim().isEmpty()) {
+                for (String part : jobLine.trim().split(",")) {
+                    Job j;
+                    try {
+                        j = Job.valueOf(part.trim());
+                    } catch (IllegalArgumentException unknownJob) {
+                        break;
+                    }
+                    if (j.getTier() != path.size() + 1) break;
+                    path.add(j);
                 }
             }
+            player.setJobPath(path);
             return player;
         } catch (IOException | NumberFormatException e) {
             System.out.println("불러오기에 실패했습니다: " + e.getMessage());

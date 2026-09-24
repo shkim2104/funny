@@ -19,6 +19,16 @@ public class Player {
 
     public enum Stat { HP, MP, ATK, DEF, LUCK, SPD }
 
+    /**
+     * EXP needed to go from `level` to the next one: 20 x level + level^2 / 10.
+     * Grows gently (Lv.1: 20, Lv.20: 440, Lv.50: 1250, Lv.69: ~1880) so the 4th job at Lv.70 is
+     * reachable (~59k total, roughly 40 runs of the last dungeon). The old x1.4-per-level curve
+     * needed ~30k for Lv.20 alone and overflowed int around Lv.60.
+     */
+    public static int expRequiredFor(int level) {
+        return 20 * level + level * level / 10;
+    }
+
     private final String name;
     private int level;
     private int exp;
@@ -37,14 +47,14 @@ public class Player {
     private String weaponName;
     private String armorName;
     private final List<String> inventory = new ArrayList<>();
-    private Job job = Job.BEGINNER;
+    private final List<Job> jobPath = new ArrayList<>();
 
     public Player(String name) {
         this.name = name;
         Random rnd = new Random();
         this.level = 1;
         this.exp = 0;
-        this.expToNext = 20;
+        this.expToNext = expRequiredFor(1);
         this.maxHp = 45 + rnd.nextInt(11);   // 45~55
         this.hp = this.maxHp;
         this.maxMp = 18 + rnd.nextInt(5);    // 18~22
@@ -106,30 +116,43 @@ public class Player {
     public void setArmorName(String armorName) { this.armorName = armorName; }
     public void setUnlockedDungeon(int unlockedDungeon) { this.unlockedDungeon = unlockedDungeon; }
 
-    public Job getJob() { return job; }
-    /** Used when loading a save; gameplay goes through advanceTo(). */
-    public void setJob(Job job) { this.job = job; }
+    /** Current (latest) job; BEGINNER until the first advancement. */
+    public Job getJob() {
+        return jobPath.isEmpty() ? Job.BEGINNER : jobPath.get(jobPath.size() - 1);
+    }
 
-    /** Next jobs the player may pick right now (empty if the level isn't reached or none exist yet). */
+    /** Jobs taken so far, in tier order (1차, 2차, ...). Classes can be mixed freely. */
+    public List<Job> getJobPath() { return Collections.unmodifiableList(jobPath); }
+
+    /** Used when loading a save; gameplay goes through advanceTo(). */
+    public void setJobPath(List<Job> path) {
+        jobPath.clear();
+        jobPath.addAll(path);
+    }
+
+    /** The tier the next advancement would be (1~4), or 0 once every tier is done. */
+    public int getNextTier() {
+        return jobPath.size() < Job.MAX_TIER ? jobPath.size() + 1 : 0;
+    }
+
+    /** Jobs the player may pick right now: every job of the next tier, from any class, once the level is reached. */
     public List<Job> getAvailableAdvancements() {
-        List<Job> result = new ArrayList<>();
-        for (Job next : job.children()) {
-            if (level >= next.getRequiredLevel()) result.add(next);
-        }
-        return result;
+        int tier = getNextTier();
+        if (tier == 0 || level < Job.levelForTier(tier)) return new ArrayList<>();
+        return Job.ofTier(tier);
     }
 
     public boolean advanceTo(Job next) {
         if (!getAvailableAdvancements().contains(next)) return false;
-        job = next;
+        jobPath.add(next);
         return true;
     }
 
-    /** Skills usable at the current level, from this job and every job before it, lowest level first. */
+    /** Skills usable at the current level from every job taken, lowest level first. */
     public List<Skill> getSkills() {
         List<Skill> result = new ArrayList<>();
-        for (Job j = job; j != null; j = j.getParent()) {
-            for (Skill s : j.getOwnSkills()) {
+        for (Job j : jobPath) {
+            for (Skill s : j.getSkills()) {
                 if (level >= s.getRequiredLevel()) result.add(s);
             }
         }
@@ -216,7 +239,7 @@ public class Player {
         hp = maxHp;
         mp = maxMp;
         statPoints += POINTS_PER_LEVEL;
-        expToNext = (int) Math.round(expToNext * 1.4);
+        expToNext = expRequiredFor(level);
         System.out.println("\n*** 레벨 업! " + name + "이(가) Lv." + level
                 + " 이(가) 되었습니다! (스탯 포인트 +" + POINTS_PER_LEVEL + ") ***");
     }

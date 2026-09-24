@@ -66,6 +66,11 @@ public final class Dialogs {
 
     /** Shows a list of options as stacked buttons; returns selected index or -1 if cancelled. */
     public static int choose(Component owner, String title, String prompt, String[] options) {
+        return choose(owner, title, prompt, options, 380);
+    }
+
+    /** Like choose(), with a custom width for long or multi-line (HTML) options; height follows the content. */
+    public static int choose(Component owner, String title, String prompt, String[] options, int width) {
         JDialog dialog = build(owner, title);
 
         JPanel wrap = new JPanel(new BorderLayout(10, 10));
@@ -100,7 +105,9 @@ public final class Dialogs {
         Theme.arrowNav(navButtons);
         Theme.focusFirst(navButtons);
 
-        dialog.setSize(380, Math.min(520, 220 + options.length * 46));
+        int listHeight = 0;
+        for (JButton b : optionButtons) listHeight += b.getPreferredSize().height + 8;
+        dialog.setSize(width, Math.min(640, 180 + listHeight));
         dialog.setLocationRelativeTo(owner instanceof Window ? (Window) owner : SwingUtilities.getWindowAncestor(owner));
         dialog.setVisible(true);
         return result[0];

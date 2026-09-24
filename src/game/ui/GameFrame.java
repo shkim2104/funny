@@ -374,17 +374,23 @@ public class GameFrame extends JFrame {
         });
     }
 
-    /** Job advancement: toasts why it isn't possible yet, otherwise lets the player pick the next job. */
+    /**
+     * Job advancement. Any job of the next tier can be picked, from any class, so paths like
+     * 1차 전사 → 2차 궁수 → 3차 마법사 are allowed; toasts explain when nothing can be picked yet.
+     */
     private void openAdvancement() {
-        Job current = player.getJob();
-        List<Job> next = current.children();
-        if (next.isEmpty()) {
-            townMap.toast(current.getDisplayName() + "의 다음 전직은 아직 준비 중입니다.");
+        int tier = player.getNextTier();
+        if (tier == 0) {
+            townMap.toast("모든 전직을 마쳤습니다. (" + player.getJob().getDisplayName() + ")");
+            return;
+        }
+        if (player.getLevel() < Job.levelForTier(tier)) {
+            townMap.toast(tier + "차 전직은 Lv." + Job.levelForTier(tier) + "부터 할 수 있습니다. (현재 Lv." + player.getLevel() + ")");
             return;
         }
         List<Job> available = player.getAvailableAdvancements();
         if (available.isEmpty()) {
-            townMap.toast("Lv." + next.get(0).getRequiredLevel() + "부터 전직할 수 있습니다. (현재 Lv." + player.getLevel() + ")");
+            townMap.toast(tier + "차 전직 직업은 아직 준비 중입니다.");
             return;
         }
         pageTurner.turnToBlankPage(() -> {
@@ -392,13 +398,18 @@ public class GameFrame extends JFrame {
             for (int i = 0; i < available.size(); i++) {
                 Job j = available.get(i);
                 StringBuilder skills = new StringBuilder();
-                for (Skill s : j.getOwnSkills()) {
+                for (Skill s : j.getSkills()) {
                     if (skills.length() > 0) skills.append(", ");
-                    skills.append(s.getName()).append("(Lv.").append(s.getRequiredLevel()).append(")");
+                    skills.append(s.getName());
+                    if (s.getRequiredLevel() > j.getRequiredLevel()) skills.append(" (Lv.").append(s.getRequiredLevel()).append(")");
                 }
-                options[i] = j.getDisplayName() + "  -  " + j.getDescription() + "   [" + skills + "]";
+                String focus = j.getFocus().isEmpty() ? "" : "  <font color='#c7a86a'>" + j.getFocus() + "</font>";
+                options[i] = "<html><b>[" + j.getJobClass() + "] " + j.getDisplayName() + "</b>" + focus
+                        + "<br><font color='#8c8f9a'>" + j.getDescription() + "</font>"
+                        + "<br>스킬: " + skills + "</html>";
             }
-            int idx = Dialogs.choose(this, "전직", "어떤 길을 걸으시겠습니까?", options);
+            int idx = Dialogs.choose(this, tier + "차 전직",
+                    tier + "차 전직 — 어떤 길을 이어 가시겠습니까? (직업군 제한 없음)", options, 560);
             if (idx < 0) return;
             Job chosen = available.get(idx);
             if (!Dialogs.confirm(this, "전직", chosen.getDisplayName() + "(으)로 전직할까요?\n한 번 정하면 바꿀 수 없습니다.")) return;

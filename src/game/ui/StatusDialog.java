@@ -15,7 +15,16 @@ public class StatusDialog {
     public static void show(JFrame owner, Player player) {
         StringBuilder sb = new StringBuilder();
         sb.append("이름   : ").append(player.getName()).append("\n");
-        sb.append("직업   : ").append(player.getJob().getDisplayName()).append("\n");
+        sb.append("직업   : ").append(player.getJob().getDisplayName());
+        if (player.getJobPath().size() > 1) {
+            StringBuilder path = new StringBuilder();
+            for (Job j : player.getJobPath()) {
+                if (path.length() > 0) path.append(" → ");
+                path.append(j.getDisplayName());
+            }
+            sb.append("  (").append(path).append(")");
+        }
+        sb.append("\n");
         sb.append("레벨   : ").append(player.getLevel())
                 .append("  (EXP ").append(player.getExp()).append("/").append(player.getExpToNext()).append(")\n");
         sb.append("HP     : ").append(player.getHp()).append("/").append(player.getMaxHp()).append("\n");
