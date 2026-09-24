@@ -37,6 +37,7 @@ public class GameFrame extends JFrame {
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new JPanel(cardLayout);
     private final BattlePanel battlePanel = new BattlePanel();
+    private final PageTurner pageTurner = new PageTurner(this);
 
     /** Clickable regions on dungeonentrence.png (artwork pixels), in the same order as World.buildDungeons(). */
     private static final int[][] DUNGEON_MAP_AREAS = {
@@ -79,6 +80,8 @@ public class GameFrame extends JFrame {
         cards.add(buildDungeonMapPanel(), "DUNGEON_MAP");
         cards.add(battlePanel, "BATTLE");
         setContentPane(cards);
+        setGlassPane(pageTurner);
+        pageTurner.setVisible(false);
         bindFullscreenToggle();
 
         showTitle();
@@ -109,9 +112,14 @@ public class GameFrame extends JFrame {
         fullscreen = !fullscreen;
     }
 
+    /** Switches screens with a notebook page turn: forward flips the page away, back lays the page down again. */
+    private void showCard(String name, boolean forward) {
+        pageTurner.turn(() -> cardLayout.show(cards, name), forward);
+    }
+
     private void showTitle() {
         continueButton.setEnabled(SaveManager.hasSave());
-        cardLayout.show(cards, "TITLE");
+        showCard("TITLE", false);
         Theme.focusFirst(titleButtons);
     }
 
@@ -121,7 +129,7 @@ public class GameFrame extends JFrame {
             return;
         }
         createNewPlayer();
-        returnToTown();
+        showTown(true);
     }
 
     private void continueGame() {
@@ -131,7 +139,7 @@ public class GameFrame extends JFrame {
             return;
         }
         player = loaded;
-        returnToTown();
+        showTown(true);
         townMap.toast(loaded.getName() + "님, 다시 오신 것을 환영합니다!");
     }
 
@@ -195,7 +203,7 @@ public class GameFrame extends JFrame {
         townMap.addHotspot("대장간", 130, 200, 430, 350, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("상점", 725, 630, 345, 340, this::openShop);
-        townMap.addHotspot("던전 입구", 860, 990, 330, 260, this::openDungeonMap);
+        townMap.addHotspot("던전 입구", 860, 990, 330, 260, () -> openDungeonMap(true));
 
         townInfoLabel = Theme.body("");
         townButtons = new JButton[] {
@@ -222,7 +230,7 @@ public class GameFrame extends JFrame {
                     () -> tryEnterDungeon(idx),
                     () -> player != null && idx > player.getUnlockedDungeon());
         }
-        dungeonBackButton = menuButton("마을로 돌아가기", this::returnToTown);
+        dungeonBackButton = menuButton("마을로 돌아가기", () -> showTown(false));
         return mapWithSideMenu(dungeonMap, "던전 입구", null, "지역을 클릭해 입장하세요", dungeonBackButton);
     }
 
@@ -349,30 +357,34 @@ public class GameFrame extends JFrame {
                 + statPointsNote + "</html>");
     }
 
+    // Town windows open on a fresh notebook page and turn back to the town when closed.
     private void showStatus() {
-        StatusDialog.show(this, player);
+        pageTurner.turnToBlankPage(() -> StatusDialog.show(this, player));
     }
 
     private void openStatAlloc() {
-        StatAllocDialog.show(this, player);
-        refreshTown();
+        pageTurner.turnToBlankPage(() -> {
+            StatAllocDialog.show(this, player);
+            refreshTown();
+        });
     }
 
     private void openShop() {
-        ShopDialog dialog = new ShopDialog(this, player);
-        dialog.setVisible(true);
-        refreshTown();
+        pageTurner.turnToBlankPage(() -> {
+            new ShopDialog(this, player).setVisible(true);
+            refreshTown();
+        });
     }
 
     private void openEquip() {
-        EquipDialog dialog = new EquipDialog(this, player);
-        dialog.setVisible(true);
-        refreshTown();
+        pageTurner.turnToBlankPage(() -> {
+            new EquipDialog(this, player).setVisible(true);
+            refreshTown();
+        });
     }
 
-    private void openDungeonMap() {
-        cardLayout.show(cards, "DUNGEON_MAP");
-        dungeonMap.repaint();
+    private void openDungeonMap(boolean forward) {
+        showCard("DUNGEON_MAP", forward);
         Theme.focusFirst(dungeonBackButton);
     }
 
@@ -389,10 +401,13 @@ public class GameFrame extends JFrame {
         currentDungeonIndex = dungeonIndex;
         currentFloor = 1;
         bossStage = false;
-        cardLayout.show(cards, "BATTLE");
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
         Monster monster = dungeon.randomMonster(rnd);
-        battlePanel.startBattle(player, monster, result -> onFightFinished(result, monster));
+        // Start the battle inside the swap so the incoming page already shows the monster.
+        pageTurner.turn(() -> {
+            cardLayout.show(cards, "BATTLE");
+            battlePanel.startBattle(player, monster, result -> onFightFinished(result, monster));
+        }, true);
     }
 
     private void startNextFight() {
@@ -498,12 +513,12 @@ public class GameFrame extends JFrame {
     /** After a cleared or abandoned run: back on the world map, so the next dungeon is one click away. */
     private void returnToDungeonMap() {
         refreshTown();
-        openDungeonMap();
+        openDungeonMap(false);
     }
 
-    private void returnToTown() {
+    private void showTown(boolean forward) {
         refreshTown();
-        cardLayout.show(cards, "TOWN");
+        showCard("TOWN", forward);
         Theme.focusFirst(townButtons);
     }
 }
