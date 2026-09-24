@@ -31,3 +31,7 @@ bin/
 
 ### Game save data ###
 save.txt
+
+### Release packages (uploaded to GitHub Releases, not committed) ###
+/NotebookRPG-windows.zip
+/NotebookRPG-cross-platform.tar.gz

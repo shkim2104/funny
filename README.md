@@ -4,9 +4,11 @@
 
 ## 다운로드 & 실행 방법
 
+배포 파일은 저장소가 아니라 [**Releases 페이지**](https://github.com/shkim2104/funny/releases/latest)에 올라가 있습니다. 가장 최신 릴리스의 **Assets**에서 받으세요.
+
 ### Windows (Java 설치 불필요)
 
-1. `NotebookRPG-windows.zip` 다운로드
+1. Releases에서 `NotebookRPG-windows.zip` 다운로드
 2. 압축 풀기 (우클릭 → 압축 풀기)
 3. 풀린 `NotebookRPG` 폴더로 들어가서 `NotebookRPG.exe` 더블클릭
 
@@ -17,7 +19,7 @@
 ### Mac / Windows 공용 (Java 필요)
 
 1. Java 11 이상이 설치되어 있어야 합니다. 없다면 [Adoptium](https://adoptium.net) 에서 설치하세요.
-2. `NotebookRPG-cross-platform.tar.gz` 다운로드
+2. Releases에서 `NotebookRPG-cross-platform.tar.gz` 다운로드
 3. 압축 풀기
    - **Mac**: 더블클릭하면 자동으로 풀립니다.
    - **Windows**: 우클릭 → 압축 풀기 (Windows 11 이상은 기본 지원, 이하 버전은 7-Zip 등 필요)
