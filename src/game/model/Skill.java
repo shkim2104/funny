@@ -9,6 +9,9 @@ package game.model;
  *   Skill.of("브랜디쉬", 20, 12).atk(1.4).hits(2).desc("...")
  */
 public class Skill {
+    /** Visual effect played on each hit. More types get added as skills get their own looks. */
+    public enum Fx { NONE, SLASH }
+
     private final String name;
     private final int requiredLevel;
     private final int mpCost;
@@ -25,6 +28,9 @@ public class Skill {
     private double hpCostRatio;
     /** Fraction of max HP restored (after the hits, if the skill also attacks). */
     private double healRatio;
+    private Fx fx = Fx.NONE;
+    /** Effect tint as 0xRRGGBB (kept as an int so the model doesn't depend on AWT). */
+    private int fxColor = 0xFFFFFF;
 
     private Skill(String name, int requiredLevel, int mpCost) {
         this.name = name;
@@ -47,6 +53,7 @@ public class Skill {
     public Skill hpCost(double ratio) { this.hpCostRatio = ratio; return this; }
     public Skill heal(double ratio) { this.healRatio = ratio; return this; }
     public Skill desc(String description) { this.description = description; return this; }
+    public Skill fx(Fx fx, int rgb) { this.fx = fx; this.fxColor = rgb; return this; }
 
     public String getName() { return name; }
     public int getRequiredLevel() { return requiredLevel; }
@@ -57,6 +64,8 @@ public class Skill {
     public boolean isAlwaysCrit() { return alwaysCrit; }
     public double getHpCostRatio() { return hpCostRatio; }
     public double getHealRatio() { return healRatio; }
+    public Fx getFx() { return fx; }
+    public int getFxColor() { return fxColor; }
 
     /** True if the skill deals damage (a pure heal has no damage ratios). */
     public boolean isAttack() {

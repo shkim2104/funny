@@ -469,6 +469,7 @@ public class BattlePanel extends JPanel {
     /** Plays `hits` lunges in a row, stopping early if the monster falls. */
     private void skillHits(Skill skill, int hits, int index, Runnable onDone) {
         stage.animateAttack(true, () -> {
+            stage.playSkillFx(skill.getFx(), skill.getFxColor(), index);
             int def = skill.isIgnoreDefense() ? 0 : monster.getDef();
             int dmg = computeDamage(skill.powerFor(player), def);
             boolean crit = skill.isAlwaysCrit() || rnd.nextInt(100) < player.getCritChance();

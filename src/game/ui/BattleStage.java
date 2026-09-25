@@ -49,6 +49,29 @@ public class BattleStage extends JComponent {
     private final List<DamageText> damageTexts = new ArrayList<>();
     private LevelUpFx levelUpFx;
     private final List<RewardFx> rewardFxs = new ArrayList<>();
+    private final List<SlashFx> slashFxs = new ArrayList<>();
+
+    private static final long SLASH_DURATION = 420;
+    private static final int SLASH_SPARKS = 14;
+
+    /** A crescent sword trail swept across the monster, plus sparks at the point of impact. */
+    private static final class SlashFx {
+        final long start = System.currentTimeMillis();
+        final Color color;
+        final boolean mirrored;        // alternate hits slash the other way
+        final double[] sparkAngles = new double[SLASH_SPARKS];
+        final double[] sparkSpeeds = new double[SLASH_SPARKS];
+
+        SlashFx(Color color, boolean mirrored) {
+            this.color = color;
+            this.mirrored = mirrored;
+            java.util.Random r = new java.util.Random();
+            for (int i = 0; i < SLASH_SPARKS; i++) {
+                sparkAngles[i] = r.nextDouble() * Math.PI * 2;
+                sparkSpeeds[i] = 0.6 + r.nextDouble() * 0.6;
+            }
+        }
+    }
 
     /** One coin flying from the defeated monster into the player, on its own arc. */
     private static final class Coin {
@@ -181,6 +204,14 @@ public class BattleStage extends JComponent {
         repaint();
     }
 
+    /** Plays a skill's hit effect on the monster; hitIndex alternates the direction for multi-hit skills. */
+    public void playSkillFx(game.model.Skill.Fx fx, int rgb, int hitIndex) {
+        if (fx == game.model.Skill.Fx.SLASH) {
+            slashFxs.add(new SlashFx(new Color(rgb), hitIndex % 2 == 1));
+            repaint();
+        }
+    }
+
     /** Plays the kill reward: coins fly into the player, then gained gold and EXP pop up beside them. */
     public void showRewards(int exp, int gold) {
         rewardFxs.add(new RewardFx(exp, gold));
@@ -266,6 +297,7 @@ public class BattleStage extends JComponent {
         if (playerHitFlash > 0) playerHitFlash = Math.max(0, playerHitFlash - 0.1f);
         if (monsterHitFlash > 0) monsterHitFlash = Math.max(0, monsterHitFlash - 0.1f);
 
+        drawSlashes(g2, mx, monsterGroundY);
         drawDamageTexts(g2, px, playerGroundY, mx, monsterGroundY);
         drawRewards(g2, px, playerGroundY, mx, monsterGroundY);
         drawLevelUp(g2, px, playerGroundY);
@@ -387,6 +419,104 @@ public class BattleStage extends JComponent {
         }
         gt.dispose();
         repaint();
+    }
+
+    /**
+     * Sword trail: a crescent that sweeps across the monster in the first third of the effect, then
+     * thins and fades, drawn in three layers (soft colored glow, colored blade, white-hot core).
+     * Sparks burst from the impact point as the blade passes through.
+     */
+    private void drawSlashes(Graphics2D g2, int monsterCx, int monsterGroundY) {
+        if (slashFxs.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        int cx = monsterCx, cy = monsterGroundY - 24;
+        // Grows with the stage so it still reads as big in fullscreen (1.0 at the default 260px height).
+        float k = Math.max(1f, Math.min(1.8f, getHeight() / 260f));
+        Iterator<SlashFx> it = slashFxs.iterator();
+        while (it.hasNext()) {
+            SlashFx fx = it.next();
+            long elapsed = now - fx.start;
+            if (elapsed >= SLASH_DURATION) {
+                it.remove();
+                continue;
+            }
+            float t = elapsed / (float) SLASH_DURATION;
+            float reveal = t < 0.35f ? 1 - (float) Math.pow(1 - t / 0.35f, 3) : 1f;   // ease-out sweep
+            float fade = t < 0.45f ? 1f : Math.max(0f, 1f - (t - 0.45f) / 0.55f);
+            float thickness = 24f * k * (0.35f + 0.65f * fade);
+            final float radius = 95f * k;
+            Color c = fx.color;
+
+            // Impact flash: a bright burst on the monster right as the blade connects.
+            float ft = t / 0.3f;
+            if (ft < 1) {
+                float fr = (18 + 52 * ft) * k;
+                int fa = Math.round(200 * (1 - ft));
+                g2.setPaint(new RadialGradientPaint(new java.awt.geom.Point2D.Float(cx, cy), fr,
+                        new float[] {0f, 0.35f, 1f},
+                        new Color[] {new Color(255, 255, 240, fa),
+                                new Color(c.getRed(), c.getGreen(), c.getBlue(), fa / 2),
+                                new Color(c.getRed(), c.getGreen(), c.getBlue(), 0)}));
+                g2.fill(new Ellipse2D.Float(cx - fr, cy - fr, fr * 2, fr * 2));
+            }
+
+            Graphics2D g = (Graphics2D) g2.create();
+            g.translate(cx, cy);
+            if (fx.mirrored) g.scale(-1, 1);
+            g.rotate(Math.toRadians(32));   // diagonal: top-left to bottom-right
+            // Shift so the middle of the arc (its top, at -radius) cuts right through the monster.
+            g.translate(0, radius);
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.round(70 * fade)));
+            g.fill(crescent(radius, thickness * 2.3f, reveal));
+            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.round(225 * fade)));
+            g.fill(crescent(radius, thickness, reveal));
+            g.setColor(new Color(255, 250, 235, Math.round(245 * fade)));
+            g.fill(crescent(radius, thickness * 0.4f, reveal));
+            g.dispose();
+
+            // Sparks fly out once the blade reaches the middle of the monster.
+            float st = (t - 0.12f) / 0.6f;
+            if (st > 0 && st < 1) {
+                g2.setStroke(new BasicStroke(3f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                for (int i = 0; i < SLASH_SPARKS; i++) {
+                    double a = fx.sparkAngles[i];
+                    double d0 = (12 + st * 75 * fx.sparkSpeeds[i]) * k;
+                    double len = (20 * (1 - st) + 5) * k;
+                    int alpha = Math.round(230 * (1 - st));
+                    g2.setColor(i % 3 == 0 ? new Color(255, 255, 255, alpha)
+                            : new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha));
+                    g2.drawLine((int) Math.round(cx + Math.cos(a) * d0), (int) Math.round(cy + Math.sin(a) * d0),
+                            (int) Math.round(cx + Math.cos(a) * (d0 + len)), (int) Math.round(cy + Math.sin(a) * (d0 + len)));
+                }
+            }
+        }
+        repaint();
+    }
+
+    /**
+     * An arc band around (0,0) over the upper half-circle, fattest in the middle and pointed at both
+     * ends; only the first `reveal` fraction (0..1) is built, so animating it draws the stroke.
+     */
+    private static Shape crescent(float radius, float maxThickness, float reveal) {
+        final int steps = 28;
+        double from = Math.toRadians(195), span = Math.toRadians(150);
+        double[] ox = new double[steps + 1], oy = new double[steps + 1];
+        double[] ix = new double[steps + 1], iy = new double[steps + 1];
+        for (int i = 0; i <= steps; i++) {
+            double u = reveal * i / (double) steps;
+            double a = from + span * u;
+            double half = maxThickness * Math.sin(Math.PI * u) / 2;
+            ox[i] = Math.cos(a) * (radius + half);
+            oy[i] = Math.sin(a) * (radius + half);
+            ix[i] = Math.cos(a) * (radius - half);
+            iy[i] = Math.sin(a) * (radius - half);
+        }
+        Path2D.Double p = new Path2D.Double();
+        p.moveTo(ox[0], oy[0]);
+        for (int i = 1; i <= steps; i++) p.lineTo(ox[i], oy[i]);
+        for (int i = steps; i >= 0; i--) p.lineTo(ix[i], iy[i]);
+        p.closePath();
+        return p;
     }
 
     /** Draws flying coins and the "+gold" / "+EXP" pop-ups, expiring each reward once all its parts finish. */
