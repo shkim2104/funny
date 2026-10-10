@@ -45,12 +45,16 @@ public class BattleStage extends JComponent {
     private static final String[] BACKDROP_PATHS = {"images/dungeon1/bg.png"};
     private static final BufferedImage[] BACKDROPS = new BufferedImage[BACKDROP_PATHS.length];
     private static final float BACKDROP_FOCUS_Y = 0.62f;     // which band of a tall backdrop survives the crop (0 = top)
+    private static final double MONSTER_GROUND_ON_BACKDROP = 0.63;   // monster's feet, as a fraction of stage height
+    private static final float MONSTER_SIZE_REF = 0.46f;     // sprite heightFrac is relative to this much of the stage height
 
     /** A bitmap monster, sized as a fraction of the far platform's ground height and optionally mirrored to face the player. */
     private static final class MonsterSprite {
         final BufferedImage image;
         final float heightFrac;
         final boolean flip;
+        /** Where the feet are, as a fraction of image height: art often has empty space or wisps below them. */
+        final float footFrac;
         BufferedImage cached;      // downscaled copy for the current stage size
         int cachedH;
 
@@ -58,7 +62,24 @@ public class BattleStage extends JComponent {
             this.image = image;
             this.heightFrac = heightFrac;
             this.flip = flip;
+            this.footFrac = findFootLine(image);
         }
+    }
+
+    /**
+     * The lowest row that is solidly part of the body (enough fully opaque pixels), ignoring faint
+     * glows, sparkles and halo pixels that sit below the feet. Returns a fraction of the image height.
+     */
+    private static float findFootLine(BufferedImage img) {
+        int w = img.getWidth(), h = img.getHeight();
+        int minSolid = Math.max(3, w / 100);
+        for (int y = h - 1; y >= 0; y--) {
+            int solid = 0;
+            for (int x = 0; x < w; x++) {
+                if ((img.getRGB(x, y) >>> 24) > 200 && ++solid >= minSolid) return (y + 1) / (float) h;
+            }
+        }
+        return 1f;
     }
 
     /** Keyed by exact monster name, so e.g. the boss wolf doesn't also replace other dungeons' wolves. */
@@ -421,11 +442,15 @@ public class BattleStage extends JComponent {
         // Player near the bottom-left, monster on the far ground at the right; both follow the stage width.
         int playerGroundY = h - 26;
         int playerX = Math.max(100, Math.round(w * 0.2f));
-        int monsterGroundY = (int) Math.round(h * 0.42);
+        // On painted scenery the monster stands on the open grass in front of the horizon (at 42% its
+        // feet would land on the distant hills and it would look like it's floating); the plain stage
+        // keeps the original high platform.
+        int monsterGroundY = (int) Math.round(h * (backdrop != null ? MONSTER_GROUND_ON_BACKDROP : 0.42));
         int monsterX = Math.max(playerX + 180, w - Math.max(95, Math.round(w * 0.2f)));
 
         MonsterSprite sprite = MONSTER_SPRITES.get(monsterName);
-        monsterSpritePx = sprite == null ? 0 : Math.round(sprite.heightFrac * monsterGroundY);
+        // Sized off the stage height, not the ground line, so moving the ground doesn't resize monsters.
+        monsterSpritePx = sprite == null ? 0 : Math.round(sprite.heightFrac * h * MONSTER_SIZE_REF);
 
         if (backdrop != null) {
             // The painted scenery already has ground; just a soft shadow patch where each one stands.
@@ -1045,12 +1070,16 @@ public class BattleStage extends JComponent {
             BufferedImage img = spriteAt(sprite, monsterSpritePx);
             double uw = img.getWidth() / MONSTER_SCALE;
             double uh = img.getHeight() / MONSTER_SCALE;
-            g2.setColor(new Color(0, 0, 0, 80));
-            int shadowW = (int) Math.round(uw * 0.6);
-            g2.fillOval(x - shadowW / 2, groundY - 6, shadowW, 12);
+            // Contact shadow right under the feet: a soft wide one plus a darker core, so it reads as standing.
+            int shadowW = (int) Math.round(uw * 0.7);
+            g2.setColor(new Color(10, 20, 0, 60));
+            g2.fillOval(x - shadowW / 2, groundY - 10, shadowW, 20);
+            g2.setColor(new Color(10, 20, 0, 90));
+            g2.fillOval(x - shadowW * 3 / 8, groundY - 6, shadowW * 3 / 4, 12);
             Graphics2D gi = (Graphics2D) g2.create();
             gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            gi.drawImage(img, (int) Math.round(x - uw / 2), (int) Math.round(groundY - uh + 4),
+            // Put the feet (not the image's bottom edge) on the ground, sunk in a touch so they sit in the grass.
+            gi.drawImage(img, (int) Math.round(x - uw / 2), (int) Math.round(groundY - uh * sprite.footFrac + 4),
                     (int) Math.round(uw), (int) Math.round(uh), null);
             gi.dispose();
             return;
