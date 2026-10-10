@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Draws the player and monster in a Pokémon-style diagonal camera: the player is seen
@@ -39,6 +40,47 @@ public class BattleStage extends JComponent {
     private static final Color EXP_BADGE = new Color(70, 150, 230);
     private static final Color EXP_TEXT = new Color(150, 210, 255);
 
+    // ---------- dungeon art: backdrops and monster sprites (anything without art falls back to the vector drawings) ----------
+    /** Backdrop per dungeon index, in World.buildDungeons() order. */
+    private static final String[] BACKDROP_PATHS = {"images/dungeon1/bg.png"};
+    private static final BufferedImage[] BACKDROPS = new BufferedImage[BACKDROP_PATHS.length];
+    private static final float BACKDROP_FOCUS_Y = 0.62f;     // which band of a tall backdrop survives the crop (0 = top)
+
+    /** A bitmap monster, sized as a fraction of the far platform's ground height and optionally mirrored to face the player. */
+    private static final class MonsterSprite {
+        final BufferedImage image;
+        final float heightFrac;
+        final boolean flip;
+        BufferedImage cached;      // downscaled copy for the current stage size
+        int cachedH;
+
+        MonsterSprite(BufferedImage image, float heightFrac, boolean flip) {
+            this.image = image;
+            this.heightFrac = heightFrac;
+            this.flip = flip;
+        }
+    }
+
+    /** Keyed by exact monster name, so e.g. the boss wolf doesn't also replace other dungeons' wolves. */
+    private static final java.util.Map<String, MonsterSprite> MONSTER_SPRITES = new java.util.HashMap<>();
+    static {
+        addSprite("들쥐", "images/dungeon1/rat.png", 0.56f, true);
+        addSprite("멧돼지", "images/dungeon1/boar.png", 0.72f, false);
+        addSprite("들개", "images/dungeon1/dog.png", 0.70f, false);
+        addSprite("너구리", "images/dungeon1/raccoon.png", 0.78f, false);
+        addSprite("초원의 우두머리 늑대", "images/dungeon1/boss_wolf.png", 0.92f, false);
+    }
+
+    private static void addSprite(String name, String path, float heightFrac, boolean flip) {
+        BufferedImage img = loadImage(path);
+        if (img != null) MONSTER_SPRITES.put(name, new MonsterSprite(img, heightFrac, flip));
+    }
+
+    private BufferedImage backdrop;
+    private final BattleHud hud = new BattleHud(this::repaint);
+    /** On-screen height of the current monster sprite (0 for vector monsters); set every paint. */
+    private int monsterSpritePx = 0;
+
     private String monsterName = "";
     private int playerOffsetX = 0;
     private int monsterOffsetX = 0;
@@ -53,6 +95,34 @@ public class BattleStage extends JComponent {
 
     private static final long SLASH_DURATION = 420;
     private static final int SLASH_SPARKS = 14;
+
+    // ---------- impact feedback: screen shake, hit-stop, knockback, flashes ----------
+    // Shake is driven by a decaying "trauma" value (0..1); the visible shake is trauma^2, so light
+    // hits barely move the stage while crits and kills really punch. It only moves the drawing.
+    private static final float TRAUMA_DECAY = 1.6f;          // trauma lost per second
+    private static final float SHAKE_MAX_X = 14f;
+    private static final float SHAKE_MAX_Y = 10f;
+    private static final double SHAKE_MAX_ROLL = 0.02;       // radians
+    private static final float HIT_FLASH_TIME = 0.16f;       // seconds for a hit tint to fade out
+    private static final float KNOCK_TIME = 0.28f;           // seconds for a knocked-back body to settle
+    private static final int KNOCK_DIST = 14;
+    private static final float SQUASH = 0.14f;               // how much a struck body widens/flattens
+    private static final float SCREEN_FLASH_TIME = 0.12f;
+    private static final long DEATH_DURATION = 520;
+    private static final long DAMAGE_POP = 160;              // ms for a damage number's overshoot pop
+    private static final Color PLAYER_HURT_TINT = new Color(255, 70, 60);
+
+    private float trauma = 0f;
+    private float shakeClock = 0f;
+    private float playerKnock = 0f;
+    private float monsterKnock = 0f;
+    private float screenFlash = 0f;
+    private long lastFrameNanos = 0;
+    private long monsterDeathStart = 0;
+    /** True only while an attack's onImpact callback runs, so showDamage knows the number is a real hit. */
+    private boolean inImpact = false;
+    /** Hit-stop requested by the hits of the current impact; the lunge freezes this long before returning. */
+    private int pendingHitStopMs = 0;
 
     /** A crescent sword trail swept across the monster, plus sparks at the point of impact. */
     private static final class SlashFx {
@@ -113,11 +183,13 @@ public class BattleStage extends JComponent {
         final boolean onMonster;
         final boolean crit;
         final long start = System.currentTimeMillis();
+        final int jitterX;     // small sideways offset so multi-hit numbers don't stack on one spot
 
         DamageText(String text, boolean onMonster, boolean crit) {
             this.text = text;
             this.onMonster = onMonster;
             this.crit = crit;
+            this.jitterX = new java.util.Random().nextInt(29) - 14;
         }
     }
 
@@ -181,6 +253,25 @@ public class BattleStage extends JComponent {
         monsterOffsetX = 0;
         playerHitFlash = 0f;
         monsterHitFlash = 0f;
+        playerKnock = 0f;
+        monsterKnock = 0f;
+        monsterDeathStart = 0;
+        repaint();
+    }
+
+    /** The status boxes painted over this stage. */
+    public BattleHud getHud() {
+        return hud;
+    }
+
+    /** Picks the battle backdrop for a dungeon (World.buildDungeons() index); dungeons without one keep the plain stage. */
+    public void setDungeon(int index) {
+        if (index >= 0 && index < BACKDROP_PATHS.length) {
+            if (BACKDROPS[index] == null) BACKDROPS[index] = loadImage(BACKDROP_PATHS[index]);
+            backdrop = BACKDROPS[index];
+        } else {
+            backdrop = null;
+        }
         repaint();
     }
 
@@ -201,7 +292,30 @@ public class BattleStage extends JComponent {
     /** Spawns a floating damage number over the player (onMonster=false) or monster (onMonster=true). */
     public void showDamage(int amount, boolean onMonster, boolean crit) {
         damageTexts.add(new DamageText(String.valueOf(amount), onMonster, crit));
+        if (inImpact) {
+            // Feedback scaled to the hit: a normal hit nudges, a crit punches, getting hit stings.
+            if (onMonster) {
+                addTrauma(crit ? 0.6f : 0.35f);
+                pendingHitStopMs = Math.max(pendingHitStopMs, crit ? 110 : 50);
+                if (crit) screenFlash = 1f;
+            } else {
+                addTrauma(0.5f);
+                pendingHitStopMs = Math.max(pendingHitStopMs, 70);
+            }
+        }
         repaint();
+    }
+
+    /** Kill effect: the monster flashes white, then stretches thin and fades away. */
+    public void playMonsterDeath() {
+        monsterDeathStart = System.currentTimeMillis();
+        monsterHitFlash = 1f;
+        addTrauma(0.45f);
+        repaint();
+    }
+
+    private void addTrauma(float amount) {
+        trauma = Math.min(1f, trauma + amount);   // hits add up rather than reset
     }
 
     /** Plays a skill's hit effect on the monster; hitIndex alternates the direction for multi-hit skills. */
@@ -234,15 +348,36 @@ public class BattleStage extends JComponent {
         timer.addActionListener(e -> {
             frame[0]++;
             int f = frame[0];
-            float progress = f <= half ? f / (float) half : 1 - (f - half) / (float) half;
-            int off = Math.round(progress * LUNGE);
+            // Wind up slightly, accelerate into the hit, then ease back to rest.
+            float lunge = f <= half
+                    ? easeInBack(f / (float) half)
+                    : 1 - easeOutCubic((f - half) / (float) half);
+            int off = Math.round(lunge * LUNGE);
             if (playerAttacking) playerOffsetX = off;
-            else monsterOffsetX = -off;
+            else monsterOffsetX = off;
 
             if (f == half) {
-                if (playerAttacking) monsterHitFlash = 1f;
-                else playerHitFlash = 1f;
-                if (onImpact != null) onImpact.run();
+                if (playerAttacking) {
+                    monsterHitFlash = 1f;
+                    monsterKnock = 1f;
+                } else {
+                    playerHitFlash = 1f;
+                    playerKnock = 1f;
+                }
+                pendingHitStopMs = 0;
+                inImpact = true;
+                try {
+                    if (onImpact != null) onImpact.run();
+                } finally {
+                    inImpact = false;
+                }
+                // Hit-stop: hold the lunge at the point of impact for a beat before it returns.
+                if (pendingHitStopMs > 0) {
+                    holder[0].stop();
+                    Timer resume = new Timer(pendingHitStopMs, ev -> holder[0].start());
+                    resume.setRepeats(false);
+                    resume.start();
+                }
             }
             repaint();
             if (f >= frames) {
@@ -262,47 +397,210 @@ public class BattleStage extends JComponent {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         int w = getWidth(), h = getHeight();
 
-        int playerGroundY = h - 26;
-        int playerX = 150;
-        int monsterGroundY = (int) Math.round(h * 0.42);
-        int monsterX = Math.max(playerX + 230, w - 140);
+        // Time-based decay so feedback lasts the same no matter how often we repaint.
+        long nowNanos = System.nanoTime();
+        float dt = lastFrameNanos == 0 ? 0f : Math.min(0.05f, (nowNanos - lastFrameNanos) / 1e9f);
+        lastFrameNanos = nowNanos;
+        trauma = Math.max(0f, trauma - TRAUMA_DECAY * dt);
+        playerHitFlash = Math.max(0f, playerHitFlash - dt / HIT_FLASH_TIME);
+        monsterHitFlash = Math.max(0f, monsterHitFlash - dt / HIT_FLASH_TIME);
+        playerKnock = Math.max(0f, playerKnock - dt / KNOCK_TIME);
+        monsterKnock = Math.max(0f, monsterKnock - dt / KNOCK_TIME);
+        screenFlash = Math.max(0f, screenFlash - dt / SCREEN_FLASH_TIME);
+        shakeClock += dt * 30f;
 
-        drawPlatform(g2, playerX, playerGroundY, 200, 40, PLAYER_PLATFORM);
-        drawPlatform(g2, monsterX, monsterGroundY, 130, 26, MONSTER_PLATFORM);
+        if (backdrop != null) drawBackdrop(g2, w, h);
+
+        if (trauma > 0) {
+            // Smooth sine-based shake (not per-frame random, which buzzes like static).
+            float s = trauma * trauma;
+            g2.translate(SHAKE_MAX_X * s * Math.sin(shakeClock * 1.7), SHAKE_MAX_Y * s * Math.sin(shakeClock * 2.3));
+            g2.rotate(SHAKE_MAX_ROLL * s * Math.sin(shakeClock * 1.1), w / 2.0, h / 2.0);
+        }
+
+        // Player near the bottom-left, monster on the far ground at the right; both follow the stage width.
+        int playerGroundY = h - 26;
+        int playerX = Math.max(100, Math.round(w * 0.2f));
+        int monsterGroundY = (int) Math.round(h * 0.42);
+        int monsterX = Math.max(playerX + 180, w - Math.max(95, Math.round(w * 0.2f)));
+
+        MonsterSprite sprite = MONSTER_SPRITES.get(monsterName);
+        monsterSpritePx = sprite == null ? 0 : Math.round(sprite.heightFrac * monsterGroundY);
+
+        if (backdrop != null) {
+            // The painted scenery already has ground; just a soft shadow patch where each one stands.
+            drawGroundShadow(g2, playerX, playerGroundY, 190, 34);
+            drawGroundShadow(g2, monsterX, monsterGroundY, sprite == null ? 120 : Math.max(120, monsterSpritePx + 30), 22);
+        } else {
+            drawPlatform(g2, playerX, playerGroundY, 200, 40, PLAYER_PLATFORM);
+            drawPlatform(g2, monsterX, monsterGroundY, 130, 26, MONSTER_PLATFORM);
+        }
 
         double t = (System.currentTimeMillis() - startTime) / 1000.0;
         int bob = (int) Math.round(Math.sin(t * 2.4) * 3);
 
-        int px = playerX + playerOffsetX;
-        int py = playerGroundY + bob;
-        int mx = monsterX - monsterOffsetX;
-        int my = monsterGroundY - bob;
+        // Lunges travel along the diagonal between the two platforms; knockback pushes the
+        // struck body back the other way and eases it home (knock^2 = fast push, soft settle).
+        float pk = playerKnock * playerKnock;
+        float mk = monsterKnock * monsterKnock;
+        int px = playerX + playerOffsetX - Math.round(pk * KNOCK_DIST);
+        int py = playerGroundY + bob - Math.round(playerOffsetX * 0.4f) + Math.round(pk * KNOCK_DIST * 0.4f);
+        int mx = monsterX - monsterOffsetX + Math.round(mk * KNOCK_DIST);
+        int my = monsterGroundY - bob + Math.round(monsterOffsetX * 0.45f) - Math.round(mk * KNOCK_DIST * 0.4f);
 
-        Graphics2D gp = (Graphics2D) g2.create();
-        gp.translate(px, py);
-        gp.scale(PLAYER_SCALE, PLAYER_SCALE);
-        drawPlayer(gp, 0, 0);
-        gp.dispose();
-        if (playerHitFlash > 0) drawFlash(g2, px, playerGroundY, 56, playerHitFlash);
+        drawBody(g2, px, py, PLAYER_SCALE * (1 + SQUASH * pk), PLAYER_SCALE * (1 - SQUASH * pk),
+                playerBox(), gp -> drawPlayer(gp, 0, 0), PLAYER_HURT_TINT, playerHitFlash * 0.7f, 1f);
 
         if (monsterName != null && !monsterName.isEmpty()) {
-            Graphics2D gm = (Graphics2D) g2.create();
-            gm.translate(mx, my);
-            gm.scale(MONSTER_SCALE, MONSTER_SCALE);
-            drawMonster(gm, monsterName, 0, 0);
-            gm.dispose();
-            if (monsterHitFlash > 0) drawFlash(g2, mx, monsterGroundY, 44, monsterHitFlash);
+            long deathElapsed = monsterDeathStart == 0 ? 0 : System.currentTimeMillis() - monsterDeathStart;
+            if (deathElapsed < DEATH_DURATION) {
+                double sx = MONSTER_SCALE * (1 + SQUASH * mk);
+                double sy = MONSTER_SCALE * (1 - SQUASH * mk);
+                float tint = monsterHitFlash;
+                float alpha = 1f;
+                if (monsterDeathStart != 0) {
+                    // Hold a white flash, then stretch up thin and fade out.
+                    float d = deathElapsed / (float) DEATH_DURATION;
+                    float vanish = Math.max(0f, (d - 0.2f) / 0.8f);
+                    tint = Math.max(tint, d < 0.2f ? 1f : 1f - vanish);
+                    sx *= 1 - 0.7f * vanish;
+                    sy *= 1 + 0.35f * vanish;
+                    alpha = 1f - vanish * vanish;
+                    repaint();
+                }
+                drawBody(g2, mx, my, sx, sy, monsterBox(sprite), gm -> drawMonster(gm, monsterName, 0, 0),
+                        Color.WHITE, tint, alpha);
+            }
         }
-
-        if (playerHitFlash > 0) playerHitFlash = Math.max(0, playerHitFlash - 0.1f);
-        if (monsterHitFlash > 0) monsterHitFlash = Math.max(0, monsterHitFlash - 0.1f);
 
         drawSlashes(g2, mx, monsterGroundY);
         drawDamageTexts(g2, px, playerGroundY, mx, monsterGroundY);
         drawRewards(g2, px, playerGroundY, mx, monsterGroundY);
         drawLevelUp(g2, px, playerGroundY);
 
+        if (screenFlash > 0) {
+            g2.setColor(new Color(255, 255, 240, Math.round(90 * screenFlash)));
+            g2.fillRect(-40, -40, w + 80, h + 80);
+        }
+
         g2.dispose();
+
+        // Status boxes stay put while the scene shakes underneath them.
+        Graphics2D gh = (Graphics2D) g.create();
+        hud.paint(gh, w, h);
+        gh.dispose();
+
+        if (trauma > 0 || playerHitFlash > 0 || monsterHitFlash > 0
+                || playerKnock > 0 || monsterKnock > 0 || screenFlash > 0) {
+            repaint();
+        } else {
+            lastFrameNanos = 0;   // idle: don't count the gap before the next hit as elapsed time
+        }
+    }
+
+    /** Vector monster drawing extent in its own unscaled coordinates (ground at y=0), covering wings, horns and weapons. */
+    private static final Rectangle MONSTER_BOX = new Rectangle(-72, -120, 144, 132);
+
+    /** Drawing extent of the current monster in its unscaled coordinates: the vector box, or the sprite's own size. */
+    private Rectangle monsterBox(MonsterSprite sprite) {
+        if (sprite == null || monsterSpritePx <= 0) return MONSTER_BOX;
+        int uh = (int) Math.ceil(monsterSpritePx / MONSTER_SCALE);
+        int halfW = (int) Math.ceil(uh * sprite.image.getWidth() / (double) sprite.image.getHeight() / 2) + 6;
+        return new Rectangle(-halfW, -uh - 6, halfW * 2, uh + 18);
+    }
+
+    /** Height above the monster's ground line where hit effects should land: mid-body for sprites. */
+    private int monsterHitHeight() {
+        return monsterSpritePx > 0 ? Math.round(monsterSpritePx * 0.45f) : 24;
+    }
+
+    /** Scales the backdrop to cover the stage (cropping the excess) inside rounded corners. */
+    private void drawBackdrop(Graphics2D g2, int w, int h) {
+        double s = Math.max(w / (double) backdrop.getWidth(), h / (double) backdrop.getHeight());
+        int dw = (int) Math.ceil(backdrop.getWidth() * s);
+        int dh = (int) Math.ceil(backdrop.getHeight() * s);
+        int dx = (w - dw) / 2;
+        int dy = Math.round((h - dh) * BACKDROP_FOCUS_Y);
+        Graphics2D g = (Graphics2D) g2.create();
+        g.clip(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, 14, 14));
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(backdrop, dx, dy, dw, dh, null);
+        g.dispose();
+    }
+
+    private static void drawGroundShadow(Graphics2D g2, int cx, int groundY, int width, int height) {
+        g2.setColor(new Color(20, 30, 10, 40));
+        g2.fillOval(cx - width / 2, groundY - height / 2, width, height);
+        g2.setColor(new Color(20, 30, 10, 45));
+        g2.fillOval(cx - width * 3 / 8, groundY - height * 3 / 8, width * 3 / 4, height * 3 / 4);
+    }
+
+    /**
+     * The sprite downscaled to the given on-screen height (and mirrored if needed), cached until the stage
+     * resizes. Halving step by step keeps the big source art crisp instead of aliasing in one bilinear jump.
+     */
+    private static BufferedImage spriteAt(MonsterSprite s, int targetH) {
+        if (s.cached != null && s.cachedH == targetH) return s.cached;
+        BufferedImage cur = s.image;
+        int targetW = Math.max(1, (int) Math.round(targetH * s.image.getWidth() / (double) s.image.getHeight()));
+        while (cur.getHeight() / 2 >= targetH) {
+            cur = resize(cur, cur.getWidth() / 2, cur.getHeight() / 2, false);
+        }
+        s.cached = resize(cur, targetW, targetH, s.flip);
+        s.cachedH = targetH;
+        return s.cached;
+    }
+
+    private static BufferedImage resize(BufferedImage src, int w, int h, boolean flip) {
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = out.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        if (flip) g.drawImage(src, w, 0, -w, h, null);
+        else g.drawImage(src, 0, 0, w, h, null);
+        g.dispose();
+        return out;
+    }
+
+    private static Rectangle playerBox() {
+        int halfW = Math.max(30, (int) Math.ceil(playerBodyW() / PLAYER_SCALE / 2) + 4);
+        return new Rectangle(-halfW, -(int) PLAYER_SPRITE_HEIGHT - 6, halfW * 2, (int) PLAYER_SPRITE_HEIGHT + 18);
+    }
+
+    /**
+     * Draws a body anchored at its feet (x, groundY) with independent x/y scale (for squash & stretch).
+     * When it needs a color flash or transparency, it's rendered offscreen first so the tint covers only
+     * the body's own pixels rather than a blob around it.
+     */
+    private static void drawBody(Graphics2D g2, int x, int groundY, double sx, double sy, Rectangle box,
+                                 Consumer<Graphics2D> painter, Color tint, float tintAmount, float alpha) {
+        if (tintAmount <= 0f && alpha >= 1f) {
+            Graphics2D g = (Graphics2D) g2.create();
+            g.translate(x, groundY);
+            g.scale(sx, sy);
+            painter.accept(g);
+            g.dispose();
+            return;
+        }
+        int iw = Math.max(1, (int) Math.ceil(box.width * sx));
+        int ih = Math.max(1, (int) Math.ceil(box.height * sy));
+        BufferedImage img = new BufferedImage(iw, ih, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gi = img.createGraphics();
+        gi.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        gi.scale(sx, sy);
+        gi.translate(-box.x, -box.y);
+        painter.accept(gi);
+        if (tintAmount > 0f) {
+            gi.setTransform(new java.awt.geom.AffineTransform());
+            gi.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, Math.min(1f, tintAmount)));
+            gi.setColor(tint);
+            gi.fillRect(0, 0, iw, ih);
+        }
+        gi.dispose();
+
+        Graphics2D g = (Graphics2D) g2.create();
+        if (alpha < 1f) g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, alpha)));
+        g.drawImage(img, (int) Math.round(x + box.x * sx), (int) Math.round(groundY + box.y * sy), null);
+        g.dispose();
     }
 
     /**
@@ -429,7 +727,7 @@ public class BattleStage extends JComponent {
     private void drawSlashes(Graphics2D g2, int monsterCx, int monsterGroundY) {
         if (slashFxs.isEmpty()) return;
         long now = System.currentTimeMillis();
-        int cx = monsterCx, cy = monsterGroundY - 24;
+        int cx = monsterCx, cy = monsterGroundY - monsterHitHeight();
         // Grows with the stage so it still reads as big in fullscreen (1.0 at the default 260px height).
         float k = Math.max(1f, Math.min(1.8f, getHeight() / 260f));
         Iterator<SlashFx> it = slashFxs.iterator();
@@ -537,7 +835,7 @@ public class BattleStage extends JComponent {
             // Coins pop out of the monster and arc into the player's chest.
             double endX = playerCx + bodyW * 0.15;
             double endY = playerGroundY - bodyH * 0.5;
-            double startY = monsterGroundY - 24;
+            double startY = monsterGroundY - monsterHitHeight();
             for (Coin c : fx.coins) {
                 long ce = elapsed - c.delay;
                 if (ce < 0 || ce >= COIN_FLIGHT) continue;
@@ -641,6 +939,16 @@ public class BattleStage extends JComponent {
         return p;
     }
 
+    /** Pulls back slightly below 0 before accelerating to 1: a wind-up before the lunge. */
+    private static float easeInBack(float x) {
+        float c1 = 1.70158f, c3 = c1 + 1;
+        return c3 * x * x * x - c1 * x * x;
+    }
+
+    private static float easeOutCubic(float x) {
+        return 1 - (float) Math.pow(1 - x, 3);
+    }
+
     /** Overshoots slightly past 1 then settles, giving each dropped letter a small bounce. */
     private static float easeOutBack(float x) {
         float c1 = 1.70158f, c3 = c1 + 1;
@@ -660,22 +968,34 @@ public class BattleStage extends JComponent {
                 continue;
             }
             float progress = elapsed / (float) DAMAGE_TEXT_DURATION;
-            int cx = dt.onMonster ? monsterCx : playerCx;
-            int baseY = (dt.onMonster ? monsterGroundY : playerGroundY) - 70;
-            int y = baseY - Math.round(progress * 34);
-            int alpha = Math.round(255 * (1 - progress));
+            int cx = (dt.onMonster ? monsterCx : playerCx) + dt.jitterX;
+            // Over a big sprite, start from its upper body but keep the risen number on screen.
+            int baseY = dt.onMonster
+                    ? Math.max(58, monsterGroundY - Math.max(70, Math.round(monsterSpritePx * 0.8f)))
+                    : playerGroundY - 70;
+            // Rise fast then slow down; stay solid for the first half so it can be read, then fade.
+            int y = baseY - Math.round(easeOutCubic(progress) * 34);
+            float alpha = progress < 0.5f ? 1f : 1f - (progress - 0.5f) / 0.5f;
 
-            Font font = Theme.dosFont(Font.BOLD, dt.crit ? 24f : 18f);
-            g2.setFont(font);
-            FontMetrics fm = g2.getFontMetrics();
-            int tw = fm.stringWidth(dt.text);
+            // Pop: spawn oversized, overshoot below 1, settle (crits pop harder).
+            float pop = 1f;
+            if (elapsed < DAMAGE_POP) {
+                pop = 1f + (dt.crit ? 0.8f : 0.4f) * (1f - easeOutBack(elapsed / (float) DAMAGE_POP));
+            }
+            Font font = Theme.dosFont(Font.BOLD, (dt.crit ? 26f : 19f) * pop);
+            int tw = g2.getFontMetrics(font).stringWidth(dt.text);
 
-            g2.setColor(new Color(0, 0, 0, Math.round(alpha * 0.55f)));
-            g2.drawString(dt.text, cx - tw / 2 + 2, y + 2);
-
-            Color color = dt.crit ? new Color(255, 200, 60, alpha) : new Color(255, 255, 255, alpha);
-            g2.setColor(color);
-            g2.drawString(dt.text, cx - tw / 2, y);
+            Color color = dt.crit ? new Color(255, 196, 50)
+                    : dt.onMonster ? Color.WHITE : new Color(255, 120, 110);
+            Graphics2D gt = (Graphics2D) g2.create();
+            gt.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, alpha)));
+            drawOutlinedText(gt, dt.text, font, cx - tw / 2f, y, color);
+            if (dt.crit) {
+                Font label = Theme.dosFont(Font.BOLD, 11f);
+                int lw = gt.getFontMetrics(label).stringWidth("CRITICAL");
+                drawOutlinedText(gt, "CRITICAL", label, cx - lw / 2f, y - font.getSize2D() + 2, new Color(255, 240, 180));
+            }
+            gt.dispose();
         }
         repaint();
     }
@@ -687,11 +1007,6 @@ public class BattleStage extends JComponent {
         g2.setStroke(new BasicStroke(2));
         g2.drawOval(cx - width / 2, groundY - height / 2, width, height);
         g2.setStroke(new BasicStroke(1));
-    }
-
-    private void drawFlash(Graphics2D g2, int cx, int groundY, int r, float strength) {
-        g2.setColor(new Color(220, 70, 70, Math.round(150 * strength)));
-        g2.fillOval(cx - r / 2, groundY - r - 20, r, r);
     }
 
     // ---------- player (seen from behind, close-up foreground) ----------
@@ -724,6 +1039,23 @@ public class BattleStage extends JComponent {
 
     // ---------- monster dispatch ----------
     private void drawMonster(Graphics2D g2, String name, int x, int groundY) {
+        MonsterSprite sprite = MONSTER_SPRITES.get(name);
+        if (sprite != null && monsterSpritePx > 0) {
+            // g2 is already scaled by MONSTER_SCALE, so draw at unscaled size to land at monsterSpritePx on screen.
+            BufferedImage img = spriteAt(sprite, monsterSpritePx);
+            double uw = img.getWidth() / MONSTER_SCALE;
+            double uh = img.getHeight() / MONSTER_SCALE;
+            g2.setColor(new Color(0, 0, 0, 80));
+            int shadowW = (int) Math.round(uw * 0.6);
+            g2.fillOval(x - shadowW / 2, groundY - 6, shadowW, 12);
+            Graphics2D gi = (Graphics2D) g2.create();
+            gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            gi.drawImage(img, (int) Math.round(x - uw / 2), (int) Math.round(groundY - uh + 4),
+                    (int) Math.round(uw), (int) Math.round(uh), null);
+            gi.dispose();
+            return;
+        }
+
         g2.setColor(new Color(0, 0, 0, 80));
         g2.fillOval(x - 26, groundY - 6, 52, 10);
 

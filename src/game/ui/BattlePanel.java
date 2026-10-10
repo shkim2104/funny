@@ -22,129 +22,158 @@ public class BattlePanel extends JPanel {
     private Monster monster;
     private Consumer<Result> onFinish;
 
-    private final JLabel playerLabel = Theme.header("");
-    private final Theme.Meter playerHpBar = Theme.bar(Theme.PLAYER_HP);
-    private final Theme.Meter playerMpBar = Theme.bar(Theme.MP);
-    private final Theme.Meter playerExpBar = Theme.bar(Theme.EXP);
-    private final JLabel goldLabel = new JLabel();
-    private final JLabel monsterLabel = Theme.header("");
-    private final Theme.Meter monsterHpBar = Theme.bar(Theme.HP);
-    private final BattleStage stage = new BattleStage();
-    private final JTextArea log = new JTextArea();
-    private final JButton attackBtn = Theme.primaryButton("공격");
-    private final JButton itemBtn = Theme.button("아이템 사용");
-    private final JButton fleeBtn = Theme.button("도망");
-    private final JButton returnBtn = Theme.primaryButton("");
-    private final CardLayout actionCards = new CardLayout();
-    /** Sized to whichever card is showing, so the taller attack menu doesn't leave the plain button row padded out. */
-    private final JPanel actionArea = new JPanel(actionCards) {
-        @Override
-        public Dimension getPreferredSize() {
-            for (Component c : getComponents()) {
-                if (c.isVisible()) {
-                    Insets in = getInsets();
-                    Dimension d = c.getPreferredSize();
-                    return new Dimension(d.width + in.left + in.right, d.height + in.top + in.bottom);
-                }
-            }
-            return super.getPreferredSize();
-        }
-    };
+    // Command colors, after the handheld games' FIGHT / BAG / RUN buttons.
+    private static final Color FIGHT_RED = new Color(222, 74, 62);
+    private static final Color BAG_YELLOW = new Color(226, 164, 36);
+    private static final Color RUN_BLUE = new Color(62, 126, 220);
+    private static final Color BACK_GRAY = new Color(112, 118, 132);
+    private static final int ACTION_AREA_HEIGHT = 128;
+    private static final int LOG_MIN_WIDTH = 170;
+    private static final int LOG_MAX_WIDTH = 300;
 
-    // Attack menu (after job advancement): basic attack on the left, 2x2 skill slots, back on the right.
+    private final BattleStage stage = new BattleStage();
+    private final BattleHud hud = stage.getHud();
+    private final JLabel goldLabel = new JLabel();
+    private final JTextArea log = new JTextArea();
+    /** Bottom-left message window: the latest battle line, or "무엇을 할까?" when it's the player's turn. */
+    private final MessageBox prompt = new MessageBox(new BorderLayout());
+    private final MessageBox returnPrompt = new MessageBox(new BorderLayout());
+    private final CommandButton attackBtn = new CommandButton("공격", FIGHT_RED);
+    private final CommandButton itemBtn = new CommandButton("아이템", BAG_YELLOW);
+    private final CommandButton fleeBtn = new CommandButton("도망", RUN_BLUE);
+    private final CommandButton returnBtn = new CommandButton("", RUN_BLUE);
+    private final CardLayout actionCards = new CardLayout();
+    private final JPanel actionArea = new JPanel(actionCards);
+
+    // Attack menu (after job advancement): 2x2 skill slots, with basic attack and back stacked on the right.
     private static final int SKILL_SLOTS = 4;
-    private final JButton basicAttackBtn = Theme.primaryButton("기본 공격");
-    private final JButton[] skillSlotBtns = new JButton[SKILL_SLOTS];
-    private final JButton menuBackBtn = Theme.button("뒤로");
+    private final CommandButton basicAttackBtn = new CommandButton("기본 공격", FIGHT_RED);
+    private final CommandButton[] skillSlotBtns = new CommandButton[SKILL_SLOTS];
+    private final CommandButton menuBackBtn = new CommandButton("뒤로", BACK_GRAY);
     private final Skill[] slotSkills = new Skill[SKILL_SLOTS];
     private Runnable onReturn;
 
     public BattlePanel() {
-        setLayout(new BorderLayout(12, 12));
+        // Handheld-style layout: the scene (with its status boxes painted on top) fills the left
+        // column above a message window + command buttons; the full battle log runs down the right.
+        setLayout(new BorderLayout(12, 0));
         setBackground(Theme.BG);
         setBorder(new EmptyBorder(16, 16, 16, 16));
 
-        // Monster card sits above the stage (it appears far/top-right on the stage);
-        // the player card sits below the stage (it appears close/bottom-left) — matching
-        // positions make it obvious at a glance which side is which.
-        JPanel mContent = new JPanel();
-        mContent.setOpaque(false);
-        mContent.setLayout(new BoxLayout(mContent, BoxLayout.Y_AXIS));
-        monsterLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        mContent.add(badge("몬스터", Theme.HP));
-        mContent.add(Box.createVerticalStrut(2));
-        mContent.add(monsterLabel);
-        mContent.add(Box.createVerticalStrut(6));
-        mContent.add(meterRow("HP", monsterHpBar));
-        JPanel monsterCard = accentCard(Theme.HP, mContent);
-        add(monsterCard, BorderLayout.NORTH);
-
-        add(stage, BorderLayout.CENTER);
-
-        JPanel pContent = new JPanel();
-        pContent.setOpaque(false);
-        pContent.setLayout(new BoxLayout(pContent, BoxLayout.Y_AXIS));
-        // Name on the left, current gold small on the right of the same row.
-        goldLabel.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
-        goldLabel.setForeground(Theme.EXP);
-        JPanel nameRow = new JPanel(new BorderLayout(8, 0));
-        nameRow.setOpaque(false);
-        nameRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-        nameRow.add(playerLabel, BorderLayout.WEST);
-        nameRow.add(goldLabel, BorderLayout.EAST);
-        pContent.add(badge("아군", Theme.PLAYER_HP));
-        pContent.add(Box.createVerticalStrut(2));
-        pContent.add(nameRow);
-        pContent.add(Box.createVerticalStrut(6));
-        pContent.add(meterRow("HP", playerHpBar));
-        pContent.add(Box.createVerticalStrut(4));
-        pContent.add(meterRow("MP", playerMpBar));
-        pContent.add(Box.createVerticalStrut(4));
-        pContent.add(meterRow("EXP", playerExpBar));
-        JPanel playerCard = accentCard(Theme.PLAYER_HP, pContent);
-
-        log.setEditable(false);
-        log.setLineWrap(true);
-        log.setWrapStyleWord(true);
-        log.setRows(3);
-        log.setBackground(Theme.PANEL);
-        log.setForeground(Theme.TEXT);
-        log.setFont(Theme.MONO_FONT);
-        log.setBorder(new EmptyBorder(10, 10, 10, 10));
-        JScrollPane logScroll = Theme.scroll(log);
-        logScroll.setPreferredSize(new Dimension(0, 92));
-
-        JPanel btnRow = new JPanel(new GridLayout(1, 3, 10, 10));
-        btnRow.setOpaque(false);
         attackBtn.addActionListener(e -> onAttack());
         itemBtn.addActionListener(e -> onItem());
         fleeBtn.addActionListener(e -> onFlee());
-        btnRow.add(attackBtn);
-        btnRow.add(itemBtn);
-        btnRow.add(fleeBtn);
         Theme.arrowNav(attackBtn, itemBtn, fleeBtn);
 
-        // The action row swaps to a single "return" button once the dungeon run ends, so the
+        // 공격 is the big button on the left; 아이템 and 도망 stack beside it.
+        JPanel commands = new JPanel(new GridBagLayout()) {
+            @Override
+            public Dimension getPreferredSize() {
+                // Commands take a fair share of a narrow window but stop growing on a wide one.
+                int col = getParent() == null ? 0 : getParent().getWidth();
+                return new Dimension(Math.max(190, Math.min(280, Math.round(col * 0.4f))), 0);
+            }
+        };
+        commands.setOpaque(false);
+        GridBagConstraints c = new GridBagConstraints();
+        c.fill = GridBagConstraints.BOTH;
+        c.gridx = 0;
+        c.gridy = 0;
+        c.gridheight = 2;
+        c.weightx = 1.3;
+        c.weighty = 1;
+        c.insets = new Insets(0, 0, 0, 8);
+        commands.add(attackBtn, c);
+        c.gridx = 1;
+        c.gridheight = 1;
+        c.weightx = 1;
+        c.insets = new Insets(0, 0, 4, 0);
+        commands.add(itemBtn, c);
+        c.gridy = 1;
+        c.insets = new Insets(4, 0, 0, 0);
+        commands.add(fleeBtn, c);
+
+        JPanel actions = new JPanel(new BorderLayout(10, 0));
+        actions.setOpaque(false);
+        actions.add(prompt, BorderLayout.CENTER);
+        actions.add(commands, BorderLayout.EAST);
+
+        // Once the dungeon run ends the commands give way to a single "return" button, so the
         // run's outcome stays readable in the log instead of being shown in a modal dialog.
         returnBtn.addActionListener(e -> {
             Runnable r = onReturn;
             onReturn = null;
             if (r != null) r.run();
         });
+        returnBtn.setPreferredSize(new Dimension(200, 0));
+        JPanel returnCard = new JPanel(new BorderLayout(10, 0));
+        returnCard.setOpaque(false);
+        returnCard.add(returnPrompt, BorderLayout.CENTER);
+        returnCard.add(returnBtn, BorderLayout.EAST);
+
         actionArea.setOpaque(false);
-        actionArea.add(btnRow, "ACTIONS");
-        actionArea.add(returnBtn, "RETURN");
+        actionArea.setPreferredSize(new Dimension(0, ACTION_AREA_HEIGHT));
+        actionArea.add(actions, "ACTIONS");
+        actionArea.add(returnCard, "RETURN");
         actionArea.add(buildAttackMenu(), "ATTACK_MENU");
 
-        JPanel bottomPanel = new JPanel();
-        bottomPanel.setOpaque(false);
-        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS));
-        bottomPanel.add(playerCard);
-        bottomPanel.add(Box.createVerticalStrut(10));
-        bottomPanel.add(logScroll);
-        bottomPanel.add(Box.createVerticalStrut(10));
-        bottomPanel.add(actionArea);
-        add(bottomPanel, BorderLayout.SOUTH);
+        JPanel battleColumn = new JPanel(new BorderLayout(0, 10));
+        battleColumn.setOpaque(false);
+        battleColumn.add(stage, BorderLayout.CENTER);
+        battleColumn.add(actionArea, BorderLayout.SOUTH);
+        add(battleColumn, BorderLayout.CENTER);
+        add(buildLogWindow(), BorderLayout.EAST);
+    }
+
+    /** Tall message window on the right holding the whole battle log, with the current gold in its header. */
+    private JComponent buildLogWindow() {
+        JLabel title = new JLabel("전투 기록");
+        title.setFont(Theme.dosFont(Font.BOLD, 16f));
+        title.setForeground(BattleHud.INK);
+        goldLabel.setFont(Theme.dosFont(Font.BOLD, 14f));
+        goldLabel.setForeground(new Color(168, 112, 20));
+        JPanel header = new JPanel(new BorderLayout(8, 0));
+        header.setOpaque(false);
+        header.setBorder(new EmptyBorder(0, 0, 8, 0));
+        header.add(title, BorderLayout.WEST);
+        header.add(goldLabel, BorderLayout.EAST);
+
+        log.setEditable(false);
+        log.setLineWrap(true);
+        log.setWrapStyleWord(true);
+        log.setOpaque(false);
+        log.setForeground(BattleHud.INK);
+        log.setFont(Theme.dosFont(Font.PLAIN, 14f));
+        log.setBorder(new EmptyBorder(0, 0, 0, 4));
+        JScrollPane logScroll = Theme.scroll(log);
+        logScroll.setOpaque(false);
+        logScroll.getViewport().setOpaque(false);
+        logScroll.setBorder(BorderFactory.createEmptyBorder());
+
+        // A thin rule between header and log, drawn in the box's ink color.
+        JPanel body = new JPanel(new BorderLayout());
+        body.setOpaque(false);
+        body.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(2, 0, 0, 0, BattleHud.BOX_SHADE),
+                new EmptyBorder(8, 0, 0, 0)));
+        body.add(logScroll, BorderLayout.CENTER);
+
+        MessageBox window = new MessageBox(new BorderLayout()) {
+            @Override
+            public Dimension getPreferredSize() {
+                // About a fifth of the window: slim in the small window, roomier in fullscreen.
+                int total = BattlePanel.this.getWidth();
+                return new Dimension(Math.max(LOG_MIN_WIDTH, Math.min(LOG_MAX_WIDTH, Math.round(total * 0.22f))), 0);
+            }
+        };
+        window.add(header, BorderLayout.NORTH);
+        window.add(body, BorderLayout.CENTER);
+        return window;
+    }
+
+    /** Sets the stage's backdrop to the given dungeon's (World.buildDungeons() index). */
+    public void setDungeon(int dungeonIndex) {
+        stage.setDungeon(dungeonIndex);
     }
 
     public void startBattle(Player player, Monster monster, Consumer<Result> onFinish) {
@@ -157,8 +186,10 @@ public class BattlePanel extends JPanel {
         setButtonsEnabled(true);
         stage.setMonsterName(monster.getName());
         stage.startIdle();
+        hud.setMonster(monster.getName(), monster.getHp(), monster.getMaxHp(), true);
         appendLog("=== " + monster.getName() + " 이(가) 나타났다! ===");
         refreshStatus();
+        hud.snapPlayer();
     }
 
     /**
@@ -171,6 +202,7 @@ public class BattlePanel extends JPanel {
         setButtonsEnabled(true);
         stage.setMonsterName(monster.getName());
         stage.startIdle();
+        hud.setMonster(monster.getName(), monster.getHp(), monster.getMaxHp(), true);
         appendLog("=== " + monster.getName() + " 이(가) 나타났다! ===");
         refreshStatus();
     }
@@ -187,11 +219,12 @@ public class BattlePanel extends JPanel {
     public void endRun(String text, String returnLabel, Runnable onReturn) {
         appendLog(text);
         returnBtn.setText(returnLabel);
+        // The full outcome is in the log; the message window just headlines it.
+        returnPrompt.setText(text.split("\n")[0]);
         // Only gold and MP are refreshed here: on defeat the player is already revived, and the HP
         // bar should keep showing the knockout rather than a full bar. MP is refilled on the way out.
         refreshGold();
-        playerMpBar.setMaximum(player.getMaxMp());
-        playerMpBar.setValue(player.getMp());
+        hud.setPlayerMp(player.getMp(), player.getMaxMp());
         this.onReturn = onReturn;
         setButtonsEnabled(false);
         actionCards.show(actionArea, "RETURN");
@@ -205,62 +238,22 @@ public class BattlePanel extends JPanel {
     }
 
     private void refreshStatus() {
-        playerLabel.setText(player.getName() + "  ·  " + player.getJob().getDisplayName());
-        playerHpBar.setMaximum(player.getMaxHp());
-        playerHpBar.setValue(player.getHp());
-        playerMpBar.setMaximum(player.getMaxMp());
-        playerMpBar.setValue(player.getMp());
-        playerExpBar.setMaximum(player.getExpToNext());
-        playerExpBar.setValue(player.getExp());
+        hud.setPlayer(player.getName(), player.getJob().getDisplayName(), player.getLevel(),
+                player.getHp(), player.getMaxHp(), player.getMp(), player.getMaxMp(),
+                player.getExp(), player.getExpToNext());
+        hud.setMonster(monster.getName(), monster.getHp(), monster.getMaxHp(), false);
         refreshGold();
-        monsterLabel.setText(monster.getName());
-        monsterHpBar.setMaximum(monster.getMaxHp());
-        monsterHpBar.setValue(monster.getHp());
     }
 
     private void refreshGold() {
-        goldLabel.setText("소지금 " + player.getGold() + "G");
+        goldLabel.setText(player.getGold() + "G");
     }
 
-    /** Small bold role tag ("아군"/"몬스터") colored to match that side's HP bar. */
-    private static JLabel badge(String text, Color color) {
-        JLabel l = new JLabel(text);
-        l.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
-        l.setForeground(color);
-        l.setAlignmentX(Component.LEFT_ALIGNMENT);
-        return l;
-    }
-
-    /** Caption + meter row; the caption identifies which stat the bar represents (HP vs MP). */
-    private static JPanel meterRow(String caption, Theme.Meter meter) {
-        JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setOpaque(false);
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel tag = new JLabel(caption);
-        tag.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
-        tag.setForeground(Theme.TEXT_DIM);
-        tag.setPreferredSize(new Dimension(Math.max(26, tag.getPreferredSize().width), tag.getPreferredSize().height));
-        row.add(tag, BorderLayout.WEST);
-        row.add(meter, BorderLayout.CENTER);
-        return row;
-    }
-
-    /** Card with a colored left accent stripe so the player and monster panels read as separate, distinct blocks. */
-    private static JPanel accentCard(Color accent, JComponent content) {
-        JPanel card = Theme.panel(new BorderLayout(10, 0));
-        card.setBorder(new EmptyBorder(10, 10, 10, 12));
-        JPanel stripe = new JPanel();
-        stripe.setOpaque(true);
-        stripe.setBackground(accent);
-        stripe.setPreferredSize(new Dimension(4, 0));
-        card.add(stripe, BorderLayout.WEST);
-        card.add(content, BorderLayout.CENTER);
-        return card;
-    }
-
+    /** Adds a line to the side log and shows it in the message window, like the handheld battle text. */
     private void appendLog(String text) {
         log.append(text + "\n");
         log.setCaretPosition(log.getDocument().getLength());
+        prompt.setText(text.replace("===", "").trim());
     }
 
     private void setButtonsEnabled(boolean enabled) {
@@ -268,6 +261,7 @@ public class BattlePanel extends JPanel {
         itemBtn.setEnabled(enabled);
         fleeBtn.setEnabled(enabled);
         if (enabled) {
+            if (player != null) prompt.setText(player.getName() + "은(는) 무엇을 할까?");
             Theme.focusFirst(attackBtn, itemBtn, fleeBtn);
         }
     }
@@ -293,13 +287,12 @@ public class BattlePanel extends JPanel {
             closeAttackMenu();
             exchange(this::playerStrike);
         });
-        basicAttackBtn.setPreferredSize(new Dimension(170, 0));
-
         JPanel grid = new JPanel(new GridLayout(2, 2, 8, 8));
         grid.setOpaque(false);
         for (int i = 0; i < SKILL_SLOTS; i++) {
             final int slot = i;
-            JButton b = Theme.button("");
+            CommandButton b = new CommandButton("", BACK_GRAY);
+            b.setFont(Theme.dosFont(Font.BOLD, 15f));
             b.addActionListener(e -> useSlot(slot));
             skillSlotBtns[i] = b;
             grid.add(b);
@@ -309,19 +302,23 @@ public class BattlePanel extends JPanel {
             closeAttackMenu();
             setButtonsEnabled(true);
         });
-        menuBackBtn.setPreferredSize(new Dimension(80, 0));
 
         JButton[] nav = new JButton[SKILL_SLOTS + 2];
-        nav[0] = basicAttackBtn;
-        System.arraycopy(skillSlotBtns, 0, nav, 1, SKILL_SLOTS);
-        nav[nav.length - 1] = menuBackBtn;
+        System.arraycopy(skillSlotBtns, 0, nav, 0, SKILL_SLOTS);
+        nav[SKILL_SLOTS] = basicAttackBtn;
+        nav[SKILL_SLOTS + 1] = menuBackBtn;
         Theme.arrowNav(nav);
+
+        JPanel side = new JPanel(new GridLayout(2, 1, 0, 8));
+        side.setOpaque(false);
+        side.setPreferredSize(new Dimension(130, 0));
+        side.add(basicAttackBtn);
+        side.add(menuBackBtn);
 
         JPanel menu = new JPanel(new BorderLayout(10, 0));
         menu.setOpaque(false);
-        menu.add(basicAttackBtn, BorderLayout.WEST);
         menu.add(grid, BorderLayout.CENTER);
-        menu.add(menuBackBtn, BorderLayout.EAST);
+        menu.add(side, BorderLayout.EAST);
         // Esc backs out of the menu, like the back button.
         menu.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke("ESCAPE"), "menu-back");
         menu.getActionMap().put("menu-back", new AbstractAction() {
@@ -344,27 +341,41 @@ public class BattlePanel extends JPanel {
             int idx = from + i;
             Skill s = idx < skills.size() ? skills.get(idx) : null;
             slotSkills[i] = s;
-            JButton b = skillSlotBtns[i];
+            CommandButton b = skillSlotBtns[i];
             if (s == null) {
-                // Plain text on purpose: Swing greys out plain labels when disabled, but not HTML ones.
                 b.setText("빈 슬롯");
+                b.setSubtitle(null);
+                b.setColor(BACK_GRAY);
+                b.setDimmed(false);
                 b.setToolTipText(null);
                 b.setEnabled(false);
             } else {
-                // Unaffordable skills stay clickable (dimmed) so pressing one explains the MP shortage in the log.
+                // Each skill wears its effect color; unaffordable ones stay clickable (dimmed) so
+                // pressing one explains the MP shortage in the log.
                 boolean affordable = player.getMp() >= s.getMpCost();
-                String nameColor = affordable ? "#e6e6eb" : "#6e717b";
-                String mpColor = affordable ? "#7fa6dc" : "#8a5a5a";
-                b.setText("<html><center><font color='" + nameColor + "'>" + s.getName() + "</font><br>"
-                        + "<font size='2' color='" + mpColor + "'>MP " + s.getMpCost()
-                        + (affordable ? "" : " (부족)") + "</font></center></html>");
+                b.setText(s.getName());
+                b.setSubtitle("MP " + s.getMpCost() + (affordable ? "" : " (부족)"));
+                b.setColor(buttonColor(s.getFxColor()));
+                b.setDimmed(!affordable);
                 b.setToolTipText(s.getDescription());
                 b.setEnabled(true);
             }
         }
+        prompt.setText("어떤 기술을 쓸까?");
         actionCards.show(actionArea, "ATTACK_MENU");
         actionArea.revalidate();
         basicAttackBtn.requestFocusInWindow();
+    }
+
+    /**
+     * A skill's effect color as a button face: very light effect colors (silver, white) would swallow
+     * the white label, so brightness is capped and near-greys get a little saturation back.
+     */
+    private static Color buttonColor(int rgb) {
+        Color c = new Color(rgb);
+        float[] hsb = Color.RGBtoHSB(c.getRed(), c.getGreen(), c.getBlue(), null);
+        float sat = hsb[1] < 0.3f ? Math.max(hsb[1], 0.3f) : hsb[1];
+        return Color.getHSBColor(hsb[0], sat, Math.min(hsb[2], 0.72f));
     }
 
     private void closeAttackMenu() {
@@ -553,6 +564,7 @@ public class BattlePanel extends JPanel {
         stage.stopIdle();
         if (result == Result.WIN) {
             appendLog(monster.getName() + "을(를) 물리쳤다!");
+            stage.playMonsterDeath();
             stage.showRewards(monster.getExpReward(), monster.getGoldReward());
         } else if (result == Result.LOSE) {
             appendLog(player.getName() + "은(는) 쓰러졌다...");

@@ -462,6 +462,7 @@ public class GameFrame extends JFrame {
         // Start the battle inside the swap so the incoming page already shows the monster.
         pageTurner.turn(() -> {
             cardLayout.show(cards, "BATTLE");
+            battlePanel.setDungeon(currentDungeonIndex);
             battlePanel.startBattle(player, monster, result -> onFightFinished(result, monster));
         }, true);
     }

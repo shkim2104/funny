@@ -360,7 +360,7 @@ public final class Theme {
         }
 
         @Override
-        protected void paintThumb(Graphics g, JComponent c, Rectangle thumbBounds) {
+        protected void paintThumb(Graphics g, JComponent c, Rectangle thumbBounds){
             if (thumbBounds.isEmpty() || !c.isEnabled()) return;
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
