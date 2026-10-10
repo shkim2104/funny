@@ -4,68 +4,159 @@ import game.model.Job;
 import game.model.Player;
 
 import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Character saves, MapleStory-style: every character is its own file in a "characters" folder, and the
+ * game picks one on the character select screen. The per-file line format is the same one the single
+ * save.txt always used, so an old save.txt is simply moved in as a character the first time we look.
+ */
 public class SaveManager {
+    /** Character slots shown on the select screen. */
+    public static final int MAX_CHARACTERS = 6;
+
     private SaveManager() {}
 
-    /** Save file lives under the user's OS data folder so it works the same no matter where the game is launched from. */
-    private static File saveFile() {
+    /** A character on disk: its file id, the loaded player, and when it was last saved. */
+    public static final class CharacterSave {
+        public final String id;
+        public final Player player;
+        public final long savedAt;
+
+        CharacterSave(String id, Player player, long savedAt) {
+            this.id = id;
+            this.player = player;
+            this.savedAt = savedAt;
+        }
+    }
+
+    /** Data lives under the user's OS data folder so it works the same no matter where the game is launched from. */
+    private static File dataDir() {
         String appData = System.getenv("APPDATA");
         File dir = (appData != null && !appData.isEmpty())
                 ? new File(appData, "NotebookRPG")
                 : new File(System.getProperty("user.home"), ".notebookrpg");
         if (!dir.exists()) dir.mkdirs();
-        return new File(dir, "save.txt");
+        return dir;
     }
 
-    public static boolean hasSave() {
-        return saveFile().exists();
+    private static File charactersDir() {
+        File dir = new File(dataDir(), "characters");
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
     }
 
-    public static void save(Player p) {
-        try (PrintWriter pw = new PrintWriter(new FileWriter(saveFile()))) {
-            pw.println(p.getName());
-            pw.println(p.getLevel());
-            pw.println(p.getExp());
-            pw.println(p.getExpToNext());
-            pw.println(p.getMaxHp());
-            pw.println(p.getHp());
-            pw.println(p.getMaxMp());
-            pw.println(p.getMp());
-            pw.println(p.getBaseAtk());
-            pw.println(p.getBaseDef());
-            pw.println(p.getLuck());
-            pw.println(p.getStatPoints());
-            pw.println(p.getGold());
-            pw.println(p.getUnlockedDungeon());
-            pw.println(p.getWeaponName() == null ? "NONE" : p.getWeaponName());
-            pw.println(p.getArmorName() == null ? "NONE" : p.getArmorName());
-            List<String> inv = p.getInventory();
-            pw.println(inv.size());
-            for (String item : inv) pw.println(item);
-            pw.println(p.getSpd());
-            // Job path as comma-separated enum names in tier order, e.g. "SWORDSMAN,PAGE" (empty = beginner).
-            StringBuilder path = new StringBuilder();
-            for (Job j : p.getJobPath()) {
-                if (path.length() > 0) path.append(',');
-                path.append(j.name());
-            }
-            pw.println(path);
+    private static File fileFor(String id) {
+        return new File(charactersDir(), id + ".txt");
+    }
+
+    /** Moves a pre-character-select save.txt in as a character, once. */
+    private static void migrateLegacySave() {
+        File legacy = new File(dataDir(), "save.txt");
+        if (!legacy.exists()) return;
+        File target = fileFor(String.format("c%015d", legacy.lastModified()));
+        try {
+            Files.move(legacy.toPath(), target.toPath());
+        } catch (IOException e) {
+            System.out.println("이전 저장 파일을 옮기지 못했습니다: " + e.getMessage());
+        }
+    }
+
+    /** Every saved character, oldest first (ids are creation timestamps). Unreadable files are skipped. */
+    public static List<CharacterSave> listCharacters() {
+        migrateLegacySave();
+        List<CharacterSave> result = new ArrayList<>();
+        File[] files = charactersDir().listFiles((d, name) -> name.endsWith(".txt"));
+        if (files == null) return result;
+        for (File f : files) {
+            String id = f.getName().substring(0, f.getName().length() - 4);
+            Player p = read(f);
+            if (p != null) result.add(new CharacterSave(id, p, f.lastModified()));
+        }
+        result.sort((a, b) -> a.id.compareTo(b.id));
+        return result;
+    }
+
+    public static boolean hasCharacters() {
+        return !listCharacters().isEmpty();
+    }
+
+    /** A fresh id for a new character; zero-padded timestamps so ids sort in creation order. */
+    public static String newId() {
+        String id;
+        long t = System.currentTimeMillis();
+        do {
+            id = String.format("c%015d", t++);
+        } while (fileFor(id).exists());
+        return id;
+    }
+
+    public static Player load(String id) {
+        return read(fileFor(id));
+    }
+
+    public static void delete(String id) {
+        File f = fileFor(id);
+        if (f.exists() && !f.delete()) System.out.println("캐릭터를 삭제하지 못했습니다: " + id);
+    }
+
+    /** Writes to a temp file first and then swaps it in, so a crash mid-save can't leave a half-written character. */
+    public static void save(Player p, String id) {
+        File target = fileFor(id);
+        File tmp = new File(target.getParentFile(), id + ".tmp");
+        try (PrintWriter pw = new PrintWriter(Files.newBufferedWriter(tmp.toPath(), StandardCharsets.UTF_8))) {
+            write(pw, p);
+        } catch (IOException e) {
+            System.out.println("저장에 실패했습니다: " + e.getMessage());
+            return;
+        }
+        try {
+            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
             System.out.println("게임을 저장했습니다.");
         } catch (IOException e) {
             System.out.println("저장에 실패했습니다: " + e.getMessage());
         }
     }
 
-    public static Player load() {
-        try (BufferedReader br = new BufferedReader(new FileReader(saveFile()))) {
+    private static void write(PrintWriter pw, Player p) {
+        pw.println(p.getName());
+        pw.println(p.getLevel());
+        pw.println(p.getExp());
+        pw.println(p.getExpToNext());
+        pw.println(p.getMaxHp());
+        pw.println(p.getHp());
+        pw.println(p.getMaxMp());
+        pw.println(p.getMp());
+        pw.println(p.getBaseAtk());
+        pw.println(p.getBaseDef());
+        pw.println(p.getLuck());
+        pw.println(p.getStatPoints());
+        pw.println(p.getGold());
+        pw.println(p.getUnlockedDungeon());
+        pw.println(p.getWeaponName() == null ? "NONE" : p.getWeaponName());
+        pw.println(p.getArmorName() == null ? "NONE" : p.getArmorName());
+        List<String> inv = p.getInventory();
+        pw.println(inv.size());
+        for (String item : inv) pw.println(item);
+        pw.println(p.getSpd());
+        // Job path as comma-separated enum names in tier order, e.g. "SWORDSMAN,PAGE" (empty = beginner).
+        StringBuilder path = new StringBuilder();
+        for (Job j : p.getJobPath()) {
+            if (path.length() > 0) path.append(',');
+            path.append(j.name());
+        }
+        pw.println(path);
+    }
+
+    private static Player read(File file) {
+        try (BufferedReader br = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
             String name = br.readLine();
             int level = Integer.parseInt(br.readLine());
             int exp = Integer.parseInt(br.readLine());
@@ -119,8 +210,8 @@ public class SaveManager {
             }
             player.setJobPath(path);
             return player;
-        } catch (IOException | NumberFormatException e) {
-            System.out.println("불러오기에 실패했습니다: " + e.getMessage());
+        } catch (IOException | RuntimeException e) {
+            System.out.println("불러오기에 실패했습니다: " + file.getName() + " (" + e.getMessage() + ")");
             return null;
         }
     }

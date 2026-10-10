@@ -56,7 +56,9 @@ public class GameFrame extends JFrame {
     private JLabel townInfoLabel;
     private JButton[] townButtons;
     private JButton[] titleButtons;
-    private JButton continueButton;
+    private CharacterSelectPanel characterSelect;
+    /** File id of the character being played; 저장하기 writes back to it. */
+    private String currentSaveId;
     private MapScreen townMap;
     private MapScreen dungeonMap;
     private JButton dungeonBackButton;
@@ -78,6 +80,7 @@ public class GameFrame extends JFrame {
 
         cards.setOpaque(false);
         cards.add(buildTitlePanel(), "TITLE");
+        cards.add(buildCharacterSelectPanel(), "SELECT");
         cards.add(buildTownPanel(), "TOWN");
         cards.add(buildDungeonMapPanel(), "DUNGEON_MAP");
         cards.add(battlePanel, "BATTLE");
@@ -120,29 +123,42 @@ public class GameFrame extends JFrame {
     }
 
     private void showTitle() {
-        continueButton.setEnabled(SaveManager.hasSave());
         showCard("TITLE", false);
         Theme.focusFirst(titleButtons);
     }
 
-    private void newGame() {
-        if (SaveManager.hasSave() && !Dialogs.confirm(this, "새로 시작",
-                "저장된 모험이 있습니다.\n새로 시작하면 다음 저장 때 기존 데이터를 덮어씁니다. 계속할까요?")) {
-            return;
-        }
-        createNewPlayer();
-        showTown(true);
+    /** Character select screen, with selectId (if any) pre-selected. */
+    private void openCharacterSelect(String selectId) {
+        characterSelect.refresh(SaveManager.listCharacters(), selectId);
+        showCard("SELECT", true);
     }
 
-    private void continueGame() {
-        Player loaded = SaveManager.load();
-        if (loaded == null) {
-            Dialogs.message(this, "이어하기", "저장 데이터를 불러오지 못했습니다.");
-            return;
-        }
+    private void startCharacter(String id, Player loaded) {
         player = loaded;
+        currentSaveId = id;
         showTown(true);
         townMap.toast(loaded.getName() + "님, 다시 오신 것을 환영합니다!");
+    }
+
+    /** Makes a new character in an empty slot and saves it right away, so it shows up on the select screen. */
+    private void createCharacter() {
+        if (SaveManager.listCharacters().size() >= SaveManager.MAX_CHARACTERS) {
+            Dialogs.message(this, "캐릭터 생성", "캐릭터는 최대 " + SaveManager.MAX_CHARACTERS + "명까지 만들 수 있습니다.");
+            return;
+        }
+        if (!createNewPlayer()) return;
+        String id = SaveManager.newId();
+        SaveManager.save(player, id);
+        characterSelect.refresh(SaveManager.listCharacters(), id);
+    }
+
+    private void deleteCharacter(String id, Player p) {
+        if (!Dialogs.confirm(this, "캐릭터 삭제", p.getName() + " (Lv." + p.getLevel() + " " + p.getJob().getDisplayName()
+                + ")을(를) 삭제할까요?\n삭제한 캐릭터는 되돌릴 수 없습니다.")) {
+            return;
+        }
+        SaveManager.delete(id);
+        characterSelect.refresh(SaveManager.listCharacters(), null);
     }
 
     private void backToTitle() {
@@ -151,9 +167,11 @@ public class GameFrame extends JFrame {
         }
     }
 
-    private void createNewPlayer() {
-        String name = Dialogs.input(this, "새 모험", "주인공의 이름을 입력하세요:", "");
-        if (name == null || name.trim().isEmpty()) name = "용사";
+    /** Asks for a name and rolls a new player; false if the name prompt was cancelled. */
+    private boolean createNewPlayer() {
+        String name = Dialogs.input(this, "캐릭터 생성", "주인공의 이름을 입력하세요:", "");
+        if (name == null) return false;
+        if (name.trim().isEmpty()) name = "용사";
         player = new Player(name.trim());
         player.addItem("포션");
         player.addItem("포션");
@@ -162,9 +180,23 @@ public class GameFrame extends JFrame {
                 + "HP " + player.getMaxHp() + "   MP " + player.getMaxMp()
                 + "   공격력 " + player.getBaseAtk() + "   방어력 " + player.getBaseDef()
                 + "\n행운 " + player.getLuck() + " (치명타 확률 " + player.getCritChance() + "%)");
+        return true;
     }
 
-    /** Title screen: the old town artwork with the game's name and start/continue/quit. */
+    /** Character select over the same town artwork as the title screen. */
+    private JPanel buildCharacterSelectPanel() {
+        characterSelect = new CharacterSelectPanel(new CharacterSelectPanel.Listener() {
+            @Override public void start(String id, Player p) { startCharacter(id, p); }
+            @Override public void create() { createCharacter(); }
+            @Override public void delete(String id, Player p) { deleteCharacter(id, p); }
+            @Override public void back() { showTitle(); }
+        });
+        BackgroundPanel panel = new BackgroundPanel(new BorderLayout(), loadImage("images/town_bg.png"));
+        panel.add(characterSelect, BorderLayout.CENTER);
+        return panel;
+    }
+
+    /** Title screen: the old town artwork with the game's name, start (→ character select) and quit. */
     private JPanel buildTitlePanel() {
         BackgroundPanel panel = new BackgroundPanel(new GridBagLayout(), loadImage("images/town_bg.png"));
 
@@ -175,10 +207,8 @@ public class GameFrame extends JFrame {
         bannerPill.setBorder(new EmptyBorder(14, 36, 14, 36));
         bannerPill.add(banner);
 
-        continueButton = makeButton("이어하기", this::continueGame);
         titleButtons = new JButton[] {
-                makePrimaryButton("새로 시작", this::newGame),
-                continueButton,
+                makePrimaryButton("게임 시작", () -> openCharacterSelect(null)),
                 makeButton("종료", () -> System.exit(0))
         };
         JPanel buttonPanel = new JPanel(new GridLayout(titleButtons.length, 1, 10, 10));
@@ -216,7 +246,7 @@ public class GameFrame extends JFrame {
                 menuButton("장비 변경", this::openEquip),
                 menuButton("스탯 분배", this::openStatAlloc),
                 menuButton("저장하기", () -> {
-                    SaveManager.save(player);
+                    SaveManager.save(player, currentSaveId);
                     townMap.toast("게임을 저장했습니다.");
                 }),
                 menuButton("타이틀로", this::backToTitle)

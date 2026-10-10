@@ -16,6 +16,9 @@ import java.util.Random;
 import java.util.Scanner;
 
 public class Main {
+    /** Which character file this session saves into. */
+    private static String saveId;
+
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
         Random rnd = new Random();
@@ -52,7 +55,7 @@ public class Main {
                 case "3": equipMenu(player, sc); break;
                 case "4": allocateStats(player, sc); break;
                 case "5": enterDungeonMenu(player, dungeons, battle, rnd, sc); break;
-                case "6": SaveManager.save(player); break;
+                case "6": SaveManager.save(player, saveId); break;
                 case "7":
                     System.out.println("게임을 종료합니다. 다음에 또 만나요!");
                     playing = false;
@@ -65,17 +68,28 @@ public class Main {
     }
 
     private static Player loadOrCreatePlayer(Scanner sc) {
-        if (SaveManager.hasSave()) {
-            System.out.print("이어하기 데이터가 있습니다. 불러올까요? (y/n) > ");
+        List<SaveManager.CharacterSave> saves = SaveManager.listCharacters();
+        if (!saves.isEmpty()) {
+            System.out.println("\n=== 캐릭터 선택 ===");
+            for (int i = 0; i < saves.size(); i++) {
+                Player p = saves.get(i).player;
+                System.out.println((i + 1) + ") " + p.getName() + "  Lv." + p.getLevel() + "  " + p.getJob().getDisplayName());
+            }
+            System.out.print("불러올 캐릭터 번호 (새로 만들려면 Enter) > ");
             String ans = sc.nextLine().trim();
-            if (ans.equalsIgnoreCase("y")) {
-                Player loaded = SaveManager.load();
-                if (loaded != null) {
+            try {
+                int idx = Integer.parseInt(ans) - 1;
+                if (idx >= 0 && idx < saves.size()) {
+                    saveId = saves.get(idx).id;
+                    Player loaded = saves.get(idx).player;
                     System.out.println(loaded.getName() + "님, 다시 오신 것을 환영합니다!");
                     return loaded;
                 }
+            } catch (NumberFormatException ignored) {
+                // Not a number: fall through to creating a new character.
             }
         }
+        saveId = SaveManager.newId();
         return createNewPlayer(sc);
     }
 
