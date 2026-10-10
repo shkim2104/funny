@@ -103,11 +103,55 @@ public enum Job {
             Skill.of("제네시스", 70, 40).magic(3.6).heal(0.25).fx(Skill.Fx.LIGHTNING, 0xFFCC4A)
                     .desc("하늘의 빛이 내리꽂힌 뒤 HP 25% 회복 (마력 360%)")),
 
+    // Archers are glass cannons: their skills scale only with ATK (and SPD), never HP or DEF, so they
+    // get about 30% higher totals than the warrior skill of the same tier to make up for staying fragile.
+
+    // ── 궁수: 공격력 (활, 여러 발을 쏘는 연사) ──
+    // ARCHER keeps its enum name so saves that already advanced to "궁수" still load.
+    ARCHER("궁수", "궁수", 1, "공격력", "화살을 연달아 쏘아 몰아붙이는 궁수",
+            Skill.of("더블 샷", 10, 6).atk(1.25).hits(2).fx(Skill.Fx.ARROW, 0x6AD0E0)
+                    .desc("화살 두 발을 연달아 쏜다 (공격력 125% x2)")),
+    HUNTER("헌터", "궁수", 2, "공격력", "세 발씩 쏘아 붙이는 사냥꾼",
+            Skill.of("트리플 애로우", 20, 12).atk(1.2).hits(3).fx(Skill.Fx.ARROW, 0x9EE06A)
+                    .desc("화살 세 발을 연달아 쏜다 (공격력 120% x3)")),
+    RANGER("레인저", "궁수", 3, "공격력", "화살비를 퍼붓는 숙련된 궁수",
+            Skill.of("애로우 레인", 50, 20).atk(1.3).hits(4).fx(Skill.Fx.ARROW, 0xFFD24A)
+                    .desc("화살비를 네 번 퍼붓는다 (공격력 130% x4)")),
+    BOWMASTER("보우마스터", "궁수", 4, "공격력", "폭풍처럼 쏟아지는 화살의 대가",
+            Skill.of("폭풍의 시", 70, 30).atk(1.45).hits(5).fx(Skill.Fx.ARROW, 0x4AD8C8)
+                    .desc("화살을 폭풍처럼 다섯 번 쏟아낸다 (공격력 145% x5)")),
+
+    // ── 궁수: 공격력 + 치명타 (석궁, 반드시 급소를 맞히는 저격) ──
+    CROSSBOWMAN("석궁수", "궁수", 1, "공격력+치명타", "정확한 한 발로 급소를 노리는 궁수",
+            Skill.of("크리티컬 샷", 10, 6).atk(1.45).alwaysCrit().fx(Skill.Fx.ARROW, 0xFF9A3A)
+                    .desc("반드시 치명타가 나는 사격 (공격력 145%)")),
+    SHARPSHOOTER("사수", "궁수", 2, "공격력+치명타", "묵직한 쇠화살로 급소를 꿰뚫는 사수",
+            Skill.of("아이언 애로우", 20, 12).atk(2.1).alwaysCrit().fx(Skill.Fx.ARROW, 0xC0C8D8)
+                    .desc("반드시 치명타가 나는 쇠화살 (공격력 210%)")),
+    SNIPER("저격수", "궁수", 3, "공격력+치명타", "멀리서 숨을 고르고 한 발로 끝낸다",
+            Skill.of("스나이핑", 50, 20).atk(2.95).alwaysCrit().fx(Skill.Fx.ARROW, 0xFF4A3A)
+                    .desc("반드시 치명타가 나는 저격 (공격력 295%)")),
+    MARKSMAN("신궁", "궁수", 4, "공격력+치명타", "어떤 갑옷도 꿰뚫는 화살의 신",
+            Skill.of("피어싱", 70, 30).atk(3.8).alwaysCrit().ignoreDefense().fx(Skill.Fx.ARROW, 0xE0283C)
+                    .desc("방어를 무시하고 반드시 치명타가 나는 관통 사격 (공격력 380%)")),
+
+    // ── 궁수: 공격력 + 속도 (바람, 빠를수록 강해지는 궁수) ──
+    // Speed ratio is always 2x the ATK ratio (see Skill.spd), so ATK and SPD points are worth the same;
+    // totals sit ~5% under the bow route because speed also wins first strike.
+    WIND_HUNTER("바람 사냥꾼", "궁수", 1, "공격력+속도", "바람을 타고 누구보다 먼저 쏜다",
+            Skill.of("애로우 블로우", 10, 6).atk(2.4).spd(4.8).fx(Skill.Fx.ARROW, 0x9EE06A)
+                    .desc("바람을 실은 화살 (공격력 240% + 속도 480%)")),
+    WIND_ARCHER("윈드 아처", "궁수", 2, "공격력+속도", "바람의 화살을 연달아 날린다",
+            Skill.of("윈드 샷", 20, 12).atk(1.7).spd(3.4).hits(2).fx(Skill.Fx.ARROW, 0x7AE0B0)
+                    .desc("바람 화살을 두 번 쏜다 (공격력 170% + 속도 340%) x2")),
+    STORM_SHOOTER("스톰 슈터", "궁수", 3, "공격력+속도", "폭풍을 화살에 담아 쏘는 궁수",
+            Skill.of("스톰 애로우", 50, 20).atk(1.65).spd(3.3).hits(3).fx(Skill.Fx.LIGHTNING, 0x4AD8C8)
+                    .desc("폭풍 화살이 세 번 내리친다 (공격력 165% + 속도 330%) x3")),
+    WINDBREAKER("윈드브레이커", "궁수", 4, "공격력+속도", "바람 그 자체가 된 궁수",
+            Skill.of("천공의 노래", 70, 30).atk(1.7).spd(3.4).hits(4).fx(Skill.Fx.ARROW, 0x6FC3FF)
+                    .desc("하늘을 가르는 화살이 네 번 몰아친다 (공격력 170% + 속도 340%) x4")),
+
     // ── 다른 직업군: 1차만 임시로 있음 (루트/차수는 설계 후 추가) ──
-    ARCHER("궁수", "궁수", 1, "", "정확한 사격으로 급소를 노린다",
-            Skill.of("애로우 블로우", 10, 6).atk(1.7).fx(Skill.Fx.ARROW, 0x9EE06A).desc("힘껏 당긴 화살 (공격력 170%)"),
-            Skill.of("더블 샷", 15, 10).atk(1.15).hits(2).fx(Skill.Fx.ARROW, 0x6AD0E0).desc("화살 두 발을 연달아 쏜다 (115% x2)"),
-            Skill.of("크리티컬 샷", 20, 14).atk(1.6).alwaysCrit().fx(Skill.Fx.ARROW, 0xFF6A4A).desc("반드시 치명타가 나는 사격 (160%)")),
     THIEF("도적", "도적", 1, "", "빠른 손놀림으로 몰아치는 연타",
             Skill.of("럭키 세븐", 10, 6).atk(1.0).hits(2).fx(Skill.Fx.SHURIKEN, 0xC8D0E0).desc("표창 두 개를 던진다 (100% x2)"),
             Skill.of("트리플 스로우", 15, 11).atk(0.85).hits(3).fx(Skill.Fx.SHURIKEN, 0x7AE0B0).desc("표창 세 개를 던진다 (85% x3)"),

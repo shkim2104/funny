@@ -4,7 +4,7 @@ package game.model;
  * A battle skill, described as data so every job can mix stats however it likes.
  *
  * Damage per hit starts from a power value that adds up the caster's stats times their ratios:
- *   power = ATK x atkRatio + MaxHP x hpRatio + DEF x defRatio + magic power x magicRatio
+ *   power = ATK x atkRatio + MaxHP x hpRatio + DEF x defRatio + magic power x magicRatio + SPD x spdRatio
  * and then goes through the usual defense formula. Build skills with the fluent setters, e.g.
  *   Skill.of("브랜디쉬", 20, 12).atk(1.4).hits(2).desc("...")
  */
@@ -40,6 +40,7 @@ public class Skill {
     private double hpRatio;
     private double defRatio;
     private double magicRatio;
+    private double spdRatio;
     private boolean ignoreDefense;
     private boolean alwaysCrit;
     /** Fraction of max HP paid before attacking (never lethal). */
@@ -65,6 +66,12 @@ public class Skill {
     public Skill def(double ratio) { this.defRatio = ratio; return this; }
     /** Scales with magic power (ATK + MaxMP/2). */
     public Skill magic(double ratio) { this.magicRatio = ratio; return this; }
+    /**
+     * Scales with speed. A stat point gives +1 SPD but +2 ATK, so a speed ratio of exactly 2x the skill's
+     * ATK ratio makes both stats worth the same per point: damage then doesn't depend on how the points are
+     * split, and SPD's extra perk is striking first while ATK's is a stronger basic attack.
+     */
+    public Skill spd(double ratio) { this.spdRatio = ratio; return this; }
     public Skill hits(int hits) { this.hits = hits; return this; }
     public Skill ignoreDefense() { this.ignoreDefense = true; return this; }
     public Skill alwaysCrit() { this.alwaysCrit = true; return this; }
@@ -87,13 +94,13 @@ public class Skill {
 
     /** True if the skill deals damage (a pure heal has no damage ratios). */
     public boolean isAttack() {
-        return atkRatio > 0 || hpRatio > 0 || defRatio > 0 || magicRatio > 0;
+        return atkRatio > 0 || hpRatio > 0 || defRatio > 0 || magicRatio > 0 || spdRatio > 0;
     }
 
     /** Power of one hit for this caster, before the target's defense. */
     public int powerFor(Player p) {
         double power = p.getAtk() * atkRatio + p.getMaxHp() * hpRatio
-                + p.getDef() * defRatio + p.getMagicAtk() * magicRatio;
+                + p.getDef() * defRatio + p.getMagicAtk() * magicRatio + p.getSpd() * spdRatio;
         return (int) Math.round(power);
     }
 }
