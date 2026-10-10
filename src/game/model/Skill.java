@@ -9,8 +9,26 @@ package game.model;
  *   Skill.of("브랜디쉬", 20, 12).atk(1.4).hits(2).desc("...")
  */
 public class Skill {
-    /** Visual effect played on each hit. More types get added as skills get their own looks. */
-    public enum Fx { NONE, SLASH }
+    /** Visual effect played on each hit, tinted with the skill's fx color. */
+    public enum Fx {
+        NONE,
+        /** Crescent sword trail across the target. */
+        SLASH,
+        /** Spear-tip streak driving into the target. */
+        THRUST,
+        /** Blunt impact: shockwave rings, rays and dust (shields, fists, kicks, roars). */
+        SMASH,
+        /** Glowing orb flying from the caster, bursting on the target. */
+        MAGIC,
+        /** Jagged bolt striking down from the sky. */
+        LIGHTNING,
+        /** Arrow flying from the caster. */
+        ARROW,
+        /** Spinning throwing star on a slight arc. */
+        SHURIKEN,
+        /** Muzzle flash and a bullet tracer. */
+        SHOT
+    }
 
     private final String name;
     private final int requiredLevel;

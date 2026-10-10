@@ -461,6 +461,7 @@ public class BattlePanel extends JPanel {
             if (skill.getHealRatio() > 0) {
                 int before = player.getHp();
                 player.heal((int) Math.round(player.getMaxHp() * skill.getHealRatio()));
+                stage.playHeal();
                 appendLog("HP를 " + (player.getHp() - before) + " 회복했다!");
                 refreshStatus();
             }

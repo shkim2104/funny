@@ -98,6 +98,8 @@ public class BattleStage extends JComponent {
     }
 
     private BufferedImage backdrop;
+    private BufferedImage backdropFrame;          // backdrop pre-scaled to the current stage size
+    private BufferedImage backdropFrameSource;
     private final BattleHud hud = new BattleHud(this::repaint);
     /** On-screen height of the current monster sprite (0 for vector monsters); set every paint. */
     private int monsterSpritePx = 0;
@@ -112,10 +114,14 @@ public class BattleStage extends JComponent {
     private final List<DamageText> damageTexts = new ArrayList<>();
     private LevelUpFx levelUpFx;
     private final List<RewardFx> rewardFxs = new ArrayList<>();
-    private final List<SlashFx> slashFxs = new ArrayList<>();
+    private final List<SkillFx> skillFxs = new ArrayList<>();
+    private final List<HealFx> healFxs = new ArrayList<>();
 
-    private static final long SLASH_DURATION = 420;
     private static final int SLASH_SPARKS = 14;
+    private static final int BOLT_SEGMENTS = 9;
+    private static final long HEAL_DURATION = 950;
+    private static final int HEAL_CROSSES = 9;
+    private static final Color HEAL_COLOR = new Color(110, 236, 140);
 
     // ---------- impact feedback: screen shake, hit-stop, knockback, flashes ----------
     // Shake is driven by a decaying "trauma" value (0..1); the visible shake is trauma^2, so light
@@ -145,21 +151,55 @@ public class BattleStage extends JComponent {
     /** Hit-stop requested by the hits of the current impact; the lunge freezes this long before returning. */
     private int pendingHitStopMs = 0;
 
-    /** A crescent sword trail swept across the monster, plus sparks at the point of impact. */
-    private static final class SlashFx {
+    /** One hit's skill effect (see Skill.Fx). Randomness is rolled once so playback is stable. */
+    private static final class SkillFx {
         final long start = System.currentTimeMillis();
+        final game.model.Skill.Fx type;
         final Color color;
-        final boolean mirrored;        // alternate hits slash the other way
+        final boolean mirrored;        // alternate hits of a multi-hit skill flip their angle / arc
         final double[] sparkAngles = new double[SLASH_SPARKS];
         final double[] sparkSpeeds = new double[SLASH_SPARKS];
+        final double[] boltJitter = new double[BOLT_SEGMENTS + 1];
 
-        SlashFx(Color color, boolean mirrored) {
+        SkillFx(game.model.Skill.Fx type, Color color, boolean mirrored) {
+            this.type = type;
             this.color = color;
             this.mirrored = mirrored;
             java.util.Random r = new java.util.Random();
             for (int i = 0; i < SLASH_SPARKS; i++) {
                 sparkAngles[i] = r.nextDouble() * Math.PI * 2;
                 sparkSpeeds[i] = 0.6 + r.nextDouble() * 0.6;
+            }
+            for (int i = 0; i < boltJitter.length; i++) boltJitter[i] = r.nextDouble() * 2 - 1;
+        }
+
+        long duration() {
+            switch (type) {
+                case THRUST: return 400;
+                case SMASH: return 500;
+                case MAGIC: return 520;
+                case LIGHTNING: return 460;
+                case ARROW: return 420;
+                case SHURIKEN: return 440;
+                case SHOT: return 360;
+                default: return 420;
+            }
+        }
+    }
+
+    /** Recovery effect on the player: a green glow at the feet and "+" crosses drifting up. */
+    private static final class HealFx {
+        final long start = System.currentTimeMillis();
+        final double[] xOff = new double[HEAL_CROSSES];
+        final double[] yFrac = new double[HEAL_CROSSES];
+        final long[] delay = new long[HEAL_CROSSES];
+
+        HealFx() {
+            java.util.Random r = new java.util.Random();
+            for (int i = 0; i < HEAL_CROSSES; i++) {
+                xOff[i] = (r.nextDouble() - 0.5) * 1.3;
+                yFrac[i] = 0.1 + r.nextDouble() * 0.7;
+                delay[i] = r.nextInt(300);
             }
         }
     }
@@ -341,10 +381,15 @@ public class BattleStage extends JComponent {
 
     /** Plays a skill's hit effect on the monster; hitIndex alternates the direction for multi-hit skills. */
     public void playSkillFx(game.model.Skill.Fx fx, int rgb, int hitIndex) {
-        if (fx == game.model.Skill.Fx.SLASH) {
-            slashFxs.add(new SlashFx(new Color(rgb), hitIndex % 2 == 1));
-            repaint();
-        }
+        if (fx == null || fx == game.model.Skill.Fx.NONE) return;
+        skillFxs.add(new SkillFx(fx, new Color(rgb), hitIndex % 2 == 1));
+        repaint();
+    }
+
+    /** Plays the recovery effect over the player (healing skills). */
+    public void playHeal() {
+        healFxs.add(new HealFx());
+        repaint();
     }
 
     /** Plays the kill reward: coins fly into the player, then gained gold and EXP pop up beside them. */
@@ -498,7 +543,8 @@ public class BattleStage extends JComponent {
             }
         }
 
-        drawSlashes(g2, mx, monsterGroundY);
+        drawSkillFxs(g2, px, playerGroundY, mx, monsterGroundY);
+        drawHeals(g2, px, playerGroundY);
         drawDamageTexts(g2, px, playerGroundY, mx, monsterGroundY);
         drawRewards(g2, px, playerGroundY, mx, monsterGroundY);
         drawLevelUp(g2, px, playerGroundY);
@@ -539,18 +585,29 @@ public class BattleStage extends JComponent {
         return monsterSpritePx > 0 ? Math.round(monsterSpritePx * 0.45f) : 24;
     }
 
-    /** Scales the backdrop to cover the stage (cropping the excess) inside rounded corners. */
+    /**
+     * Scales the backdrop to cover the stage (cropping the excess) inside rounded corners. The scaled
+     * frame is cached per stage size: rescaling the full-size art on every animation frame is slow.
+     */
     private void drawBackdrop(Graphics2D g2, int w, int h) {
-        double s = Math.max(w / (double) backdrop.getWidth(), h / (double) backdrop.getHeight());
-        int dw = (int) Math.ceil(backdrop.getWidth() * s);
-        int dh = (int) Math.ceil(backdrop.getHeight() * s);
-        int dx = (w - dw) / 2;
-        int dy = Math.round((h - dh) * BACKDROP_FOCUS_Y);
-        Graphics2D g = (Graphics2D) g2.create();
-        g.clip(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, 14, 14));
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.drawImage(backdrop, dx, dy, dw, dh, null);
-        g.dispose();
+        if (backdropFrame == null || backdropFrameSource != backdrop
+                || backdropFrame.getWidth() != w || backdropFrame.getHeight() != h) {
+            double s = Math.max(w / (double) backdrop.getWidth(), h / (double) backdrop.getHeight());
+            int dw = (int) Math.ceil(backdrop.getWidth() * s);
+            int dh = (int) Math.ceil(backdrop.getHeight() * s);
+            int dx = (w - dw) / 2;
+            int dy = Math.round((h - dh) * BACKDROP_FOCUS_Y);
+            BufferedImage frame = new BufferedImage(Math.max(1, w), Math.max(1, h), BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = frame.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.clip(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, 14, 14));
+            g.drawImage(backdrop, dx, dy, dw, dh, null);
+            g.dispose();
+            backdropFrame = frame;
+            backdropFrameSource = backdrop;
+        }
+        g2.drawImage(backdropFrame, 0, 0, null);
     }
 
     private static void drawGroundShadow(Graphics2D g2, int cx, int groundY, int width, int height) {
@@ -745,72 +802,411 @@ public class BattleStage extends JComponent {
     }
 
     /**
+     * Draws and expires every running skill effect. Ranged ones (magic, arrows, stars, bullets) fly
+     * from the player's hand; since they start at the moment of impact they only travel the last stretch
+     * of the way, quickly, so they land together with the damage number.
+     */
+    private void drawSkillFxs(Graphics2D g2, int playerCx, int playerGroundY, int monsterCx, int monsterGroundY) {
+        if (skillFxs.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        int cx = monsterCx, cy = monsterGroundY - monsterHitHeight();
+        double sx = playerCx + playerBodyW() * 0.3, sy = playerGroundY - playerBodyH() * 0.62;
+        // Grows with the stage so it still reads as big in fullscreen (1.0 at the default 260px height).
+        float k = Math.max(1f, Math.min(1.8f, getHeight() / 260f));
+        Iterator<SkillFx> it = skillFxs.iterator();
+        while (it.hasNext()) {
+            SkillFx fx = it.next();
+            long elapsed = now - fx.start;
+            if (elapsed >= fx.duration()) {
+                it.remove();
+                continue;
+            }
+            float t = elapsed / (float) fx.duration();
+            Graphics2D g = (Graphics2D) g2.create();
+            switch (fx.type) {
+                case SLASH: drawSlash(g, fx, t, cx, cy, k); break;
+                case THRUST: drawThrust(g, fx, t, sx, sy, cx, cy, k); break;
+                case SMASH: drawSmash(g, fx, t, cx, cy, monsterGroundY, k); break;
+                case MAGIC: drawMagic(g, fx, t, sx, sy, cx, cy, k); break;
+                case LIGHTNING: drawLightning(g, fx, t, cx, cy, k); break;
+                case ARROW: drawArrow(g, fx, t, sx, sy, cx, cy, k); break;
+                case SHURIKEN: drawShuriken(g, fx, t, sx, sy, cx, cy, k); break;
+                case SHOT: drawShot(g, fx, t, sx, sy, cx, cy, k); break;
+                default: break;
+            }
+            g.dispose();
+        }
+        repaint();
+    }
+
+    /**
      * Sword trail: a crescent that sweeps across the monster in the first third of the effect, then
      * thins and fades, drawn in three layers (soft colored glow, colored blade, white-hot core).
      * Sparks burst from the impact point as the blade passes through.
      */
-    private void drawSlashes(Graphics2D g2, int monsterCx, int monsterGroundY) {
-        if (slashFxs.isEmpty()) return;
+    private void drawSlash(Graphics2D g2, SkillFx fx, float t, int cx, int cy, float k) {
+        float reveal = t < 0.35f ? 1 - (float) Math.pow(1 - t / 0.35f, 3) : 1f;   // ease-out sweep
+        float fade = t < 0.45f ? 1f : Math.max(0f, 1f - (t - 0.45f) / 0.55f);
+        float thickness = 24f * k * (0.35f + 0.65f * fade);
+        final float radius = 95f * k;
+        Color c = fx.color;
+
+        impactFlash(g2, cx, cy, t / 0.3f, k, 1f, c);
+
+        Graphics2D g = (Graphics2D) g2.create();
+        g.translate(cx, cy);
+        if (fx.mirrored) g.scale(-1, 1);
+        g.rotate(Math.toRadians(32));   // diagonal: top-left to bottom-right
+        // Shift so the middle of the arc (its top, at -radius) cuts right through the monster.
+        g.translate(0, radius);
+        g.setColor(alpha(c, 70 * fade));
+        g.fill(crescent(radius, thickness * 2.3f, reveal));
+        g.setColor(alpha(c, 225 * fade));
+        g.fill(crescent(radius, thickness, reveal));
+        g.setColor(new Color(255, 250, 235, Math.round(245 * fade)));
+        g.fill(crescent(radius, thickness * 0.4f, reveal));
+        g.dispose();
+
+        // Sparks fly out once the blade reaches the middle of the monster.
+        sparks(g2, fx, cx, cy, (t - 0.12f) / 0.6f, k, 1f, c);
+    }
+
+    /**
+     * Spear thrust: a long tapering spear-tip streak drives along the player→monster line, punching a
+     * little past the target, then a shockwave ring and sparks burst where it lands.
+     */
+    private void drawThrust(Graphics2D g2, SkillFx fx, float t, double sx, double sy, int cx, int cy, float k) {
+        double dx = cx - sx, dy = cy - sy, len = Math.hypot(dx, dy);
+        dx /= len;
+        dy /= len;
+        double nx = -dy, ny = dx;
+        double side = (fx.mirrored ? -1 : 1) * 9 * k;   // alternate stabs land slightly apart
+        float reach = t < 0.28f ? easeOutCubic(t / 0.28f) : 1f;
+        float fade = t < 0.5f ? 1f : Math.max(0f, 1f - (t - 0.5f) / 0.5f);
+        if (fade > 0) {
+            double tipX = cx - dx * 110 * k + dx * 145 * k * reach + nx * side;
+            double tipY = cy - dy * 110 * k + dy * 145 * k * reach + ny * side;
+            double length = 200 * k * (0.5 + 0.5 * fade);
+            Color c = fx.color;
+            fillWedge(g2, tipX, tipY, dx, dy, length, 46 * k, alpha(c, 90 * fade), alpha(c, 0));
+            fillWedge(g2, tipX, tipY, dx, dy, length, 22 * k, alpha(c, 240 * fade), alpha(c, 30 * fade));
+            fillWedge(g2, tipX, tipY, dx, dy, length * 0.75, 8 * k, new Color(255, 252, 238, Math.round(250 * fade)),
+                    new Color(255, 252, 238, 0));
+        }
+        float hit = (t - 0.2f) / 0.8f;
+        if (hit > 0) {
+            impactFlash(g2, cx, cy, hit / 0.4f, k, 1.1f, fx.color);
+            ring(g2, cx, cy, hit / 0.6f, k, 80, fx.color);
+            sparks(g2, fx, cx, cy, hit / 0.7f, k, 1.1f, fx.color);
+        }
+    }
+
+    /**
+     * Blunt impact (shield bash, kick, roar): a big flash, two expanding shockwave rings, thick rays
+     * bursting outward and puffs of dust kicked up at the monster's feet.
+     */
+    private void drawSmash(Graphics2D g2, SkillFx fx, float t, int cx, int cy, int groundY, float k) {
+        Color c = fx.color;
+        impactFlash(g2, cx, cy, t / 0.35f, k, 1.5f, c);
+        ring(g2, cx, cy, t / 0.7f, k, 120, c);
+        ring(g2, cx, cy, (t - 0.12f) / 0.7f, k, 90, Color.WHITE);
+
+        float e = t / 0.55f;
+        if (e < 1) {
+            g2.setStroke(new BasicStroke(6f * k * (1 - e) + 1, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            for (int i = 0; i < 10; i++) {
+                double a = Math.PI * 2 * i / 10 + fx.sparkAngles[i] * 0.15;
+                double r0 = (18 + 70 * easeOutCubic(e)) * k;
+                double r1 = r0 + (28 * (1 - e) + 6) * k;
+                g2.setColor(i % 2 == 0 ? alpha(c, 230 * (1 - e)) : new Color(255, 255, 255, Math.round(200 * (1 - e))));
+                g2.drawLine((int) Math.round(cx + Math.cos(a) * r0), (int) Math.round(cy + Math.sin(a) * r0 * 0.8),
+                        (int) Math.round(cx + Math.cos(a) * r1), (int) Math.round(cy + Math.sin(a) * r1 * 0.8));
+            }
+        }
+
+        // Dust kicked up around the feet.
+        float d = (t - 0.05f) / 0.95f;
+        if (d > 0 && d < 1) {
+            for (int i = 0; i < 6; i++) {
+                double spread = Math.cos(fx.sparkAngles[i]) * 55 * k;
+                double r = (6 + 20 * d * fx.sparkSpeeds[i]) * k;
+                double px = cx + spread * (0.4 + 0.6 * d);
+                double py = groundY - 4 * k - d * 12 * k * fx.sparkSpeeds[i];
+                g2.setColor(new Color(170, 150, 118, Math.round(130 * (1 - d))));
+                g2.fill(new Ellipse2D.Double(px - r, py - r * 0.7, r * 2, r * 1.4));
+            }
+        }
+    }
+
+    /**
+     * Magic bolt: a glowing orb with a fading trail flies the last stretch to the monster on a slight
+     * arc, then bursts into a flash, a ring and sparks.
+     */
+    private void drawMagic(Graphics2D g2, SkillFx fx, float t, double sx, double sy, int cx, int cy, float k) {
+        final float arrive = 0.3f;
+        Color c = fx.color;
+        double lift = (fx.mirrored ? 1 : -1) * 26 * k;
+        if (t < arrive) {
+            for (int i = 4; i >= 0; i--) {
+                double p = 0.35 + 0.65 * Math.max(0, t / arrive - i * 0.07);
+                double x = sx + (cx - sx) * p;
+                double y = sy + (cy - sy) * p + lift * Math.sin(Math.PI * p);
+                float r = (19 - i * 2.8f) * k;
+                int a = i == 0 ? 255 : Math.round(150 * (1 - i / 5f));
+                g2.setPaint(new RadialGradientPaint(new java.awt.geom.Point2D.Double(x, y), r * 1.8f,
+                        new float[] {0f, 0.35f, 1f},
+                        new Color[] {new Color(255, 255, 255, a), alpha(c, a * 0.85f), alpha(c, 0)}));
+                g2.fill(new Ellipse2D.Double(x - r * 1.8, y - r * 1.8, r * 3.6, r * 3.6));
+            }
+        } else {
+            float e = (t - arrive) / (1 - arrive);
+            impactFlash(g2, cx, cy, e / 0.5f, k, 1.4f, c);
+            ring(g2, cx, cy, e / 0.7f, k, 85, c);
+            sparks(g2, fx, cx, cy, e / 0.85f, k, 1.2f, c);
+            // A few motes of leftover magic drifting up.
+            for (int i = 0; i < 5; i++) {
+                float a = Math.max(0f, 1f - e);
+                double x = cx + Math.cos(fx.sparkAngles[i]) * 30 * k;
+                double y = cy - e * 40 * k * fx.sparkSpeeds[i] + Math.sin(fx.sparkAngles[i]) * 18 * k;
+                g2.setColor(alpha(c, 220 * a));
+                g2.fill(starShape((float) x, (float) y, 6 * k * a + 1));
+            }
+        }
+    }
+
+    /** Lightning: a flickering jagged bolt from the top of the stage onto the monster, lighting up the scene. */
+    private void drawLightning(Graphics2D g2, SkillFx fx, float t, int cx, int cy, float k) {
+        Color c = fx.color;
+        if (t < 0.22f) {
+            g2.setColor(alpha(c, 55 * (1 - t / 0.22f)));
+            g2.fillRect(-40, -40, getWidth() + 80, getHeight() + 80);
+        }
+        // Hard flicker while it's live, then a quick fade.
+        float on = t < 0.5f ? (((int) (t * 36)) % 3 == 1 ? 0.35f : 1f) : Math.max(0f, 1f - (t - 0.5f) / 0.3f);
+        if (on > 0) {
+            double topX = cx + fx.boltJitter[0] * 40 * k;
+            Path2D.Double bolt = new Path2D.Double();
+            bolt.moveTo(topX, -10);
+            for (int i = 1; i <= BOLT_SEGMENTS; i++) {
+                double f = i / (double) BOLT_SEGMENTS;
+                double x = topX + (cx - topX) * f + (i < BOLT_SEGMENTS ? fx.boltJitter[i] * 24 * k : 0);
+                double y = -10 + (cy + 10) * f;
+                bolt.lineTo(x, y);
+            }
+            g2.setStroke(new BasicStroke(14f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_MITER));
+            g2.setColor(alpha(c, 70 * on));
+            g2.draw(bolt);
+            g2.setStroke(new BasicStroke(5.5f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_MITER));
+            g2.setColor(alpha(c, 235 * on));
+            g2.draw(bolt);
+            g2.setStroke(new BasicStroke(2f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_MITER));
+            g2.setColor(new Color(255, 255, 255, Math.round(255 * on)));
+            g2.draw(bolt);
+        }
+        impactFlash(g2, cx, cy, t / 0.4f, k, 1.4f, c);
+        ring(g2, cx, cy, (t - 0.05f) / 0.6f, k, 70, c);
+        sparks(g2, fx, cx, cy, (t - 0.05f) / 0.7f, k, 1.2f, c);
+    }
+
+    /** Arrow: flies the last stretch with a streak behind it, then a small flash and sparks where it hits. */
+    private void drawArrow(Graphics2D g2, SkillFx fx, float t, double sx, double sy, int cx, int cy, float k) {
+        final float arrive = 0.22f;
+        Color c = fx.color;
+        double dx = cx - sx, dy = cy - sy;
+        double angle = Math.atan2(dy, dx);
+        double side = (fx.mirrored ? -1 : 1) * 7 * k;
+        if (t < arrive) {
+            double p = 0.4 + 0.6 * (t / arrive);
+            double x = sx + dx * p - Math.sin(angle) * side;
+            double y = sy + dy * p + Math.cos(angle) * side;
+            Graphics2D g = (Graphics2D) g2.create();
+            g.translate(x, y);
+            g.rotate(angle);
+            g.scale(1.35, 1.35);
+            // Speed streak behind the arrow.
+            g.setPaint(new GradientPaint((float) (-110 * k), 0, alpha(c, 0), (float) (-30 * k), 0, alpha(c, 200)));
+            g.setStroke(new BasicStroke(5f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.draw(new java.awt.geom.Line2D.Double(-110 * k, 0, -30 * k, 0));
+            // Shaft, head and fletching.
+            g.setStroke(new BasicStroke(2.6f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(236, 222, 196));
+            g.draw(new java.awt.geom.Line2D.Double(-42 * k, 0, 0, 0));
+            Path2D.Double head = new Path2D.Double();
+            head.moveTo(12 * k, 0);
+            head.lineTo(-2 * k, -6 * k);
+            head.lineTo(-2 * k, 6 * k);
+            head.closePath();
+            g.setColor(Color.WHITE);
+            g.fill(head);
+            g.setColor(c);
+            g.setStroke(new BasicStroke(2.4f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.draw(new java.awt.geom.Line2D.Double(-42 * k, 0, -50 * k, -6 * k));
+            g.draw(new java.awt.geom.Line2D.Double(-42 * k, 0, -50 * k, 6 * k));
+            g.dispose();
+        } else {
+            float e = (t - arrive) / (1 - arrive);
+            impactFlash(g2, cx, cy, e / 0.4f, k, 0.9f, c);
+            ring(g2, cx, cy, e / 0.55f, k, 55, c);
+            sparks(g2, fx, cx, cy, e / 0.75f, k, 0.9f, c);
+        }
+    }
+
+    /** Throwing star: spins along a shallow arc (alternating up/down per hit), then sparks on impact. */
+    private void drawShuriken(Graphics2D g2, SkillFx fx, float t, double sx, double sy, int cx, int cy, float k) {
+        final float arrive = 0.28f;
+        Color c = fx.color;
+        double lift = (fx.mirrored ? 1 : -1) * 34 * k;
+        if (t < arrive) {
+            for (int i = 3; i >= 0; i--) {
+                double p = 0.3 + 0.7 * Math.max(0, t / arrive - i * 0.06);
+                double x = sx + (cx - sx) * p;
+                double y = sy + (cy - sy) * p + lift * Math.sin(Math.PI * p);
+                Graphics2D g = (Graphics2D) g2.create();
+                g.translate(x, y);
+                g.rotate(t * 46 - i * 0.6);
+                float r = 20 * k;
+                if (i == 0) {
+                    g.setColor(new Color(30, 32, 40, 200));
+                    g.setStroke(new BasicStroke(2.5f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.draw(starShape(0, 0, r));
+                    g.setColor(new Color(236, 240, 248));
+                    g.fill(starShape(0, 0, r));
+                    g.setColor(c);
+                    g.fillOval(Math.round(-3 * k), Math.round(-3 * k), Math.round(6 * k), Math.round(6 * k));
+                } else {
+                    g.setColor(alpha(c, 120 * (1 - i / 4f)));
+                    g.fill(starShape(0, 0, r));
+                }
+                g.dispose();
+            }
+        } else {
+            float e = (t - arrive) / (1 - arrive);
+            impactFlash(g2, cx, cy, e / 0.4f, k, 0.85f, c);
+            sparks(g2, fx, cx, cy, e / 0.7f, k, 1f, c);
+        }
+    }
+
+    /** Gunshot: a muzzle flash at the player's hand, a bright tracer to the monster, sparks on impact. */
+    private void drawShot(Graphics2D g2, SkillFx fx, float t, double sx, double sy, int cx, int cy, float k) {
+        Color c = fx.color;
+        double side = (fx.mirrored ? -1 : 1) * 6 * k;
+        if (t < 0.22f) {
+            float m = 1 - t / 0.22f;
+            g2.setColor(new Color(255, 236, 160, Math.round(240 * m)));
+            g2.fill(starShape((float) sx + 14 * k, (float) sy, 20 * k * m + 2));
+            g2.setColor(new Color(255, 255, 255, Math.round(255 * m)));
+            g2.fill(starShape((float) sx + 14 * k, (float) sy, 9 * k * m + 1));
+        }
+        if (t < 0.32f) {
+            float tr = 1 - t / 0.32f;
+            java.awt.geom.Line2D.Double line = new java.awt.geom.Line2D.Double(sx + 20 * k, sy, cx, cy + side);
+            g2.setStroke(new BasicStroke(11f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(alpha(c, 90 * tr));
+            g2.draw(line);
+            g2.setStroke(new BasicStroke(2.5f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(new Color(255, 250, 230, Math.round(255 * tr)));
+            g2.draw(line);
+        }
+        impactFlash(g2, cx, cy, t / 0.35f, k, 0.9f, c);
+        sparks(g2, fx, cx, cy, (t - 0.03f) / 0.65f, k, 1f, c);
+    }
+
+    /** Bright radial burst at the impact point; ft runs 0→1 over its life. */
+    private static void impactFlash(Graphics2D g2, int cx, int cy, float ft, float k, float size, Color c) {
+        if (ft < 0 || ft >= 1) return;
+        float fr = (18 + 52 * ft) * k * size;
+        int fa = Math.round(200 * (1 - ft));
+        g2.setPaint(new RadialGradientPaint(new java.awt.geom.Point2D.Float(cx, cy), fr,
+                new float[] {0f, 0.35f, 1f},
+                new Color[] {new Color(255, 255, 240, fa), alpha(c, fa / 2f), alpha(c, 0)}));
+        g2.fill(new Ellipse2D.Float(cx - fr, cy - fr, fr * 2, fr * 2));
+    }
+
+    /** Expanding, thinning shockwave ellipse; e runs 0→1. */
+    private static void ring(Graphics2D g2, int cx, int cy, float e, float k, float maxR, Color c) {
+        if (e <= 0 || e >= 1) return;
+        float ee = easeOutCubic(e);
+        float rx = (10 + maxR * ee) * k;
+        float ry = rx * 0.62f;
+        g2.setStroke(new BasicStroke(6f * k * (1 - e) + 1));
+        g2.setColor(alpha(c, 220 * (1 - e)));
+        g2.draw(new Ellipse2D.Float(cx - rx, cy - ry, rx * 2, ry * 2));
+    }
+
+    /** Sparks shooting out from the impact point in the fx's pre-rolled directions; st runs 0→1. */
+    private static void sparks(Graphics2D g2, SkillFx fx, int cx, int cy, float st, float k, float reach, Color c) {
+        if (st <= 0 || st >= 1) return;
+        g2.setStroke(new BasicStroke(3f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (int i = 0; i < SLASH_SPARKS; i++) {
+            double a = fx.sparkAngles[i];
+            double d0 = (12 + st * 75 * reach * fx.sparkSpeeds[i]) * k;
+            double len = (20 * (1 - st) + 5) * k;
+            int alpha = Math.round(230 * (1 - st));
+            g2.setColor(i % 3 == 0 ? new Color(255, 255, 255, alpha) : alpha(c, alpha));
+            g2.drawLine((int) Math.round(cx + Math.cos(a) * d0), (int) Math.round(cy + Math.sin(a) * d0),
+                    (int) Math.round(cx + Math.cos(a) * (d0 + len)), (int) Math.round(cy + Math.sin(a) * (d0 + len)));
+        }
+    }
+
+    /** A tapering wedge with its point at (tipX, tipY), extending backwards along -(dx, dy), fading toward the tail. */
+    private static void fillWedge(Graphics2D g2, double tipX, double tipY, double dx, double dy,
+                                  double length, double width, Color tipColor, Color tailColor) {
+        double tailX = tipX - dx * length, tailY = tipY - dy * length;
+        double nx = -dy * width / 2, ny = dx * width / 2;
+        Path2D.Double p = new Path2D.Double();
+        p.moveTo(tipX, tipY);
+        p.lineTo(tailX + nx, tailY + ny);
+        p.lineTo(tailX - nx, tailY - ny);
+        p.closePath();
+        g2.setPaint(new GradientPaint((float) tipX, (float) tipY, tipColor, (float) tailX, (float) tailY, tailColor));
+        g2.fill(p);
+    }
+
+    private static Color alpha(Color c, float a) {
+        return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.max(0, Math.min(255, Math.round(a))));
+    }
+
+    /** Draws and expires heal effects: a green glow ring at the player's feet and "+" crosses rising around the body. */
+    private void drawHeals(Graphics2D g2, int playerCx, int playerGroundY) {
+        if (healFxs.isEmpty()) return;
         long now = System.currentTimeMillis();
-        int cx = monsterCx, cy = monsterGroundY - monsterHitHeight();
-        // Grows with the stage so it still reads as big in fullscreen (1.0 at the default 260px height).
-        float k = Math.max(1f, Math.min(1.8f, getHeight() / 260f));
-        Iterator<SlashFx> it = slashFxs.iterator();
+        int bodyW = playerBodyW(), bodyH = playerBodyH();
+        Iterator<HealFx> it = healFxs.iterator();
         while (it.hasNext()) {
-            SlashFx fx = it.next();
+            HealFx fx = it.next();
             long elapsed = now - fx.start;
-            if (elapsed >= SLASH_DURATION) {
+            if (elapsed >= HEAL_DURATION) {
                 it.remove();
                 continue;
             }
-            float t = elapsed / (float) SLASH_DURATION;
-            float reveal = t < 0.35f ? 1 - (float) Math.pow(1 - t / 0.35f, 3) : 1f;   // ease-out sweep
-            float fade = t < 0.45f ? 1f : Math.max(0f, 1f - (t - 0.45f) / 0.55f);
-            float thickness = 24f * k * (0.35f + 0.65f * fade);
-            final float radius = 95f * k;
-            Color c = fx.color;
+            float t = elapsed / (float) HEAL_DURATION;
 
-            // Impact flash: a bright burst on the monster right as the blade connects.
-            float ft = t / 0.3f;
-            if (ft < 1) {
-                float fr = (18 + 52 * ft) * k;
-                int fa = Math.round(200 * (1 - ft));
-                g2.setPaint(new RadialGradientPaint(new java.awt.geom.Point2D.Float(cx, cy), fr,
-                        new float[] {0f, 0.35f, 1f},
-                        new Color[] {new Color(255, 255, 240, fa),
-                                new Color(c.getRed(), c.getGreen(), c.getBlue(), fa / 2),
-                                new Color(c.getRed(), c.getGreen(), c.getBlue(), 0)}));
-                g2.fill(new Ellipse2D.Float(cx - fr, cy - fr, fr * 2, fr * 2));
-            }
+            // Soft glow over the body plus a ring spreading at the feet.
+            float glow = t < 0.3f ? t / 0.3f : Math.max(0f, 1f - (t - 0.3f) / 0.7f);
+            float gr = bodyW * 0.8f;
+            g2.setPaint(new RadialGradientPaint(new java.awt.geom.Point2D.Float(playerCx, playerGroundY - bodyH * 0.45f), gr * 1.4f,
+                    new float[] {0f, 1f}, new Color[] {alpha(HEAL_COLOR, 90 * glow), alpha(HEAL_COLOR, 0)}));
+            g2.fill(new Ellipse2D.Float(playerCx - gr * 1.4f, playerGroundY - bodyH * 0.45f - gr * 1.4f, gr * 2.8f, gr * 2.8f));
+            float rx = bodyW * (0.4f + 0.6f * easeOutCubic(t));
+            g2.setStroke(new BasicStroke(3f));
+            g2.setColor(alpha(HEAL_COLOR, 220 * (1 - t)));
+            g2.draw(new Ellipse2D.Float(playerCx - rx, playerGroundY - rx / 4, rx * 2, rx / 2));
 
-            Graphics2D g = (Graphics2D) g2.create();
-            g.translate(cx, cy);
-            if (fx.mirrored) g.scale(-1, 1);
-            g.rotate(Math.toRadians(32));   // diagonal: top-left to bottom-right
-            // Shift so the middle of the arc (its top, at -radius) cuts right through the monster.
-            g.translate(0, radius);
-            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.round(70 * fade)));
-            g.fill(crescent(radius, thickness * 2.3f, reveal));
-            g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.round(225 * fade)));
-            g.fill(crescent(radius, thickness, reveal));
-            g.setColor(new Color(255, 250, 235, Math.round(245 * fade)));
-            g.fill(crescent(radius, thickness * 0.4f, reveal));
-            g.dispose();
-
-            // Sparks fly out once the blade reaches the middle of the monster.
-            float st = (t - 0.12f) / 0.6f;
-            if (st > 0 && st < 1) {
-                g2.setStroke(new BasicStroke(3f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                for (int i = 0; i < SLASH_SPARKS; i++) {
-                    double a = fx.sparkAngles[i];
-                    double d0 = (12 + st * 75 * fx.sparkSpeeds[i]) * k;
-                    double len = (20 * (1 - st) + 5) * k;
-                    int alpha = Math.round(230 * (1 - st));
-                    g2.setColor(i % 3 == 0 ? new Color(255, 255, 255, alpha)
-                            : new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha));
-                    g2.drawLine((int) Math.round(cx + Math.cos(a) * d0), (int) Math.round(cy + Math.sin(a) * d0),
-                            (int) Math.round(cx + Math.cos(a) * (d0 + len)), (int) Math.round(cy + Math.sin(a) * (d0 + len)));
-                }
+            for (int i = 0; i < HEAL_CROSSES; i++) {
+                long ce = elapsed - fx.delay[i];
+                if (ce < 0) continue;
+                float p = Math.min(1f, ce / (float) (HEAL_DURATION - 300));
+                float a = p < 0.2f ? p / 0.2f : 1f - (p - 0.2f) / 0.8f;
+                if (a <= 0) continue;
+                float x = playerCx + (float) (fx.xOff[i] * bodyW);
+                float y = playerGroundY - (float) (fx.yFrac[i] * bodyH) - p * 46;
+                float s = 7f;
+                g2.setColor(new Color(20, 70, 30, Math.round(160 * a)));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(x - s - 1, y - 3, s * 2 + 2, 6, 3, 3));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(x - 3, y - s - 1, 6, s * 2 + 2, 3, 3));
+                g2.setColor(alpha(new Color(190, 255, 200), 255 * a));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(x - s, y - 2, s * 2, 4, 2, 2));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(x - 2, y - s, 4, s * 2, 2, 2));
             }
         }
         repaint();
