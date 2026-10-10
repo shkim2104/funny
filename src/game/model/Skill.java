@@ -63,7 +63,7 @@ public class Skill {
     public Skill atk(double ratio) { this.atkRatio = ratio; return this; }
     public Skill hp(double ratio) { this.hpRatio = ratio; return this; }
     public Skill def(double ratio) { this.defRatio = ratio; return this; }
-    /** Scales with magic power (ATK + MaxMP/4). */
+    /** Scales with magic power (ATK + MaxMP/2). */
     public Skill magic(double ratio) { this.magicRatio = ratio; return this; }
     public Skill hits(int hits) { this.hits = hits; return this; }
     public Skill ignoreDefense() { this.ignoreDefense = true; return this; }

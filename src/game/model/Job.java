@@ -57,12 +57,53 @@ public enum Job {
             Skill.of("블래스트", 70, 30).def(4.5).hp(0.35).heal(0.2).fx(Skill.Fx.SMASH, 0xFFF0A0)
                     .desc("성스러운 일격 후 HP 20% 회복 (방어력 450% + 최대 HP 35%)")),
 
-    // ── 다른 직업군: 1차만 임시로 있음 (루트/차수는 설계 후 추가) ──
-    MAGE("마법사", "마법사", 1, "", "MP를 마력으로 바꿔 방어를 꿰뚫는 마법을 쓴다",
-            Skill.of("에너지 볼트", 10, 6).magic(1.7).fx(Skill.Fx.MAGIC, 0x8A7CFF).desc("마력 탄환을 쏜다 (마력 170%)"),
+    // Mage skills cost about 30% more MP than the warrior skill of the same tier: MP is their firepower.
+
+    // ── 마법사: 마력 (불·독, 한 방이 가장 센 고화력) ──
+    // MAGE keeps its enum name so saves that already advanced to "마법사" still load.
+    MAGE("마법사", "마법사", 1, "마력", "MP를 마력으로 바꿔 강력한 한 방을 날리는 마법사",
+            Skill.of("에너지 볼트", 10, 8).magic(1.8).fx(Skill.Fx.MAGIC, 0x8A7CFF)
+                    .desc("마력 탄환을 쏜다 (마력 180%)")),
+    FP_WIZARD("위자드(불,독)", "마법사", 2, "마력", "불꽃을 다루기 시작한 위자드",
+            Skill.of("파이어 애로우", 20, 16).magic(2.6).fx(Skill.Fx.MAGIC, 0xFF8A3A)
+                    .desc("불꽃 화살을 쏜다 (마력 260%)")),
+    FP_MAGE("메이지(불,독)", "마법사", 3, "마력", "폭발하는 화염으로 적을 날려 버리는 메이지",
+            Skill.of("익스플로전", 50, 28).magic(3.6).fx(Skill.Fx.SMASH, 0xFF5A2A)
+                    .desc("적을 중심으로 폭발을 일으킨다 (마력 360%)")),
+    FP_ARCHMAGE("아크메이지(불,독)", "마법사", 4, "마력", "하늘에서 불덩이를 떨어뜨리는 대마법사",
+            Skill.of("메테오", 70, 42).magic(5.0).fx(Skill.Fx.SMASH, 0xE0283C)
+                    .desc("거대한 운석을 떨어뜨린다 (마력 500%)")),
+
+    // ── 마법사: 마력 + 방어 무시 (썬·콜, 방어를 꿰뚫는 연타) ──
+    IL_ADEPT("번개술사", "마법사", 1, "마력+방어무시", "방어를 무시하는 번개를 다루는 마법사",
+            Skill.of("썬더 볼트", 10, 8).magic(1.5).ignoreDefense().fx(Skill.Fx.LIGHTNING, 0xFFE84A)
+                    .desc("방어를 무시하는 번개 (마력 150%)")),
+    IL_WIZARD("위자드(썬,콜)", "마법사", 2, "마력+방어무시", "얼음과 번개를 오가는 위자드",
+            Skill.of("콜드 빔", 20, 15).magic(1.2).hits(2).ignoreDefense().fx(Skill.Fx.MAGIC, 0x7CC8FF)
+                    .desc("냉기 광선을 두 번 쏜다 (마력 120% x2, 방어 무시)")),
+    IL_MAGE("메이지(썬,콜)", "마법사", 3, "마력+방어무시", "번개 창을 연달아 내리꽂는 메이지",
+            Skill.of("썬더 스피어", 50, 26).magic(1.3).hits(3).ignoreDefense().fx(Skill.Fx.LIGHTNING, 0xFFE04A)
+                    .desc("번개 창을 세 번 내리꽂는다 (마력 130% x3, 방어 무시)")),
+    IL_ARCHMAGE("아크메이지(썬,콜)", "마법사", 4, "마력+방어무시", "끝없이 이어지는 번개를 부르는 대마법사",
+            Skill.of("체인 라이트닝", 70, 38).magic(1.4).hits(4).ignoreDefense().fx(Skill.Fx.LIGHTNING, 0xBFE0FF)
+                    .desc("연쇄 번개가 네 번 몰아친다 (마력 140% x4, 방어 무시)")),
+
+    // ── 마법사: 마력 + 회복 (사제, 싸우면서 버티는 성직자) ──
+    ACOLYTE("복사", "마법사", 1, "마력+회복", "치유의 기도를 배우는 견습 성직자",
             // Pure heal: no hit effect; the color only tints its button (the heal itself plays a recovery effect).
-            Skill.of("힐", 15, 12).heal(0.35).fx(Skill.Fx.NONE, 0x7CF09A).desc("최대 HP의 35%를 회복한다"),
-            Skill.of("썬더 볼트", 20, 16).magic(2.3).ignoreDefense().fx(Skill.Fx.LIGHTNING, 0xFFE84A).desc("방어를 무시하는 번개 (마력 230%)")),
+            Skill.of("힐", 10, 10).heal(0.3).fx(Skill.Fx.NONE, 0x7CF09A)
+                    .desc("최대 HP의 30%를 회복한다")),
+    CLERIC("클레릭", "마법사", 2, "마력+회복", "성스러운 화살로 싸우며 스스로를 치유한다",
+            Skill.of("홀리 애로우", 20, 14).magic(2.0).heal(0.1).fx(Skill.Fx.MAGIC, 0xFFD86A)
+                    .desc("성스러운 화살을 쏘고 HP 10% 회복 (마력 200%)")),
+    PRIEST("프리스트", "마법사", 3, "마력+회복", "빛의 힘으로 적을 태우고 상처를 아물게 한다",
+            Skill.of("샤이닝 레이", 50, 24).magic(1.4).hits(2).heal(0.15).fx(Skill.Fx.SMASH, 0xFFF0B0)
+                    .desc("빛줄기가 두 번 내리친 뒤 HP 15% 회복 (마력 140% x2)")),
+    BISHOP("비숍", "마법사", 4, "마력+회복", "하늘의 심판을 내리는 대성직자",
+            Skill.of("제네시스", 70, 40).magic(3.6).heal(0.25).fx(Skill.Fx.LIGHTNING, 0xFFCC4A)
+                    .desc("하늘의 빛이 내리꽂힌 뒤 HP 25% 회복 (마력 360%)")),
+
+    // ── 다른 직업군: 1차만 임시로 있음 (루트/차수는 설계 후 추가) ──
     ARCHER("궁수", "궁수", 1, "", "정확한 사격으로 급소를 노린다",
             Skill.of("애로우 블로우", 10, 6).atk(1.7).fx(Skill.Fx.ARROW, 0x9EE06A).desc("힘껏 당긴 화살 (공격력 170%)"),
             Skill.of("더블 샷", 15, 10).atk(1.15).hits(2).fx(Skill.Fx.ARROW, 0x6AD0E0).desc("화살 두 발을 연달아 쏜다 (115% x2)"),

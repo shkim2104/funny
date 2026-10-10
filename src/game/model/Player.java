@@ -160,9 +160,12 @@ public class Player {
         return result;
     }
 
-    /** Power behind magic skills: weapon attack plus a share of max MP, so MP investment pays off for mages. */
+    /**
+     * Power behind magic skills: weapon attack plus half of max MP. At half, a stat point in MP adds as
+     * much magic as one in ATK (4 MP = +2, same as +2 ATK) and also grows the mana pool, so it pays off for mages.
+     */
     public int getMagicAtk() {
-        return getAtk() + maxMp / 4;
+        return getAtk() + maxMp / 2;
     }
 
     public boolean useMp(int amount) {
