@@ -151,11 +151,54 @@ public enum Job {
             Skill.of("천공의 노래", 70, 30).atk(1.7).spd(3.4).hits(4).fx(Skill.Fx.ARROW, 0x6FC3FF)
                     .desc("하늘을 가르는 화살이 네 번 몰아친다 (공격력 170% + 속도 340%) x4")),
 
+    // Thieves sit between warriors and archers: throwing stars and dual blades run ~10% above the warrior
+    // skill of the same tier, daggers a little below it because every hit also drains HP.
+
+    // ── 도적: 공격력 + 행운 (표창, 행운이 위력이 되는 원거리 연타) ──
+    // Luck ratio is always 2x the ATK ratio (see Skill.luk), so ATK and LUK points are worth the same.
+    // THIEF keeps its enum name so saves that already advanced to "도적" still load.
+    THIEF("도적", "도적", 1, "공격력+행운", "행운을 실어 표창을 던지는 도적",
+            Skill.of("럭키 세븐", 10, 6).atk(1.1).luk(2.2).hits(2).fx(Skill.Fx.SHURIKEN, 0xC8D0E0)
+                    .desc("표창 두 개를 던진다 (공격력 110% + 행운 220%) x2")),
+    ASSASSIN("어쌔신", "도적", 2, "공격력+행운", "표창을 세 개씩 날리는 암살자",
+            Skill.of("트리플 스로우", 20, 12).atk(1.05).luk(2.1).hits(3).fx(Skill.Fx.SHURIKEN, 0x7AE0B0)
+                    .desc("표창 세 개를 던진다 (공격력 105% + 행운 210%) x3")),
+    HERMIT("허밋", "도적", 3, "공격력+행운", "거대한 표창 한 방으로 적을 꿰뚫는 은둔자",
+            Skill.of("어벤져", 50, 20).atk(4.4).luk(8.8).fx(Skill.Fx.SHURIKEN, 0xB050FF)
+                    .desc("거대한 표창을 던진다 (공격력 440% + 행운 880%)")),
+    NIGHT_LORD("나이트로드", "도적", 4, "공격력+행운", "밤을 지배하는 표창의 군주",
+            Skill.of("쿼드러플 스로우", 70, 30).atk(1.55).luk(3.1).hits(4).fx(Skill.Fx.SHURIKEN, 0xFFD24A)
+                    .desc("표창 네 개를 던진다 (공격력 155% + 행운 310%) x4")),
+
+    // ── 도적: 공격력 + 흡혈 (단검, 베는 만큼 HP를 빼앗는 근접형) ──
+    DAGGER_THIEF("단검 도적", "도적", 1, "공격력+흡혈", "그림자 속에서 급소를 노리는 단검 도적",
+            Skill.of("어쌔신", 10, 6).atk(1.0).alwaysCrit().drain(0.15).fx(Skill.Fx.SLASH, 0xB050FF)
+                    .desc("반드시 치명타가 나는 기습, 피해의 15% 흡혈 (공격력 100%)")),
+    BANDIT("시프", "도적", 2, "공격력+흡혈", "단검을 연달아 휘두르며 생명력을 훔친다",
+            Skill.of("새비지 블로우", 20, 12).atk(0.85).hits(3).drain(0.1).fx(Skill.Fx.SLASH, 0xD06AFF)
+                    .desc("단검으로 세 번 벤다, 피해의 10% 흡혈 (공격력 85% x3)")),
+    CHIEF_BANDIT("시프마스터", "도적", 3, "공격력+흡혈", "부메랑처럼 파고드는 단검의 달인",
+            Skill.of("부메랑 스텝", 50, 20).atk(1.75).hits(2).drain(0.15).fx(Skill.Fx.THRUST, 0x9B4DFF)
+                    .desc("두 번 파고들어 찌른다, 피해의 15% 흡혈 (공격력 175% x2)")),
+    SHADOWER("섀도어", "도적", 4, "공격력+흡혈", "그림자와 하나 되어 숨통을 끊는다",
+            Skill.of("어쌔시네이트", 70, 30).atk(2.9).alwaysCrit().drain(0.2).fx(Skill.Fx.SLASH, 0xE0283C)
+                    .desc("반드시 치명타가 나는 암살, 피해의 20% 흡혈 (공격력 290%)")),
+
+    // ── 도적: 공격력 (이도, 두 자루 칼로 가장 많이 베는 난도질) ──
+    SEMI_DUALER("세미듀어러", "도적", 1, "공격력", "양손에 단검을 든 견습 이도류",
+            Skill.of("더블 스탭", 10, 6).atk(1.05).hits(2).fx(Skill.Fx.SLASH, 0x6FC3FF)
+                    .desc("두 자루로 연달아 벤다 (공격력 105% x2)")),
+    DUALER("듀어러", "도적", 2, "공격력", "칼날의 폭풍을 일으키는 이도류",
+            Skill.of("블레이드 퓨리", 20, 12).atk(0.8).hits(4).fx(Skill.Fx.SLASH, 0x7AE0B0)
+                    .desc("네 번 휘몰아친다 (공격력 80% x4)")),
+    DUAL_MASTER("듀얼마스터", "도적", 3, "공격력", "쉬지 않는 칼날로 적을 갈아낸다",
+            Skill.of("블레이드 스톰", 50, 20).atk(0.86).hits(5).fx(Skill.Fx.SLASH, 0xFFD24A)
+                    .desc("칼날 폭풍이 다섯 번 몰아친다 (공격력 86% x5)")),
+    DUAL_BLADE("듀얼블레이드", "도적", 4, "공격력", "여섯 갈래 칼날의 아수라",
+            Skill.of("아수라", 70, 30).atk(1.03).hits(6).fx(Skill.Fx.SLASH, 0xFF4A6A)
+                    .desc("아수라처럼 여섯 번 베어 낸다 (공격력 103% x6)")),
+
     // ── 다른 직업군: 1차만 임시로 있음 (루트/차수는 설계 후 추가) ──
-    THIEF("도적", "도적", 1, "", "빠른 손놀림으로 몰아치는 연타",
-            Skill.of("럭키 세븐", 10, 6).atk(1.0).hits(2).fx(Skill.Fx.SHURIKEN, 0xC8D0E0).desc("표창 두 개를 던진다 (100% x2)"),
-            Skill.of("트리플 스로우", 15, 11).atk(0.85).hits(3).fx(Skill.Fx.SHURIKEN, 0x7AE0B0).desc("표창 세 개를 던진다 (85% x3)"),
-            Skill.of("어쌔신", 20, 15).atk(1.8).alwaysCrit().fx(Skill.Fx.SLASH, 0xB050FF).desc("그림자에서 급소를 찌른다 (반드시 치명타, 180%)")),
     PIRATE("해적", "해적", 1, "", "주먹과 총을 오가는 거친 싸움꾼",
             Skill.of("더블 파이어", 10, 6).atk(1.0).hits(2).fx(Skill.Fx.SHOT, 0xFFB040).desc("총을 두 번 쏜다 (100% x2)"),
             Skill.of("서머솔트 킥", 15, 10).atk(2.0).fx(Skill.Fx.SMASH, 0x5AB0FF).desc("공중제비 발차기 (공격력 200%)"),

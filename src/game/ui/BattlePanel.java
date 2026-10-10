@@ -486,10 +486,22 @@ public class BattlePanel extends JPanel {
             int dmg = computeDamage(skill.powerFor(player), def);
             boolean crit = skill.isAlwaysCrit() || rnd.nextInt(100) < player.getCritChance();
             int finalDmg = crit ? Math.round(dmg * 1.75f) : dmg;
+            int hpBefore = monster.getHp();
             monster.takeDamage(finalDmg);
             stage.showDamage(finalDmg, true, crit);
             appendLog((hits > 1 ? (index + 1) + "타! " : "") + (crit ? "치명타! " : "")
                     + monster.getName() + "에게 " + finalDmg + "의 피해!");
+            if (skill.getDrainRatio() > 0) {
+                // Drain from the damage that actually landed, so overkill on the last hit doesn't over-heal.
+                int dealt = Math.min(finalDmg, hpBefore);
+                int before = player.getHp();
+                player.heal((int) Math.round(dealt * skill.getDrainRatio()));
+                int healed = player.getHp() - before;
+                if (healed > 0) {
+                    stage.playHeal();
+                    appendLog("HP를 " + healed + " 흡수했다!");
+                }
+            }
             refreshStatus();
         }, () -> {
             if (index + 1 < hits && monster.isAlive()) skillHits(skill, hits, index + 1, onDone);
