@@ -5,7 +5,10 @@ import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Job;
 import game.model.Monster;
+import game.model.Augment;
 import game.model.Player;
+import game.model.Quest;
+import game.model.RunState;
 import game.model.Skill;
 import game.model.World;
 import game.save.SaveManager;
@@ -66,6 +69,8 @@ public class GameFrame extends JFrame {
     private int currentDungeonIndex;
     private int currentFloor;
     private boolean bossStage;
+    /** Augments etc. of the dungeon run in progress; null outside a dungeon. */
+    private RunState run;
 
     private boolean fullscreen;
 
@@ -136,6 +141,7 @@ public class GameFrame extends JFrame {
     private void startCharacter(String id, Player loaded) {
         player = loaded;
         currentSaveId = id;
+        battlePanel.setPlayerArt(CharacterArt.load(id));
         showTown(true);
         townMap.toast(loaded.getName() + "님, 다시 오신 것을 환영합니다!");
     }
@@ -146,9 +152,19 @@ public class GameFrame extends JFrame {
             Dialogs.message(this, "캐릭터 생성", "캐릭터는 최대 " + SaveManager.MAX_CHARACTERS + "명까지 만들 수 있습니다.");
             return;
         }
-        if (!createNewPlayer()) return;
+        CharacterArt art = createNewPlayer();
+        if (art == null) return;
         String id = SaveManager.newId();
         SaveManager.save(player, id);
+        art.save(id);
+        characterSelect.refresh(SaveManager.listCharacters(), id);
+    }
+
+    /** 다시 그리기 on the select screen: redraw a saved character, starting from their current drawing. */
+    private void redrawCharacter(String id, Player p) {
+        CharacterArt art = DrawCharacterDialog.edit(this, p.getName(), CharacterArt.load(id));
+        if (art == null) return;
+        art.save(id);
         characterSelect.refresh(SaveManager.listCharacters(), id);
     }
 
@@ -167,20 +183,20 @@ public class GameFrame extends JFrame {
         }
     }
 
-    /** Asks for a name and rolls a new player; false if the name prompt was cancelled. */
-    private boolean createNewPlayer() {
-        String name = Dialogs.input(this, "캐릭터 생성", "주인공의 이름을 입력하세요:", "");
-        if (name == null) return false;
-        if (name.trim().isEmpty()) name = "용사";
-        player = new Player(name.trim());
+    /** The player names and draws their hero, then a new player is rolled; null if they cancelled. */
+    private CharacterArt createNewPlayer() {
+        DrawCharacterDialog.Result made = DrawCharacterDialog.create(this);
+        if (made == null) return null;
+        String name = made.name.trim().isEmpty() ? "용사" : made.name.trim();
+        player = new Player(name);
         player.addItem("포션");
         player.addItem("포션");
-        Dialogs.message(this, "모험 시작", name.trim() + "의 모험이 시작됩니다!\n\n"
+        Dialogs.message(this, "모험 시작", name + "의 모험이 시작됩니다!\n\n"
                 + "초기 능력치\n"
                 + "HP " + player.getMaxHp() + "   MP " + player.getMaxMp()
                 + "   공격력 " + player.getBaseAtk() + "   방어력 " + player.getBaseDef()
                 + "\n행운 " + player.getLuck() + " (치명타 확률 " + player.getCritChance() + "%)");
-        return true;
+        return made.art;
     }
 
     /** Character select over the same town artwork as the title screen. */
@@ -189,6 +205,7 @@ public class GameFrame extends JFrame {
             @Override public void start(String id, Player p) { startCharacter(id, p); }
             @Override public void create() { createCharacter(); }
             @Override public void delete(String id, Player p) { deleteCharacter(id, p); }
+            @Override public void redraw(String id, Player p) { redrawCharacter(id, p); }
             @Override public void back() { showTitle(); }
         });
         BackgroundPanel panel = new BackgroundPanel(new BorderLayout(), loadImage("images/town_bg.png"));
@@ -196,23 +213,26 @@ public class GameFrame extends JFrame {
         return panel;
     }
 
-    /** Title screen: the old town artwork with the game's name, start (→ character select) and quit. */
+    /** Title screen: the pencil title scene, the game's name on a paper scrap, start (→ character select) and quit. */
     private JPanel buildTitlePanel() {
         BackgroundPanel panel = new BackgroundPanel(new GridBagLayout(), loadImage("images/town_bg.png"));
 
-        JLabel banner = new JLabel("공책 RPG", SwingConstants.CENTER);
-        banner.setFont(Theme.dosFont(Font.BOLD, 52));
-        banner.setForeground(Color.WHITE);
-        JPanel bannerPill = new TranslucentPill();
-        bannerPill.setBorder(new EmptyBorder(14, 36, 14, 36));
-        bannerPill.add(banner);
+        JLabel banner = Sketch.title("공책 RPG");
+        banner.setFont(Sketch.hand(Font.BOLD, 56f));
+        banner.setHorizontalAlignment(SwingConstants.CENTER);
+        JPanel bannerPill = new Sketch.Note(new BorderLayout(), 9701);
+        bannerPill.setBorder(new EmptyBorder(18, 44, 14, 44));
+        bannerPill.add(banner, BorderLayout.CENTER);
+        JLabel sub = Sketch.label("내가 그린 용사의 공책 속 모험", Font.PLAIN, 15f, Sketch.INK_SOFT);
+        sub.setHorizontalAlignment(SwingConstants.CENTER);
+        bannerPill.add(sub, BorderLayout.SOUTH);
 
         titleButtons = new JButton[] {
-                makePrimaryButton("게임 시작", () -> openCharacterSelect(null)),
-                makeButton("종료", () -> System.exit(0))
+                sketchButton("게임 시작", true, () -> openCharacterSelect(null)),
+                sketchButton("종료", false, () -> System.exit(0))
         };
-        JPanel buttonPanel = new JPanel(new GridLayout(titleButtons.length, 1, 10, 10));
-        buttonPanel.setOpaque(false);
+        JPanel buttonPanel = new Sketch.Note(new GridLayout(titleButtons.length, 1, 10, 8), 9702);
+        buttonPanel.setBorder(new EmptyBorder(14, 22, 14, 22));
         for (JButton b : titleButtons) buttonPanel.add(b);
         Theme.arrowNav(titleButtons);
 
@@ -221,8 +241,14 @@ public class GameFrame extends JFrame {
         column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
         bannerPill.setAlignmentX(Component.CENTER_ALIGNMENT);
         buttonPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        buttonPanel.setMaximumSize(new Dimension(240, buttonPanel.getPreferredSize().height));
-        column.add(bannerPill);
+        buttonPanel.setMaximumSize(new Dimension(260, buttonPanel.getPreferredSize().height));
+        // Wrapped in a FlowLayout so the scrap keeps its natural size (a fixed size from before the window
+        // was shown could clip the title).
+        JPanel bannerWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        bannerWrap.setOpaque(false);
+        bannerWrap.add(bannerPill);
+        bannerWrap.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(bannerWrap);
         column.add(Box.createVerticalStrut(36));
         column.add(buttonPanel);
         panel.add(column);
@@ -231,14 +257,17 @@ public class GameFrame extends JFrame {
 
     /** Town: click buildings on town.png; character management lives in the side menu. */
     private JPanel buildTownPanel() {
-        // The job hall (전직소) is drawn into an empty corner of the town art.
-        townMap = new MapScreen(JobHallArt.paintOnto(loadImage("images/town.png")));
+        // The job hall (전직소) is drawn into the pencil town art itself; JobHallArt.AREA still marks its hotspot.
+        townMap = new MapScreen(loadImage("images/town.png"));
         townMap.addHotspot("대장간", 130, 200, 430, 350, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("상점", 725, 630, 345, 340, this::openShop);
         townMap.addHotspot("던전 입구", 860, 990, 330, 260, () -> openDungeonMap(true));
         Rectangle hall = JobHallArt.AREA;
         townMap.addHotspot("전직소", hall.x, hall.y, hall.width, hall.height, this::openAdvancement);
+        townMap.addHotspot("여관", 100, 880, 190, 180, this::openInn);
+        townMap.addHotspot("의뢰 게시판", 108, 718, 202, 165, this::openQuestBoard);
+        townMap.addHotspot("보물 뽑기", 450, 815, 200, 150, this::openTreasure);
 
         townInfoLabel = Theme.body("");
         townButtons = new JButton[] {
@@ -364,6 +393,13 @@ public class GameFrame extends JFrame {
         return null;
     }
 
+    private JButton sketchButton(String text, boolean primary, Runnable action) {
+        JButton btn = new Sketch.Button(text, primary);
+        btn.setFont(Sketch.hand(Font.BOLD, 18f));
+        btn.addActionListener(e -> action.run());
+        return btn;
+    }
+
     private JButton makeButton(String text, Runnable action) {
         JButton btn = Theme.ghostButton(text);
         btn.addActionListener(e -> action.run());
@@ -455,6 +491,29 @@ public class GameFrame extends JFrame {
         });
     }
 
+    /** 여관: pay to rest (full HP/MP); resting also saves, like a save point. */
+    private void openInn() {
+        pageTurner.turnToBlankPage(() -> {
+            boolean rested = TownDialogs.inn(this, player, () -> SaveManager.save(player, currentSaveId));
+            refreshTown();
+            if (rested) townMap.toast("푹 쉬었다! HP와 MP가 모두 회복되고 모험이 기록되었다.");
+        });
+    }
+
+    private void openQuestBoard() {
+        pageTurner.turnToBlankPage(() -> {
+            TownDialogs.questBoard(this, player, dungeons, rnd);
+            refreshTown();
+        });
+    }
+
+    private void openTreasure() {
+        pageTurner.turnToBlankPage(() -> {
+            TownDialogs.treasure(this, player, rnd);
+            refreshTown();
+        });
+    }
+
     private void openShop() {
         pageTurner.turnToBlankPage(() -> {
             new ShopDialog(this, player).setVisible(true);
@@ -487,6 +546,9 @@ public class GameFrame extends JFrame {
         currentDungeonIndex = dungeonIndex;
         currentFloor = 1;
         bossStage = false;
+        run = new RunState(dungeonIndex);
+        battlePanel.setRun(run);
+        battlePanel.setBossFight(false);
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
         Monster monster = dungeon.randomMonster(rnd);
         // Start the battle inside the swap so the incoming page already shows the monster.
@@ -500,6 +562,7 @@ public class GameFrame extends JFrame {
     private void startNextFight() {
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
         Monster monster = bossStage ? dungeon.spawnBoss() : dungeon.randomMonster(rnd);
+        battlePanel.setBossFight(bossStage);
         battlePanel.nextBattle(monster, result -> onFightFinished(result, monster));
     }
 
@@ -518,9 +581,14 @@ public class GameFrame extends JFrame {
         int beforeLevel = player.getLevel();
         List<Skill> beforeSkills = player.getSkills();
         boolean couldAdvance = !player.getAvailableAdvancements().isEmpty();
-        player.gainExp(monster.getExpReward());
-        player.earnGold(monster.getGoldReward());
-        StringBuilder msg = new StringBuilder("EXP " + monster.getExpReward() + ", 골드 " + monster.getGoldReward() + "G 획득!");
+        // Quest board progress: every kill counts toward matching hunts / boss requests.
+        for (Quest q : player.recordKill(monster.getName())) {
+            battlePanel.logResult("[의뢰 완료] " + q.getTitle() + " — 마을 의뢰 게시판에서 보상을 받으세요.");
+        }
+        int expGain = run.exp(monster.getExpReward()), goldGain = run.gold(monster.getGoldReward());
+        player.gainExp(expGain);
+        player.earnGold(goldGain);
+        StringBuilder msg = new StringBuilder("EXP " + expGain + ", 골드 " + goldGain + "G 획득!");
         if (player.getLevel() > beforeLevel) {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
             msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! (스탯 포인트 +")
@@ -537,6 +605,7 @@ public class GameFrame extends JFrame {
                 battlePanel.logResult(msg.toString());
                 currentFloor++;
             }
+            offerAugment();
             startNextFight();
             return;
         }
@@ -552,6 +621,15 @@ public class GameFrame extends JFrame {
         Item chestItem = rollChestItem(currentDungeonIndex);
         player.addItem(chestItem.getName());
         finalMsg.append("\n보물 상자를 발견했다! ").append(chestItem.describe()).append(" 획득!");
+
+        // The boss's own gear: always one, preferring pieces not collected yet.
+        Item bossItem = ItemCatalog.rollBossDrop(currentDungeonIndex, player, rnd);
+        if (bossItem != null) {
+            player.addItem(bossItem.getName());
+            finalMsg.append("\n").append(monster.getName()).append("의 전리품! ").append(bossItem.describe())
+                    .append(" — ").append(bossItem.getEffectText());
+            AugmentDialog.showLoot(this, monster.getName(), bossItem);
+        }
 
         if (currentDungeonIndex == player.getUnlockedDungeon() && currentDungeonIndex + 1 < dungeons.size()) {
             player.setUnlockedDungeon(currentDungeonIndex + 1);
@@ -589,7 +667,7 @@ public class GameFrame extends JFrame {
         for (int w : weights) total += w;
         int roll = rnd.nextInt(total);
         Item.Grade[] grades = Item.Grade.values();
-        Item.Grade chosenGrade = grades[grades.length - 1];
+        Item.Grade chosenGrade = grades[weights.length - 1];   // chests never hold boss-only (MYTHIC) gear
         int acc = 0;
         for (int i = 0; i < weights.length; i++) {
             acc += weights[i];
@@ -612,7 +690,18 @@ public class GameFrame extends JFrame {
     /** Every way out of a dungeon (clear, retreat, defeat) ends here: MP is fully restored on the way out. */
     private void endDungeonRun(String outcome) {
         player.restoreMp(player.getMaxMp());
-        battlePanel.endRun(outcome + "\n던전을 나서며 MP가 모두 회복되었다.", "던전 지도로", this::returnToDungeonMap);
+        String fade = run != null && !run.getAugments().isEmpty() ? "\n증강 효과가 모두 사라졌다." : "";
+        run = null;
+        battlePanel.setRun(null);
+        battlePanel.endRun(outcome + "\n던전을 나서며 MP가 모두 회복되었다." + fade, "던전 지도로", this::returnToDungeonMap);
+    }
+
+    /** After a kill on the way to the boss: pick one of three augments for the rest of this run. */
+    private void offerAugment() {
+        Augment a = AugmentDialog.pick(this, run, rnd);
+        if (a == null) return;
+        run.take(a);
+        battlePanel.logResult("[" + a.getTier().getLabel() + " 증강] " + a.getName() + " — " + a.getDescription());
     }
 
     /** After a cleared or abandoned run: back on the world map, so the next dungeon is one click away. */

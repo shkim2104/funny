@@ -33,7 +33,7 @@ public class Shop {
     }
 
     private void buy(Player player) {
-        List<Item> items = new ArrayList<>(ItemCatalog.all());
+        List<Item> items = new ArrayList<>(ItemCatalog.shopItems());
         System.out.println("\n-- 구매 목록 --");
         for (int i = 0; i < items.size(); i++) {
             System.out.println((i + 1) + ") " + items.get(i).describe());

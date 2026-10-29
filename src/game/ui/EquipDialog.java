@@ -9,6 +9,7 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.List;
 
+/** Inventory / equipment, drawn as a pencil sketch on a notebook page (see Sketch). */
 public class EquipDialog extends JDialog {
     private final Player player;
     private final JLabel currentLabel = new JLabel();
@@ -19,13 +20,15 @@ public class EquipDialog extends JDialog {
     private final JList<String> armorList = new JList<>(armorModel);
 
     private final JPanel detailBody = new JPanel();
-    private final JLabel detailPlaceholder = Theme.body("<html><div style='text-align:center;width:160px'>왼쪽 목록에서 아이템을 선택하면<br>여기에 상세 정보가 표시됩니다.</div></html>");
+    private final JLabel detailPlaceholder = new JLabel(
+            "<html><div style='text-align:center;width:170px'>왼쪽 목록에서 아이템을 고르면<br>여기에 적어 둘게요.</div></html>");
     private final CardLayout detailCards = new CardLayout();
     private final JPanel detailCardHost = new JPanel();
+    private final JLabel detailIcon = new JLabel();
     private final JLabel detailName = new JLabel();
-    private final JLabel detailStat = Theme.body("");
+    private final JLabel detailStat = new JLabel();
     private final JLabel detailStatus = new JLabel();
-    private final JButton detailAction = Theme.primaryButton("장착하기");
+    private final JButton detailAction = new Sketch.Button("장착하기", true);
 
     private Item.Type activeType = Item.Type.WEAPON;
     private String selectedWeapon;
@@ -34,24 +37,29 @@ public class EquipDialog extends JDialog {
     public EquipDialog(JFrame owner, Player player) {
         super(owner, "장비 변경", true);
         this.player = player;
-        Theme.styleDialog(this);
-        setSize(680, 480);
-        setMinimumSize(new Dimension(560, 400));
+        setSize(720, 560);
+        setMinimumSize(new Dimension(580, 440));
         setLocationRelativeTo(owner);
-        setLayout(new BorderLayout(14, 14));
-        ((JComponent) getContentPane()).setBorder(new EmptyBorder(18, 18, 16, 18));
+        Sketch.Page page = new Sketch.Page(new BorderLayout(14, 12), 34);
+        page.setBorder(new EmptyBorder(16, 52, 14, 22));
+        setContentPane(page);
 
-        currentLabel.setForeground(Theme.ACCENT);
-        currentLabel.setFont(Theme.TITLE_FONT.deriveFont(17f));
-        add(currentLabel, BorderLayout.NORTH);
+        JLabel title = Sketch.title("장비 · 인벤토리");
+        currentLabel.setFont(Sketch.hand(Font.BOLD, 14f));
+        currentLabel.setForeground(Sketch.INK_SOFT);
+        JPanel head = new JPanel(new BorderLayout(0, 2));
+        head.setOpaque(false);
+        head.add(title, BorderLayout.NORTH);
+        head.add(currentLabel, BorderLayout.CENTER);
+        add(head, BorderLayout.NORTH);
 
-        JPanel center = new JPanel(new GridLayout(1, 2, 14, 0));
+        JPanel center = new JPanel(new GridLayout(1, 2, 16, 0));
         center.setOpaque(false);
         center.add(buildListArea());
         center.add(buildDetailArea());
         add(center, BorderLayout.CENTER);
 
-        JButton closeBtn = Theme.button("나가기");
+        JButton closeBtn = new Sketch.Button("나가기", false);
         closeBtn.addActionListener(e -> dispose());
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER));
         bottom.setOpaque(false);
@@ -63,32 +71,27 @@ public class EquipDialog extends JDialog {
 
     // ---------- left: tabbed item list ----------
     private JComponent buildListArea() {
-        weaponList.setCellRenderer(new EquipRowRenderer());
-        weaponList.setFixedCellHeight(56);
-        weaponList.setBackground(Theme.SURFACE);
-        weaponList.setSelectionBackground(Theme.SURFACE);
+        for (JList<String> list : List.of(weaponList, armorList)) {
+            list.setCellRenderer(new EquipRowRenderer());
+            list.setFixedCellHeight(60);
+            list.setOpaque(false);
+        }
         weaponList.addListSelectionListener(e -> {
             if (e.getValueIsAdjusting()) return;
             selectedWeapon = weaponList.getSelectedValue();
             showDetail(selectedWeapon);
         });
-
-        armorList.setCellRenderer(new EquipRowRenderer());
-        armorList.setFixedCellHeight(56);
-        armorList.setBackground(Theme.SURFACE);
-        armorList.setSelectionBackground(Theme.SURFACE);
         armorList.addListSelectionListener(e -> {
             if (e.getValueIsAdjusting()) return;
             selectedArmor = armorList.getSelectedValue();
             showDetail(selectedArmor);
         });
 
-        JTabbedPane tabs = new JTabbedPane();
-        Theme.styleTabs(tabs);
-        tabs.addTab("무기", Theme.scroll(weaponList));
-        tabs.addTab("방어구", Theme.scroll(armorList));
-        tabs.addChangeListener(e -> {
-            activeType = tabs.getSelectedIndex() == 0 ? Item.Type.WEAPON : Item.Type.ARMOR;
+        Sketch.Tabs tabs = new Sketch.Tabs(4101);
+        tabs.addTab("무기", Sketch.scroll(weaponList));
+        tabs.addTab("방어구", Sketch.scroll(armorList));
+        tabs.onChange(i -> {
+            activeType = i == 0 ? Item.Type.WEAPON : Item.Type.ARMOR;
             showDetail(activeType == Item.Type.WEAPON ? selectedWeapon : selectedArmor);
         });
         return tabs;
@@ -96,12 +99,14 @@ public class EquipDialog extends JDialog {
 
     // ---------- right: selected item detail ----------
     private JComponent buildDetailArea() {
-        JPanel wrap = Theme.panel(new BorderLayout());
-        wrap.setBorder(new EmptyBorder(16, 16, 16, 16));
+        Sketch.Box wrap = new Sketch.Box(new BorderLayout(), 4202);
+        wrap.setBorder(new EmptyBorder(20, 22, 20, 22));
 
         detailCardHost.setLayout(detailCards);
         detailCardHost.setOpaque(false);
 
+        detailPlaceholder.setFont(Sketch.hand(Font.PLAIN, 14f));
+        detailPlaceholder.setForeground(Sketch.INK_SOFT);
         detailPlaceholder.setHorizontalAlignment(SwingConstants.CENTER);
         JPanel placeholderWrap = new JPanel(new GridBagLayout());
         placeholderWrap.setOpaque(false);
@@ -109,32 +114,28 @@ public class EquipDialog extends JDialog {
 
         detailBody.setOpaque(false);
         detailBody.setLayout(new BoxLayout(detailBody, BoxLayout.Y_AXIS));
-
-        detailName.setFont(Theme.TITLE_FONT.deriveFont(19f));
-        detailName.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        detailStat.setAlignmentX(Component.LEFT_ALIGNMENT);
-        detailStat.setFont(Theme.BODY_FONT.deriveFont(15f));
-
-        detailStatus.setFont(Theme.HEADER_FONT);
-        detailStatus.setForeground(Theme.ACCENT);
-        detailStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        detailAction.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailName.setFont(Sketch.hand(Font.BOLD, 20f));
+        detailStat.setFont(Sketch.hand(Font.PLAIN, 14f));
+        detailStat.setForeground(Sketch.INK);
+        detailStatus.setFont(Sketch.hand(Font.BOLD, 14f));
+        detailStatus.setForeground(Sketch.RED_PENCIL);
         detailAction.addActionListener(e -> toggleEquip());
-
+        for (JComponent c : new JComponent[]{detailIcon, detailName, detailStat, detailStatus, detailAction}) {
+            c.setAlignmentX(Component.LEFT_ALIGNMENT);
+        }
+        detailBody.add(detailIcon);
+        detailBody.add(Box.createVerticalStrut(6));
         detailBody.add(detailName);
-        detailBody.add(Box.createVerticalStrut(10));
+        detailBody.add(Box.createVerticalStrut(8));
         detailBody.add(detailStat);
         detailBody.add(Box.createVerticalGlue());
         detailBody.add(detailStatus);
-        detailBody.add(Box.createVerticalStrut(12));
+        detailBody.add(Box.createVerticalStrut(10));
         detailBody.add(detailAction);
 
         detailCardHost.add(placeholderWrap, "EMPTY");
         detailCardHost.add(detailBody, "ITEM");
         detailCards.show(detailCardHost, "EMPTY");
-
         wrap.add(detailCardHost, BorderLayout.CENTER);
         return wrap;
     }
@@ -147,10 +148,11 @@ public class EquipDialog extends JDialog {
         Item item = ItemCatalog.get(itemName);
         boolean equipped = itemName.equals(activeType == Item.Type.WEAPON ? player.getWeaponName() : player.getArmorName());
 
+        detailIcon.setIcon(ItemArt.item(item, 80));
         detailName.setText(item.getName());
-        detailName.setForeground(Theme.gradeColor(item));
-        detailStat.setText("<html>" + Theme.gradeTagHtml(item) + " " + item.getTypeLabel() + "<br>" + item.getStatText() + "</html>");
-        detailStatus.setText(equipped ? "현재 장착 중" : " ");
+        detailName.setForeground(Sketch.gradeInk(item.getGrade()));
+        detailStat.setText(Sketch.itemDetailHtml(item));
+        detailStatus.setText(equipped ? "√ 지금 장착 중" : " ");
         detailAction.setText(equipped ? "장착 해제" : "장착하기");
         detailCards.show(detailCardHost, "ITEM");
     }
@@ -169,55 +171,26 @@ public class EquipDialog extends JDialog {
     }
 
     private void refresh() {
-        currentLabel.setText("현재 무기: " + (player.getWeaponName() == null ? "없음" : player.getWeaponName())
-                + "     현재 방어구: " + (player.getArmorName() == null ? "없음" : player.getArmorName()));
+        currentLabel.setText("무기: " + (player.getWeaponName() == null ? "없음" : player.getWeaponName())
+                + "      방어구: " + (player.getArmorName() == null ? "없음" : player.getArmorName()));
 
-        List<String> weapons = player.getItemsByType(Item.Type.WEAPON);
         weaponModel.clear();
-        for (String name : weapons) weaponModel.addElement(name);
-
-        List<String> armors = player.getItemsByType(Item.Type.ARMOR);
+        for (String name : player.getItemsByType(Item.Type.WEAPON)) weaponModel.addElement(name);
         armorModel.clear();
-        for (String name : armors) armorModel.addElement(name);
+        for (String name : player.getItemsByType(Item.Type.ARMOR)) armorModel.addElement(name);
+        repaint();
     }
 
     // ---------- row renderer ----------
-    private static class EquipRowRenderer extends JPanel implements ListCellRenderer<String> {
-        private final JLabel tag = new JLabel();
-        private final JLabel name = new JLabel();
-        private final JLabel stat = new JLabel();
-
-        EquipRowRenderer() {
-            setLayout(new BorderLayout(10, 0));
-            setBorder(new EmptyBorder(0, 14, 0, 14));
-            JPanel left = new JPanel();
-            left.setOpaque(false);
-            left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-            tag.setFont(Theme.SMALL_FONT);
-            name.setFont(Theme.HEADER_FONT);
-            left.add(tag);
-            left.add(name);
-            add(left, BorderLayout.WEST);
-            stat.setFont(Theme.HEADER_FONT);
-            stat.setForeground(Theme.ACCENT);
-            add(stat, BorderLayout.EAST);
-        }
+    private final class EquipRowRenderer implements ListCellRenderer<String> {
+        private final Sketch.Row row = new Sketch.Row();
 
         @Override
         public Component getListCellRendererComponent(JList<? extends String> list, String itemName, int index,
-                                                        boolean isSelected, boolean cellHasFocus) {
+                                                      boolean isSelected, boolean cellHasFocus) {
             Item item = ItemCatalog.get(itemName);
-            tag.setText(item.getGrade().getLabel());
-            tag.setForeground(Theme.gradeColor(item));
-            name.setText(item.getName());
-            name.setForeground(Theme.TEXT);
-            stat.setText(item.getStatText());
-            setOpaque(true);
-            setBackground(isSelected ? new Color(58, 50, 34) : Theme.SURFACE);
-            setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER),
-                    new EmptyBorder(0, 14, 0, 14)));
-            return this;
+            boolean worn = itemName.equals(player.getWeaponName()) || itemName.equals(player.getArmorName());
+            return row.set(item, item.getName() + (worn ? "  √" : ""), item.getStatText(), isSelected, index);
         }
     }
 }

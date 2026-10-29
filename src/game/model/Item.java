@@ -8,7 +8,9 @@ public class Item {
         UNCOMMON("고급", "#6bcf6b"),
         RARE("희귀", "#5aa0e0"),
         EPIC("영웅", "#b06be0"),
-        LEGENDARY("전설", "#e0a83a");
+        LEGENDARY("전설", "#e0a83a"),
+        /** Boss-only gear: never sold, never in chests. */
+        MYTHIC("신화", "#e8584a");
 
         private final String label;
         private final String colorHex;
@@ -27,6 +29,10 @@ public class Item {
     private final int value;
     private final int price;
     private final Grade grade;
+    /** Pencil icon file name (images/items/{icon}.png), or null. */
+    private String icon;
+    /** Special effect on top of the stat, while equipped (boss gear). */
+    private Bonus bonus = Bonus.NONE;
 
     public Item(String name, Type type, int value, int price, Grade grade) {
         this.name = name;
@@ -36,11 +42,27 @@ public class Item {
         this.grade = grade;
     }
 
+    /** Only from the treasure wheel (보물 뽑기): never in the shop or in boss chests. */
+    private boolean gachaOnly;
+
+    public Item gacha() { this.gachaOnly = true; return this; }
+    public boolean isGachaOnly() { return gachaOnly; }
+
+    public Item icon(String icon) { this.icon = icon; return this; }
+    public Item bonus(Bonus bonus) { this.bonus = bonus; return this; }
+
     public String getName() { return name; }
     public Type getType() { return type; }
     public int getValue() { return value; }
     public int getPrice() { return price; }
     public Grade getGrade() { return grade; }
+    public String getIcon() { return icon; }
+    public Bonus getBonus() { return bonus; }
+
+    /** The special effects as one line ("" when the item has none). */
+    public String getEffectText() {
+        return String.join(", ", bonus.lines());
+    }
 
     public String describe() {
         String base;

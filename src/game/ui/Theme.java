@@ -388,6 +388,14 @@ public final class Theme {
         return "<font color='" + hex + "'><b>[" + item.getGrade().getLabel() + "]</b></font>";
     }
 
+    /** Detail-pane text: grade tag and type, the stat, then any special effects (boss gear), wrapped. */
+    public static String itemDetailHtml(Item item) {
+        StringBuilder sb = new StringBuilder("<html><body style='width:200px'>")
+                .append(gradeTagHtml(item)).append(" ").append(item.getTypeLabel()).append("<br>").append(item.getStatText());
+        for (String line : item.getBonus().lines()) sb.append("<br><font color='#c7a86a'>◆ ").append(line).append("</font>");
+        return sb.append("</body></html>").toString();
+    }
+
     // ---------- tabs ----------
     /** Applies the dark flat tab style (no light L&F highlight) and a readable text color. */
     public static void styleTabs(JTabbedPane tabs) {

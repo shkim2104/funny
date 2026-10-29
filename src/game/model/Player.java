@@ -116,6 +116,35 @@ public class Player {
     public void setArmorName(String armorName) { this.armorName = armorName; }
     public void setUnlockedDungeon(int unlockedDungeon) { this.unlockedDungeon = unlockedDungeon; }
 
+    // ---------- quest board ----------
+    private final List<Quest> quests = new ArrayList<>();
+
+    public List<Quest> getQuests() { return Collections.unmodifiableList(quests); }
+
+    /** Used when loading a save. */
+    public void setQuests(List<Quest> loaded) {
+        quests.clear();
+        quests.addAll(loaded);
+    }
+
+    /** Tops the board up to Quest.BOARD_SIZE requests. */
+    public void fillQuests(List<Dungeon> dungeons, Random rnd) {
+        while (quests.size() < Quest.BOARD_SIZE) quests.add(Quest.random(this, dungeons, rnd));
+    }
+
+    /** Swaps one request for a fresh one (after its reward was taken, or the player asked for another). */
+    public void replaceQuest(Quest q, List<Dungeon> dungeons, Random rnd) {
+        int i = quests.indexOf(q);
+        if (i >= 0) quests.set(i, Quest.random(this, dungeons, rnd));
+    }
+
+    /** Counts a kill on every request; returns the ones it just completed. */
+    public List<Quest> recordKill(String monsterName) {
+        List<Quest> done = new ArrayList<>();
+        for (Quest q : quests) if (q.onKill(monsterName)) done.add(q);
+        return done;
+    }
+
     /** Current (latest) job; BEGINNER until the first advancement. */
     public Job getJob() {
         return jobPath.isEmpty() ? Job.BEGINNER : jobPath.get(jobPath.size() - 1);
@@ -182,6 +211,16 @@ public class Player {
     public int getDef() {
         Item armor = armorName != null ? ItemCatalog.get(armorName) : null;
         return baseDef + (armor != null ? armor.getValue() : 0);
+    }
+
+    /** Special effects of the equipped weapon and armor (boss gear), added up. */
+    public Bonus getGearBonus() {
+        Bonus b = Bonus.NONE;
+        for (String name : new String[]{weaponName, armorName}) {
+            Item item = name != null ? ItemCatalog.get(name) : null;
+            if (item != null) b = b.plus(item.getBonus());
+        }
+        return b;
     }
 
     /** Percent chance (0~100) to land a critical hit, driven by luck. */

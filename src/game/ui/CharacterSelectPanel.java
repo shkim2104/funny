@@ -4,15 +4,12 @@ import game.model.Player;
 import game.save.SaveManager;
 import game.save.SaveManager.CharacterSave;
 
-import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
-import java.awt.image.BufferedImage;
-import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -29,18 +26,21 @@ public class CharacterSelectPanel extends JPanel {
         void start(String id, Player player);
         void create();
         void delete(String id, Player player);
+        void redraw(String id, Player player);
         void back();
     }
 
     private static final int COLUMNS = 3;
-    private static final BufferedImage SPRITE = loadSprite();
     private static final SimpleDateFormat SAVED_FORMAT = new SimpleDateFormat("yyyy.MM.dd HH:mm");
 
     private final Listener listener;
     private final JPanel grid = new JPanel(new GridLayout(0, COLUMNS, 14, 14));
-    private final JButton startBtn = Theme.ghostPrimaryButton("게임 시작");
-    private final JButton deleteBtn = Theme.ghostButton("캐릭터 삭제");
-    private final JButton backBtn = Theme.ghostButton("뒤로");
+    private final JButton startBtn = new Sketch.Button("게임 시작", true);
+    private final JButton deleteBtn = new Sketch.Button("캐릭터 삭제", false);
+    private final JButton redrawBtn = new Sketch.Button("다시 그리기", false);
+    /** Each character's own drawing, loaded once per refresh. */
+    private final java.util.Map<String, CharacterArt> arts = new java.util.HashMap<>();
+    private final JButton backBtn = new Sketch.Button("뒤로", false);
     private final List<CharacterCard> cards = new ArrayList<>();
     private CharacterCard selected;
 
@@ -49,11 +49,10 @@ public class CharacterSelectPanel extends JPanel {
         this.listener = listener;
         setOpaque(false);
 
-        JLabel title = new JLabel("캐릭터 선택", SwingConstants.CENTER);
-        title.setFont(Theme.dosFont(Font.BOLD, 34f));
-        title.setForeground(Color.WHITE);
-        JPanel titlePill = new Pill();
-        titlePill.setBorder(new EmptyBorder(10, 30, 10, 30));
+        JLabel title = Sketch.title("캐릭터 선택");
+        title.setFont(Sketch.hand(Font.BOLD, 32f));
+        JPanel titlePill = new Sketch.Note(new BorderLayout(), 9801);
+        titlePill.setBorder(new EmptyBorder(12, 34, 10, 34));
         titlePill.add(title);
 
         grid.setOpaque(false);
@@ -64,11 +63,15 @@ public class CharacterSelectPanel extends JPanel {
         deleteBtn.addActionListener(e -> {
             if (selected != null && selected.save != null) listener.delete(selected.save.id, selected.save.player);
         });
+        redrawBtn.addActionListener(e -> {
+            if (selected != null && selected.save != null) listener.redraw(selected.save.id, selected.save.player);
+        });
         backBtn.addActionListener(e -> listener.back());
-        JPanel buttons = new JPanel(new GridLayout(1, 3, 10, 0));
-        buttons.setOpaque(false);
+        JPanel buttons = new Sketch.Note(new GridLayout(1, 4, 10, 0), 9802);
+        buttons.setBorder(new EmptyBorder(10, 14, 10, 14));
         buttons.add(backBtn);
         buttons.add(deleteBtn);
+        buttons.add(redrawBtn);
         buttons.add(startBtn);
 
         JPanel column = new JPanel();
@@ -77,12 +80,16 @@ public class CharacterSelectPanel extends JPanel {
         titlePill.setAlignmentX(Component.CENTER_ALIGNMENT);
         grid.setAlignmentX(Component.CENTER_ALIGNMENT);
         buttons.setAlignmentX(Component.CENTER_ALIGNMENT);
-        column.add(titlePill);
+        JPanel titleWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        titleWrap.setOpaque(false);
+        titleWrap.add(titlePill);
+        titleWrap.setAlignmentX(Component.CENTER_ALIGNMENT);
+        column.add(titleWrap);
         column.add(Box.createVerticalStrut(22));
         column.add(grid);
         column.add(Box.createVerticalStrut(18));
         column.add(buttons);
-        buttons.setMaximumSize(new Dimension(COLUMNS * CharacterCard.W + (COLUMNS - 1) * 14, 46));
+        buttons.setMaximumSize(new Dimension(COLUMNS * CharacterCard.W + (COLUMNS - 1) * 14 + 28, 70));
         add(column);
 
         // Esc backs out, like the back button.
@@ -103,6 +110,8 @@ public class CharacterSelectPanel extends JPanel {
         grid.removeAll();
         cards.clear();
         selected = null;
+        arts.clear();
+        for (CharacterSave s : saves) arts.put(s.id, CharacterArt.load(s.id));
         for (int i = 0; i < SaveManager.MAX_CHARACTERS; i++) {
             CharacterCard card = new CharacterCard(i < saves.size() ? saves.get(i) : null);
             cards.add(card);
@@ -130,6 +139,7 @@ public class CharacterSelectPanel extends JPanel {
         boolean hasCharacter = card != null && card.save != null;
         startBtn.setEnabled(hasCharacter);
         deleteBtn.setEnabled(hasCharacter);
+        redrawBtn.setEnabled(hasCharacter);
         for (CharacterCard c : cards) c.repaint();
     }
 
@@ -176,66 +186,84 @@ public class CharacterSelectPanel extends JPanel {
             return new Dimension(Math.round(h * W / (float) H), h);
         }
 
+        /**
+         * A scrap of notebook paper: the hero drawing on top, name / level / last save written below.
+         * Selected = highlighter under the name and a heavier red-pencil frame; an empty slot is a faint
+         * dashed pencil box with a big "+".
+         */
         @Override
         protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            Graphics2D g2 = Sketch.smooth(g);
             int w = getWidth(), h = getHeight();
             boolean isSelected = selected == this;
-            RoundRectangle2D box = new RoundRectangle2D.Float(2, 2, w - 4, h - 4, 18, 18);
+            boolean lit = hover || isFocusOwner();
+            long seed = save == null ? cards.indexOf(this) * 97L + 5 : save.id.hashCode();
 
             if (save == null) {
-                g2.setColor(new Color(10, 12, 16, hover || isFocusOwner() ? 150 : 100));
-                g2.fill(box);
-                g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{8f, 7f}, 0f));
-                g2.setColor(isFocusOwner() ? Theme.ACCENT_HOVER : new Color(255, 255, 255, 110));
-                g2.draw(box);
-                g2.setFont(Theme.dosFont(Font.BOLD, 46f));
-                g2.setColor(new Color(255, 255, 255, 170));
+                g2.setColor(new Color(247, 243, 230, lit ? 230 : 170));
+                g2.fillRect(6, 6, w - 12, h - 12);
+                dashedBox(g2, 6, 6, w - 12, h - 12, seed, lit ? Sketch.INK : Sketch.INK_SOFT);
+                g2.setFont(Sketch.hand(Font.BOLD, 46f));
+                g2.setColor(lit ? Sketch.INK : Sketch.INK_SOFT);
                 drawCentered(g2, "+", h / 2 - 4);
-                g2.setFont(Theme.dosFont(Font.BOLD, 15f));
+                g2.setFont(Sketch.hand(Font.BOLD, 15f));
                 drawCentered(g2, "캐릭터 생성", h / 2 + 30);
                 g2.dispose();
                 return;
             }
 
-            // Card body; the selected one gets a warm glow and gold rim.
-            g2.setColor(new Color(10, 12, 16, isSelected ? 200 : (hover ? 170 : 140)));
-            g2.fill(box);
-            if (isSelected) {
-                g2.setPaint(new RadialGradientPaint(new Point(w / 2, h / 2 - 20), w * 0.6f,
-                        new float[]{0f, 1f}, new Color[]{new Color(199, 168, 106, 70), new Color(199, 168, 106, 0)}));
-                g2.fill(box);
-            }
+            // Paper card with a soft shadow and ruled lines.
+            g2.setColor(new Color(0, 0, 0, 55));
+            g2.fillRect(10, 10, w - 12, h - 12);
+            g2.setColor(Sketch.PAPER);
+            g2.fillRect(5, 5, w - 12, h - 12);
+            g2.setColor(new Color(110, 150, 205, 60));
+            g2.setStroke(new BasicStroke(1.2f));
+            for (int y = 30; y < h - 12; y += 24) g2.drawLine(6, y, w - 8, y);
 
-            // Sprite on a small shadow, near the top; the text block below keeps a fixed ~118px.
+            // The hand-drawn hero near the top; the text block below keeps a fixed ~118px.
             int spriteH = Math.max(50, h - 118);
             int groundY = 20 + spriteH;
-            g2.setColor(new Color(0, 0, 0, 90));
-            g2.fillOval(w / 2 - 34, groundY - 7, 68, 14);
-            if (SPRITE != null) {
-                int sw = (int) Math.round(SPRITE.getWidth() * (spriteH / (double) SPRITE.getHeight()));
-                Graphics2D gi = (Graphics2D) g2.create();
-                gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                gi.drawImage(SPRITE, w / 2 - sw / 2, groundY - spriteH, sw, spriteH, null);
-                gi.dispose();
-            }
+            CharacterArt art = arts.get(save.id);
+            if (art != null) art.drawStill(g2, w / 2, groundY - 2, spriteH - 10);
 
             Player p = save.player;
-            g2.setFont(Theme.dosFont(Font.BOLD, 18f));
-            g2.setColor(Color.WHITE);
-            drawCentered(g2, fit(g2, p.getName(), w - 20), groundY + 30);
-            g2.setFont(Theme.dosFont(Font.BOLD, 14f));
-            g2.setColor(Theme.ACCENT_HOVER);
+            g2.setFont(Sketch.hand(Font.BOLD, 18f));
+            String name = fit(g2, p.getName(), w - 24);
+            if (isSelected) {
+                int nw = g2.getFontMetrics().stringWidth(name);
+                Sketch.marker(g2, w / 2.0 - nw / 2.0 - 10, groundY + 14, nw + 20, 18, seed + 7);
+            }
+            g2.setColor(Sketch.INK);
+            drawCentered(g2, name, groundY + 30);
+            g2.setFont(Sketch.hand(Font.BOLD, 14f));
+            g2.setColor(Sketch.BLUE_PENCIL);
             drawCentered(g2, "Lv." + p.getLevel() + "  " + p.getJob().getDisplayName(), groundY + 52);
-            g2.setFont(Theme.dosFont(Font.PLAIN, 11f));
-            g2.setColor(new Color(190, 192, 200));
+            g2.setFont(Sketch.hand(Font.PLAIN, 11f));
+            g2.setColor(Sketch.INK_SOFT);
             drawCentered(g2, SAVED_FORMAT.format(new Date(save.savedAt)), groundY + 72);
 
-            g2.setStroke(new BasicStroke(isSelected ? 3f : (isFocusOwner() || hover ? 2f : 1f)));
-            g2.setColor(isSelected ? Theme.ACCENT : new Color(255, 255, 255, isFocusOwner() || hover ? 140 : 60));
-            g2.draw(box);
+            if (isSelected) {
+                Sketch.box(g2, 5, 5, w - 12, h - 12, seed + 1, 3.2f, Sketch.RED_PENCIL);
+            } else {
+                Sketch.box(g2, 5, 5, w - 12, h - 12, seed + 1, lit ? 2.6f : 1.9f, lit ? Sketch.INK : Sketch.INK_SOFT);
+            }
             g2.dispose();
+        }
+
+        /** A pencil box drawn in short dashes, for empty slots. */
+        private void dashedBox(Graphics2D g2, double x, double y, double bw, double bh, long seed, Color c) {
+            double dash = 14, gap = 9;
+            double[][] sides = {{x, y, x + bw, y}, {x + bw, y, x + bw, y + bh}, {x + bw, y + bh, x, y + bh}, {x, y + bh, x, y}};
+            long s = seed;
+            for (double[] side : sides) {
+                double len = Math.hypot(side[2] - side[0], side[3] - side[1]);
+                double dx = (side[2] - side[0]) / len, dy = (side[3] - side[1]) / len;
+                for (double t = 0; t < len; t += dash + gap) {
+                    double e = Math.min(len, t + dash);
+                    Sketch.line(g2, side[0] + dx * t, side[1] + dy * t, side[0] + dx * e, side[1] + dy * e, s++, 1.8f, c);
+                }
+            }
         }
 
         private void drawCentered(Graphics2D g2, String text, int baseline) {
@@ -252,29 +280,4 @@ public class CharacterSelectPanel extends JPanel {
         return s + "…";
     }
 
-    /** Dark rounded backing so the title stays readable over the background art. */
-    private static final class Pill extends JPanel {
-        Pill() {
-            setOpaque(false);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(new Color(10, 12, 16, 140));
-            g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 14, 14));
-            g2.dispose();
-            super.paintComponent(g);
-        }
-    }
-
-    private static BufferedImage loadSprite() {
-        try (InputStream in = CharacterSelectPanel.class.getResourceAsStream("images/player.png")) {
-            if (in != null) return ImageIO.read(in);
-        } catch (Exception ignored) {
-            // Missing sprite: cards just show the text.
-        }
-        return null;
-    }
 }

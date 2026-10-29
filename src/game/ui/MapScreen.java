@@ -88,7 +88,7 @@ public class MapScreen extends JPanel {
         addHotspot(label, x, y, w, h, onClick, () -> false);
     }
 
-    /** Adds a clickable area that is drawn wrapped in chains while locked returns true (it still receives clicks). */
+    /** Adds a clickable area that is crossed out with a pencil X while locked returns true (it still receives clicks). */
     public void addHotspot(String label, int x, int y, int w, int h, Runnable onClick, BooleanSupplier locked) {
         hotspots.add(new Hotspot(label, new Rectangle(x, y, w, h), onClick, locked));
     }
@@ -170,7 +170,7 @@ public class MapScreen extends JPanel {
         for (Hotspot h : hotspots) {
             if (!h.locked.getAsBoolean()) continue;
             Rectangle r = toScreen(h.area);
-            drawChainedLock(g2, r, s);
+            drawCrossOut(g2, r, s);
         }
 
         if (hovered != null) {
@@ -200,144 +200,53 @@ public class MapScreen extends JPanel {
     }
 
     /**
-     * Two sagging chains crossed in an X over the region, as if wrapped around it, with a padlock
-     * hanging where they meet. Sizes follow the map scale so every region's chains look the same.
+     * A locked region is crossed out on the page: a big penciled X from corner to corner, two quick
+     * strokes each (one firm, one lighter), the way you'd strike something off a notebook map.
+     * Seeded by the region, so the X keeps its exact shape on every repaint.
      */
-    private static void drawChainedLock(Graphics2D g2, Rectangle r, double s) {
-        float link = (float) Math.max(7, 22 * s);
-        float insetX = r.width * 0.04f, insetY = r.height * 0.06f;
-        float left = r.x + insetX, right = r.x + r.width - insetX;
-        float top = r.y + insetY, bottom = r.y + r.height - insetY;
-        float sag = r.height * 0.14f;
-        float cx = r.x + r.width / 2f, cy = r.y + r.height / 2f;
-
-        // Both curves share the control point, so they cross exactly at their midpoints (t = 0.5).
-        java.awt.geom.QuadCurve2D.Float a = new java.awt.geom.QuadCurve2D.Float(left, top, cx, cy + sag, right, bottom);
-        java.awt.geom.QuadCurve2D.Float b = new java.awt.geom.QuadCurve2D.Float(right, top, cx, cy + sag, left, bottom);
-        drawChain(g2, a, link);
-        drawChain(g2, b, link);
-
-        float lockX = cx, lockY = cy + sag / 2f;
-        drawPadlock(g2, lockX, lockY, (float) Math.max(12, 34 * s));
-    }
-
-    /** Lays chain links along a curve, alternating face-on rings and edge-on links like a real chain. */
-    private static void drawChain(Graphics2D g2, Shape path, float link) {
-        // Flatten the curve into a polyline and walk it by arc length.
-        List<float[]> pts = new ArrayList<>();
-        java.awt.geom.PathIterator it = path.getPathIterator(null, 0.5);
-        float[] c = new float[6];
-        while (!it.isDone()) {
-            it.currentSegment(c);
-            pts.add(new float[] {c[0], c[1]});
-            it.next();
-        }
-        float step = link * 0.82f;
-        float carried = 0;
-        int index = 0;
+    private static void drawCrossOut(Graphics2D g2, Rectangle r, double s) {
         Graphics2D g = (Graphics2D) g2.create();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        for (int i = 1; i < pts.size(); i++) {
-            float x0 = pts.get(i - 1)[0], y0 = pts.get(i - 1)[1];
-            float dx = pts.get(i)[0] - x0, dy = pts.get(i)[1] - y0;
-            float seg = (float) Math.hypot(dx, dy);
-            if (seg == 0) continue;
-            double angle = Math.atan2(dy, dx);
-            float d = step - carried;
-            while (d <= seg) {
-                drawLink(g, x0 + dx * d / seg, y0 + dy * d / seg, angle, link, index++ % 2 == 0);
-                d += step;
-            }
-            carried = seg - (d - step);
-        }
-        g.dispose();
-    }
-
-    private static void drawLink(Graphics2D g2, float x, float y, double angle, float link, boolean faceOn) {
-        Graphics2D g = (Graphics2D) g2.create();
-        g.translate(x, y);
-        g.rotate(angle);
-        Color ink = new Color(34, 30, 28);
-        float len = link * 1.25f;
-        if (faceOn) {
-            // Ring seen from the front: an oval band with a hole.
-            float h = link * 0.78f;
-            float band = Math.max(1.8f, link * 0.2f);
-            java.awt.geom.Ellipse2D.Float ring = new java.awt.geom.Ellipse2D.Float(-len / 2, -h / 2, len, h);
-            g.setStroke(new BasicStroke(band + 2.4f));
-            g.setColor(ink);
-            g.draw(ring);
-            g.setStroke(new BasicStroke(band));
-            g.setPaint(new GradientPaint(0, -h / 2, new Color(196, 200, 206), 0, h / 2, new Color(96, 100, 110)));
-            g.draw(ring);
-        } else {
-            // Ring seen edge-on: a thin rounded bar.
-            float t = Math.max(3f, link * 0.3f);
-            RoundRectangle2D bar = new RoundRectangle2D.Float(-len / 2, -t / 2, len, t, t, t);
-            g.setPaint(new GradientPaint(0, -t / 2, new Color(210, 214, 220), 0, t / 2, new Color(90, 94, 104)));
-            g.fill(bar);
-            g.setStroke(new BasicStroke(1.2f));
-            g.setColor(ink);
-            g.draw(bar);
-        }
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        double w = Math.max(4, 12 * s);
+        double ix = r.width * 0.08, iy = r.height * 0.1;
+        double x0 = r.x + ix, x1 = r.x + r.width - ix, y0 = r.y + iy, y1 = r.y + r.height - iy;
+        java.util.Random rnd = new java.util.Random(r.x * 31L + r.y);
+        graphite(g, x0, y0, x1, y1, w, rnd);
+        graphite(g, x1, y0, x0, y1, w, rnd);
         g.dispose();
     }
 
     /**
-     * An iron padlock centered at (cx, cy); u is the unit size (body half-width). Outlined in dark
-     * ink with slightly heavy strokes so it sits naturally on the hand-drawn map.
+     * One soft graphite stroke: several thin strands laid side by side, each broken into short
+     * segments of uneven darkness, so it has the grain of a pencil dragged across paper rather than
+     * a solid line. Strands start and stop a little apart, which tapers the ends.
      */
-    private static void drawPadlock(Graphics2D g2, float cx, float cy, float u) {
-        Graphics2D g = (Graphics2D) g2.create();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        Color ink = new Color(40, 32, 26);
-        float bodyW = u * 2f, bodyH = u * 1.6f;
-        float bodyX = cx - u, bodyY = cy - bodyH * 0.2f;
-        float line = Math.max(2f, u * 0.14f);
-
-        // Soft drop shadow so the lock lifts off the dimmed map.
-        g.setColor(new Color(0, 0, 0, 90));
-        g.fill(new RoundRectangle2D.Float(bodyX + line, bodyY + line * 1.5f, bodyW, bodyH, u * 0.5f, u * 0.5f));
-
-        // Shackle: a thick U above the body, drawn as an outlined band.
-        float shW = u * 1.3f, shTop = bodyY - u * 1.25f;
-        java.awt.geom.Path2D.Float shackle = new java.awt.geom.Path2D.Float();
-        shackle.moveTo(cx - shW / 2, bodyY + line);
-        shackle.lineTo(cx - shW / 2, shTop + shW / 2);
-        shackle.append(new java.awt.geom.Arc2D.Float(cx - shW / 2, shTop, shW, shW, 180, -180, java.awt.geom.Arc2D.OPEN), true);
-        shackle.lineTo(cx + shW / 2, bodyY + line);
-        g.setStroke(new BasicStroke(u * 0.42f + line * 2, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND));
-        g.setColor(ink);
-        g.draw(shackle);
-        g.setStroke(new BasicStroke(u * 0.42f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND));
-        g.setColor(new Color(176, 182, 190));
-        g.draw(shackle);
-
-        // Body: brass plate with a vertical gradient.
-        RoundRectangle2D body = new RoundRectangle2D.Float(bodyX, bodyY, bodyW, bodyH, u * 0.5f, u * 0.5f);
-        g.setPaint(new GradientPaint(0, bodyY, new Color(236, 196, 92), 0, bodyY + bodyH, new Color(168, 116, 34)));
-        g.fill(body);
-        g.setStroke(new BasicStroke(line, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(ink);
-        g.draw(body);
-        // Top-edge highlight.
-        g.setColor(new Color(255, 240, 190, 170));
-        g.fill(new RoundRectangle2D.Float(bodyX + line * 1.5f, bodyY + line * 1.2f, bodyW - line * 3f, u * 0.22f, u * 0.2f, u * 0.2f));
-
-        // Keyhole: a circle plus a tapered slot.
-        float kr = u * 0.26f, ky = bodyY + bodyH * 0.42f;
-        g.setColor(ink);
-        g.fill(new java.awt.geom.Ellipse2D.Float(cx - kr, ky - kr, kr * 2, kr * 2));
-        java.awt.geom.Path2D.Float slot = new java.awt.geom.Path2D.Float();
-        slot.moveTo(cx - kr * 0.45f, ky);
-        slot.lineTo(cx + kr * 0.45f, ky);
-        slot.lineTo(cx + kr * 0.8f, ky + bodyH * 0.36f);
-        slot.lineTo(cx - kr * 0.8f, ky + bodyH * 0.36f);
-        slot.closePath();
-        g.fill(slot);
-        g.dispose();
+    private static void graphite(Graphics2D g, double x0, double y0, double x1, double y1, double w, java.util.Random rnd) {
+        double len = Math.hypot(x1 - x0, y1 - y0);
+        double dx = (x1 - x0) / len, dy = (y1 - y0) / len, nx = -dy, ny = dx;
+        int strands = 7;
+        double step = Math.max(3, w * 0.55);
+        for (int k = 0; k < strands; k++) {
+            double off = (k / (double) (strands - 1) - 0.5) * w + (rnd.nextDouble() - 0.5) * w * 0.25;
+            double from = len * rnd.nextDouble() * 0.06, to = len * (1 - rnd.nextDouble() * 0.06);
+            double phase = rnd.nextDouble() * 10, wob = w * 0.12;
+            float thick = (float) (w * (0.2 + rnd.nextDouble() * 0.12));
+            // Strands near the middle of the stroke are pressed harder than the edges.
+            int base = (int) (125 - Math.abs(off) / w * 70);
+            g.setStroke(new BasicStroke(thick, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            double px = x0 + dx * from + nx * off, py = y0 + dy * from + ny * off;
+            for (double t = from + step; t <= to; t += step) {
+                double o = off + Math.sin(phase + t * 0.03) * wob;
+                double qx = x0 + dx * t + nx * o, qy = y0 + dy * t + ny * o;
+                int a = Math.max(24, Math.min(180, base + (int) ((rnd.nextDouble() - 0.5) * 70)));
+                g.setColor(new Color(92, 90, 100, a));
+                g.draw(new java.awt.geom.Line2D.Double(px, py, qx, qy));
+                px = qx;
+                py = qy;
+            }
+        }
     }
-
     /** Dark translucent rounded label with white text; (x, y) is the pill's top-left. */
     private void drawPill(Graphics2D g2, String text, int x, int y, float alpha, float size) {
         Font font = Theme.dosFont(Font.BOLD, size);

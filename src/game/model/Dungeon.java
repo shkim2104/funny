@@ -32,4 +32,13 @@ public class Dungeon {
     public Monster spawnBoss() {
         return boss.copy();
     }
+
+    /** The regular monsters (templates; copy() before fighting one). */
+    public List<Monster> getMonsterPool() {
+        return java.util.Collections.unmodifiableList(monsterPool);
+    }
+
+    public Monster getBoss() {
+        return boss;
+    }
 }

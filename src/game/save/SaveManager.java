@@ -2,6 +2,7 @@ package game.save;
 
 import game.model.Job;
 import game.model.Player;
+import game.model.Quest;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -105,6 +106,14 @@ public class SaveManager {
     public static void delete(String id) {
         File f = fileFor(id);
         if (f.exists() && !f.delete()) System.out.println("캐릭터를 삭제하지 못했습니다: " + id);
+        // The character's own drawing goes with it.
+        File[] drawings = charactersDir().listFiles((d, name) -> name.startsWith(id + "_") && name.endsWith(".png"));
+        if (drawings != null) for (File d : drawings) d.delete();
+    }
+
+    /** Where one part of a character's hand-drawn look is stored (PNG beside the save file). */
+    public static File drawingFile(String id, String part) {
+        return new File(charactersDir(), id + "_" + part + ".png");
     }
 
     /** Writes to a temp file first and then swaps it in, so a crash mid-save can't leave a half-written character. */
@@ -153,6 +162,7 @@ public class SaveManager {
             path.append(j.name());
         }
         pw.println(path);
+        pw.println(Quest.encodeAll(p.getQuests()));
     }
 
     private static Player read(File file) {
@@ -209,6 +219,9 @@ public class SaveManager {
                 }
             }
             player.setJobPath(path);
+
+            // Saves from before the quest board have no line here; the board is filled on first visit.
+            player.setQuests(Quest.decodeAll(br.readLine()));
             return player;
         } catch (IOException | RuntimeException e) {
             System.out.println("불러오기에 실패했습니다: " + file.getName() + " (" + e.getMessage() + ")");
