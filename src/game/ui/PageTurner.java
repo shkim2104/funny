@@ -84,7 +84,9 @@ public class PageTurner extends JComponent {
 
     private boolean canAnimate() {
         Container c = frame.getContentPane();
-        return timer == null && frame.isShowing() && c.getWidth() > 0 && c.getHeight() > 0;
+        boolean ok = game.save.Settings.isPageTurn() && timer == null && frame.isShowing() && c.getWidth() > 0 && c.getHeight() > 0;
+        if (ok) Sfx.play(Sfx.Sound.PAGE);
+        return ok;
     }
 
     private void animate(BufferedImage sheet, BufferedImage beneath, boolean forward, Runnable onDone) {

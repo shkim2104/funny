@@ -12,6 +12,7 @@ import game.model.RunState;
 import game.model.Skill;
 import game.model.World;
 import game.save.SaveManager;
+import game.save.Settings;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -78,7 +79,14 @@ public class GameFrame extends JFrame {
         super("공책 RPG");
         Theme.apply(this);
         setIconImages(loadAppIcons());
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        // Closing the window goes through exitGame() so the auto-save setting is honored.
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                exitGame();
+            }
+        });
         setSize(680, 560);
         setMinimumSize(new Dimension(560, 460));
         setLocationRelativeTo(null);
@@ -93,10 +101,50 @@ public class GameFrame extends JFrame {
         setGlassPane(pageTurner);
         pageTurner.setVisible(false);
         bindFullscreenToggle();
+        bindHotkeys();
 
         showTitle();
-        toggleFullscreen();
+        if (Settings.isStartFullscreen()) toggleFullscreen();
         setVisible(true);
+    }
+
+    /**
+     * 단축키 (when the setting is on): 1~4 skills and Tab (보유 증강) in battle, I 장비 / S 스탯 분배 in town,
+     * Esc 설정 in town and on the maps. Keys only act on the screen they belong to.
+     */
+    private void bindHotkeys() {
+        JRootPane root = getRootPane();
+        InputMap im = root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = root.getActionMap();
+        for (int i = 0; i < 4; i++) {
+            final int slot = i;
+            hotkey(im, am, String.valueOf(i + 1), "BATTLE", () -> battlePanel.hotkeySkill(slot));
+        }
+        hotkey(im, am, "TAB", "BATTLE", () -> {
+            if (Settings.isAugmentListKey()) battlePanel.showRunInfo();
+        });
+        hotkey(im, am, "I", "TOWN", this::openEquip);
+        hotkey(im, am, "S", "TOWN", this::openStatAlloc);
+        hotkey(im, am, "ESCAPE", "TOWN", this::openSettings);
+        hotkey(im, am, "ESCAPE", "DUNGEON_MAP", this::openSettings);
+        // Tab normally moves focus; let the window see it instead.
+        setFocusTraversalKeysEnabled(false);
+    }
+
+    private final java.util.Map<String, java.util.Map<String, Runnable>> hotkeys = new java.util.HashMap<>();
+
+    private void hotkey(InputMap im, ActionMap am, String key, String screen, Runnable action) {
+        hotkeys.computeIfAbsent(key, k -> new java.util.HashMap<>()).put(screen, action);
+        im.put(KeyStroke.getKeyStroke(key), "hotkey-" + key);
+        am.put("hotkey-" + key, new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                // Tab (보유 증강) has its own setting; the rest follow 단축키.
+                if (!key.equals("TAB") && !Settings.isHotkeys()) return;
+                Runnable r = hotkeys.get(key).get(currentCard);
+                if (r != null && player != null) r.run();
+            }
+        });
     }
 
     /** Binds F11 to toggle maximized mode, a common convenience shortcut. */
@@ -124,10 +172,15 @@ public class GameFrame extends JFrame {
 
     /** Switches screens with a notebook page turn: forward flips the page away, back lays the page down again. */
     private void showCard(String name, boolean forward) {
+        currentCard = name;
         pageTurner.turn(() -> cardLayout.show(cards, name), forward);
     }
 
+    /** Which screen is showing (TITLE / SELECT / TOWN / DUNGEON_MAP / BATTLE), for the hotkeys. */
+    private String currentCard = "TITLE";
+
     private void showTitle() {
+        Music.play("title");
         showCard("TITLE", false);
         Theme.focusFirst(titleButtons);
     }
@@ -177,10 +230,31 @@ public class GameFrame extends JFrame {
         characterSelect.refresh(SaveManager.listCharacters(), null);
     }
 
+    /** With 자동 저장 on, goes back right after saving; otherwise warns that unsaved progress is lost. */
     private void backToTitle() {
-        if (Dialogs.confirm(this, "타이틀로", "저장하지 않은 진행 상황은 사라집니다.\n타이틀 화면으로 돌아갈까요?")) {
-            showTitle();
+        if (Settings.isAutoSaveOnExit()) {
+            autoSave();
+        } else if (!Dialogs.confirm(this, "타이틀로", "저장하지 않은 진행 상황은 사라집니다.\n타이틀 화면으로 돌아갈까요?")) {
+            return;
         }
+        player = null;
+        currentSaveId = null;
+        showTitle();
+    }
+
+    /** Window close (X) and 종료: save the character in play first when 자동 저장 is on. */
+    private void exitGame() {
+        if (Settings.isAutoSaveOnExit()) autoSave();
+        System.exit(0);
+    }
+
+    /** Saves the character being played, if there is one (nothing to save on the title screen). */
+    private void autoSave() {
+        if (player != null && currentSaveId != null) SaveManager.save(player, currentSaveId);
+    }
+
+    private void openSettings() {
+        SettingsDialog.show(this);
     }
 
     /** The player names and draws their hero, then a new player is rolled; null if they cancelled. */
@@ -229,7 +303,8 @@ public class GameFrame extends JFrame {
 
         titleButtons = new JButton[] {
                 sketchButton("게임 시작", true, () -> openCharacterSelect(null)),
-                sketchButton("종료", false, () -> System.exit(0))
+                sketchButton("설정", false, this::openSettings),
+                sketchButton("종료", false, this::exitGame)
         };
         JPanel buttonPanel = new Sketch.Note(new GridLayout(titleButtons.length, 1, 10, 8), 9702);
         buttonPanel.setBorder(new EmptyBorder(14, 22, 14, 22));
@@ -278,6 +353,7 @@ public class GameFrame extends JFrame {
                     SaveManager.save(player, currentSaveId);
                     townMap.toast("게임을 저장했습니다.");
                 }),
+                menuButton("설정", this::openSettings),
                 menuButton("타이틀로", this::backToTitle)
         };
         return mapWithSideMenu(townMap, "마을", townInfoLabel, "건물을 클릭해 이동하세요", townButtons);
@@ -529,6 +605,7 @@ public class GameFrame extends JFrame {
     }
 
     private void openDungeonMap(boolean forward) {
+        Music.play("town");
         showCard("DUNGEON_MAP", forward);
         Theme.focusFirst(dungeonBackButton);
     }
@@ -546,6 +623,8 @@ public class GameFrame extends JFrame {
         currentDungeonIndex = dungeonIndex;
         currentFloor = 1;
         bossStage = false;
+        // Each dungeon gets its own song as they are made; until then they share 1던전's.
+        Music.play("dungeon" + (dungeonIndex + 1), "dungeon1");
         run = new RunState(dungeonIndex);
         battlePanel.setRun(run);
         battlePanel.setBossFight(false);
@@ -554,6 +633,7 @@ public class GameFrame extends JFrame {
         // Start the battle inside the swap so the incoming page already shows the monster.
         pageTurner.turn(() -> {
             cardLayout.show(cards, "BATTLE");
+            currentCard = "BATTLE";
             battlePanel.setDungeon(currentDungeonIndex);
             battlePanel.startBattle(player, monster, result -> onFightFinished(result, monster));
         }, true);
@@ -562,6 +642,7 @@ public class GameFrame extends JFrame {
     private void startNextFight() {
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
         Monster monster = bossStage ? dungeon.spawnBoss() : dungeon.randomMonster(rnd);
+        if (bossStage) Music.play("boss");
         battlePanel.setBossFight(bossStage);
         battlePanel.nextBattle(monster, result -> onFightFinished(result, monster));
     }
@@ -621,6 +702,7 @@ public class GameFrame extends JFrame {
         Item chestItem = rollChestItem(currentDungeonIndex);
         player.addItem(chestItem.getName());
         finalMsg.append("\n보물 상자를 발견했다! ").append(chestItem.describe()).append(" 획득!");
+        autoEquip(chestItem.getName(), finalMsg);
 
         // The boss's own gear: always one, preferring pieces not collected yet.
         Item bossItem = ItemCatalog.rollBossDrop(currentDungeonIndex, player, rnd);
@@ -629,6 +711,7 @@ public class GameFrame extends JFrame {
             finalMsg.append("\n").append(monster.getName()).append("의 전리품! ").append(bossItem.describe())
                     .append(" — ").append(bossItem.getEffectText());
             AugmentDialog.showLoot(this, monster.getName(), bossItem);
+            autoEquip(bossItem.getName(), finalMsg);
         }
 
         if (currentDungeonIndex == player.getUnlockedDungeon() && currentDungeonIndex + 1 < dungeons.size()) {
@@ -698,7 +781,7 @@ public class GameFrame extends JFrame {
 
     /** After a kill on the way to the boss: pick one of three augments for the rest of this run. */
     private void offerAugment() {
-        Augment a = AugmentDialog.pick(this, run, rnd);
+        Augment a = AugmentDialog.pick(this, run, player, rnd);
         if (a == null) return;
         run.take(a);
         battlePanel.logResult("[" + a.getTier().getLabel() + " 증강] " + a.getName() + " — " + a.getDescription());
@@ -711,8 +794,31 @@ public class GameFrame extends JFrame {
     }
 
     private void showTown(boolean forward) {
+        Music.play("town");
+        List<String> notes = townArrival();
         refreshTown();
         showCard("TOWN", forward);
         Theme.focusFirst(townButtons);
+        if (!notes.isEmpty()) townMap.toast(String.join("  ·  ", notes));
+    }
+
+    /** 새 장비 자동 장착: wears the piece if it beats the current one, and says so in the run's message. */
+    private void autoEquip(String itemName, StringBuilder msg) {
+        if (Settings.isAutoEquip() && player.equipIfBetter(itemName)) msg.append("\n").append(itemName).append("을(를) 바로 장착했다!");
+    }
+
+    /** Coming back to town: 일반 장비 자동 판매 and 의뢰 완료 알림, as short notes for one toast. */
+    private List<String> townArrival() {
+        List<String> notes = new ArrayList<>();
+        if (player == null) return notes;
+        if (Settings.isAutoSellCommon()) {
+            int[] sold = player.sellCommonGear();
+            if (sold[0] > 0) notes.add("[일반] 장비 " + sold[0] + "개를 " + sold[1] + "G에 팔았어요");
+        }
+        if (Settings.isQuestNotify()) {
+            long done = player.getQuests().stream().filter(Quest::isDone).count();
+            if (done > 0) notes.add("끝낸 의뢰가 " + done + "개 있어요! 의뢰 게시판에서 보상을 받으세요");
+        }
+        return notes;
     }
 }

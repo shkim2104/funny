@@ -5,6 +5,7 @@ import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Player;
 import game.model.Quest;
+import game.save.Settings;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -306,6 +307,7 @@ public final class TownDialogs {
                 Item got = w.grade == null ? ItemCatalog.get(POTIONS[rnd.nextInt(POTIONS.length)])
                         : randomOfGrade(w.grade, rnd);
                 player.addItem(got.getName());
+                boolean worn = Settings.isAutoEquip() && player.equipIfBetter(got.getName());
                 resultIcon.setIcon(null);
                 resultName.setText("두근두근...");
                 resultName.setForeground(Sketch.INK_SOFT);
@@ -315,7 +317,7 @@ public final class TownDialogs {
                     resultIcon.setIcon(ItemArt.item(got, 110));
                     resultName.setText(got.getName());
                     resultName.setForeground(Sketch.gradeInk(got.getGrade()));
-                    resultInfo.setText("[" + got.getGrade().getLabel() + "] " + got.getStatText());
+                    resultInfo.setText("[" + got.getGrade().getLabel() + "] " + got.getStatText() + (worn ? " · 바로 장착!" : ""));
                     refresh.run();
                 });
                 refresh.run();
@@ -440,6 +442,18 @@ public final class TownDialogs {
             repaint();
         }
 
+        /** Which wedge is under the 12 o'clock pointer at this rotation. */
+        private int wedgeAt(double rot) {
+            double total = 0;
+            for (Wedge w : wedges) total += w.weight;
+            double a = ((-rot % 360) + 360) % 360, acc = 0;
+            for (int i = 0; i < wedges.size(); i++) {
+                acc += wedges.get(i).weight / total * 360;
+                if (a < acc) return i;
+            }
+            return wedges.size() - 1;
+        }
+
         /** Spins a few turns and stops with the pointer inside wedge `index` (not too close to its edges). */
         void spin(int index, Random rnd, Runnable onDone) {
             double total = 0;
@@ -452,12 +466,19 @@ public final class TownDialogs {
             double target = -point;
             double delta = ((target - from) % 360 + 360) % 360 + 360 * 5;   // always forward, five extra turns
             long t0 = System.currentTimeMillis();
+            // 돌림판 건너뛰기: land at once (a single timer tick, so the caller's flow stays the same).
+            long spinMs = Settings.isSkipWheel() ? 1 : SPIN_MS;
+            double[] last = {from};
             timer = new Timer(16, e -> {
-                double t = Math.min(1, (System.currentTimeMillis() - t0) / (double) SPIN_MS);
+                double t = Math.min(1, (System.currentTimeMillis() - t0) / (double) spinMs);
                 double ease = 1 - Math.pow(1 - t, 4);   // fast start, long slow finish
                 rotation = from + delta * ease;
+                // A tick each time a wedge edge passes the pointer, like a real wheel's flapper.
+                if (spinMs > 1 && wedgeAt(rotation) != wedgeAt(last[0])) Sfx.play(Sfx.Sound.TICK);
+                last[0] = rotation;
                 repaint();
                 if (t >= 1) {
+                    Sfx.play(Sfx.Sound.WHEEL_STOP);
                     ((Timer) e.getSource()).stop();
                     timer = null;
                     rotation = ((rotation % 360) + 360) % 360;

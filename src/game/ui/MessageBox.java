@@ -2,14 +2,15 @@ package game.ui;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.RoundRectangle2D;
 
 /**
- * The handheld-style message window: a cream panel with a dark double rim. Used as a container
+ * The battle's message window, as a scrap of ruled notebook paper framed in pencil. Used as a container
  * (the battle log) or, via setText, as the "무엇을 할까?" prompt that wraps its text to fit.
  */
 public class MessageBox extends JPanel {
+    private static final Color RULE = new Color(110, 150, 205, 70);
     private String text = "";
+    private final long seed = System.identityHashCode(this);
 
     public MessageBox(LayoutManager layout) {
         super(layout);
@@ -24,19 +25,22 @@ public class MessageBox extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        Graphics2D g2 = Sketch.smooth(g);
         int w = getWidth(), h = getHeight();
-        g2.setColor(BattleHud.BOX_EDGE);
-        g2.fill(new RoundRectangle2D.Float(0, 0, w, h, 18, 18));
-        g2.setColor(new Color(96, 168, 176));   // teal inner rim, like the classic text box frame
-        g2.fill(new RoundRectangle2D.Float(3, 3, w - 6, h - 6, 15, 15));
-        g2.setColor(BattleHud.BOX_FILL);
-        g2.fill(new RoundRectangle2D.Float(7, 7, w - 14, h - 14, 11, 11));
+        g2.setColor(new Color(0, 0, 0, 40));
+        g2.fillRect(8, 8, w - 10, h - 10);
+        g2.setColor(Sketch.PAPER);
+        g2.fillRect(4, 4, w - 10, h - 10);
+        g2.setColor(RULE);
+        g2.setStroke(new BasicStroke(1.2f));
+        for (int y = 34; y < h - 8; y += 24) g2.drawLine(6, y, w - 8, y);
+        g2.setColor(new Color(214, 92, 92, 80));
+        g2.drawLine(14, 6, 14, h - 8);
+        Sketch.box(g2, 4, 4, w - 10, h - 10, seed, 2.2f, Sketch.INK);
 
         if (!text.isEmpty()) {
-            g2.setFont(Theme.dosFont(Font.PLAIN, 17f));
-            g2.setColor(BattleHud.INK);
+            g2.setFont(Sketch.hand(Font.BOLD, 16f));
+            g2.setColor(Sketch.INK);
             FontMetrics fm = g2.getFontMetrics();
             Insets in = getInsets();
             int maxW = w - in.left - in.right;

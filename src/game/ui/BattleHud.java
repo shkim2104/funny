@@ -2,11 +2,9 @@ package game.ui;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.Path2D;
-import java.awt.geom.RoundRectangle2D;
 
 /**
- * Pokémon-style status boxes painted over the battle stage: the foe's box in the top-left (name + HP
+ * Status boxes painted over the battle stage as pencil notes on paper scraps: the foe's box in the top-left (name + HP
  * bar, no numbers), the player's in the bottom-right (name, level, HP with numbers, MP, and a thin EXP
  * strip along the bottom). Bars drain toward their new value instead of jumping, and HP turns
  * yellow then red as it runs low.
@@ -17,13 +15,12 @@ public class BattleHud {
     static final Color BOX_EDGE = new Color(44, 50, 58);
     static final Color INK = new Color(46, 46, 54);
     static final Color INK_SOFT = new Color(120, 116, 104);
-    private static final Color TRACK = new Color(70, 72, 78);
     private static final Color HP_TAG = new Color(232, 160, 40);
-    private static final Color HP_HIGH = new Color(88, 208, 120);
-    private static final Color HP_MID = new Color(246, 196, 40);
-    private static final Color HP_LOW = new Color(236, 78, 62);
-    private static final Color MP_FILL = new Color(96, 150, 236);
-    private static final Color EXP_FILL = new Color(72, 196, 248);
+    private static final Color HP_HIGH = new Color(54, 150, 70);
+    private static final Color HP_MID = new Color(212, 158, 24);
+    private static final Color HP_LOW = new Color(196, 62, 52);
+    private static final Color MP_FILL = new Color(52, 96, 170);
+    private static final Color EXP_FILL = new Color(196, 140, 20);
 
     /** Bars move this fraction of their full length per second, like the handheld games' steady drain. */
     private static final float DRAIN_PER_SEC = 0.9f;
@@ -117,11 +114,11 @@ public class BattleHud {
     public void paint(Graphics2D g, int w, int h) {
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         int bw = Math.max(220, Math.min(320, Math.round(w * 0.34f)));
         if (!monsterName.isEmpty()) paintMonsterBox(g2, 14, 14, bw);
         if (!playerName.isEmpty()) {
-            int ph = 104;
+            int ph = 116;
             paintPlayerBox(g2, w - bw - 14, h - ph - 14, bw, ph);
         }
         g2.dispose();
@@ -129,9 +126,8 @@ public class BattleHud {
 
     private void paintMonsterBox(Graphics2D g2, int x, int y, int bw) {
         int bh = 62;
-        // Foe box: slanted right edge, like the opponent's panel in the handheld games.
         paintBox(g2, x, y, bw, bh, false);
-        g2.setFont(Theme.dosFont(Font.BOLD, 17f));
+        g2.setFont(Sketch.hand(Font.BOLD, 17f));
         g2.setColor(INK);
         g2.drawString(fit(g2, monsterName, bw - 36), x + 16, y + 24);
         paintHpBar(g2, x + 16, y + 34, bw - 40, shownMonsterHp / monsterMaxHp);
@@ -141,10 +137,10 @@ public class BattleHud {
         paintBox(g2, x, y, bw, bh, true);
         int left = x + 22, right = x + bw - 14;
 
-        g2.setFont(Theme.dosFont(Font.BOLD, 17f));
+        g2.setFont(Sketch.hand(Font.BOLD, 17f));
         g2.setColor(INK);
         String lv = "Lv." + level;
-        Font lvFont = Theme.dosFont(Font.BOLD, 15f);
+        Font lvFont = Sketch.hand(Font.BOLD, 15f);
         int lvW = g2.getFontMetrics(lvFont).stringWidth(lv);
         g2.drawString(fit(g2, playerName, right - left - lvW - 10), left, y + 24);
         g2.setFont(lvFont);
@@ -154,98 +150,73 @@ public class BattleHud {
         paintHpBar(g2, left, y + 32, barW, shownHp / maxHp);
 
         // HP numbers under the bar on the right; job name on the left of the same line.
-        g2.setFont(Theme.dosFont(Font.PLAIN, 12f));
+        g2.setFont(Sketch.hand(Font.PLAIN, 12f));
         g2.setColor(INK_SOFT);
-        g2.drawString(jobName, left, y + 58);
-        g2.setFont(Theme.dosFont(Font.BOLD, 15f));
+        g2.drawString(jobName, left, y + 63);
+        g2.setFont(Sketch.hand(Font.BOLD, 15f));
         g2.setColor(INK);
         String nums = Math.round(shownHp) + " / " + maxHp;
-        g2.drawString(nums, right - g2.getFontMetrics().stringWidth(nums), y + 59);
+        g2.drawString(nums, right - g2.getFontMetrics().stringWidth(nums), y + 64);
 
         // MP: a slimmer blue bar with its own tag and numbers.
-        int mpY = y + 68;
+        int mpY = y + 74;
         paintTag(g2, left, mpY, "MP", MP_FILL);
-        g2.setFont(Theme.dosFont(Font.PLAIN, 12f));
+        g2.setFont(Sketch.hand(Font.PLAIN, 12f));
         String mpNums = mp + "/" + maxMp;
         int mpNumW = g2.getFontMetrics().stringWidth(mpNums);
         int mpBarX = left + 30;
-        int mpBarW = barW - 30 - mpNumW - 8;
-        paintBar(g2, mpBarX, mpY + 2, mpBarW, 7, shownMp / maxMp, MP_FILL);
+        int mpBarW = barW - 30 - mpNumW - 16;
+        paintBar(g2, mpBarX, mpY + 1, mpBarW, 9, shownMp / maxMp, MP_FILL);
         g2.setColor(INK);
         g2.drawString(mpNums, right - mpNumW, mpY + 10);
 
         // EXP strip along the bottom edge of the box.
-        int expY = y + bh - 15;
-        g2.setFont(Theme.dosFont(Font.BOLD, 10f));
+        int expY = y + bh - 18;
+        g2.setFont(Sketch.hand(Font.BOLD, 11f));
         g2.setColor(INK_SOFT);
-        g2.drawString("EXP", left, expY + 7);
-        paintBar(g2, left + 30, expY, barW - 30, 6, shownExp / expMax, EXP_FILL);
+        g2.drawString("EXP", left, expY + 8);
+        paintBar(g2, left + 30, expY, barW - 30, 8, shownExp / expMax, EXP_FILL);
     }
 
-    /** Cream panel with a dark rim and a darker shaded underside; playerSide slants the left edge instead of the right. */
+    /** A scrap of ruled notebook paper with a soft shadow and a pencil frame (playerSide only varies the seed). */
     private static void paintBox(Graphics2D g2, int x, int y, int bw, int bh, boolean playerSide) {
-        int slant = 14;
-        Path2D.Float p = new Path2D.Float();
-        if (playerSide) {
-            p.moveTo(x + slant, y);
-            p.lineTo(x + bw, y);
-            p.lineTo(x + bw, y + bh);
-            p.lineTo(x, y + bh);
-        } else {
-            p.moveTo(x, y);
-            p.lineTo(x + bw, y);
-            p.lineTo(x + bw - slant, y + bh);
-            p.lineTo(x, y + bh);
-        }
-        p.closePath();
-
-        // Drop shadow so the box lifts off busy backdrops.
-        Graphics2D gs = (Graphics2D) g2.create();
-        gs.translate(3, 4);
-        gs.setColor(new Color(0, 0, 0, 70));
-        gs.fill(p);
-        gs.dispose();
-
-        g2.setPaint(new GradientPaint(0, y, BOX_FILL, 0, y + bh, BOX_SHADE));
-        g2.fill(p);
-        g2.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(BOX_EDGE);
-        g2.draw(p);
+        g2.setColor(new Color(0, 0, 0, 55));
+        g2.fillRect(x + 4, y + 5, bw, bh);
+        g2.setColor(Sketch.PAPER);
+        g2.fillRect(x, y, bw, bh);
+        g2.setColor(new Color(110, 150, 205, 60));
+        g2.setStroke(new BasicStroke(1.1f));
+        for (int ly = y + 22; ly < y + bh - 4; ly += 20) g2.drawLine(x + 2, ly, x + bw - 2, ly);
+        Sketch.box(g2, x, y, bw, bh, playerSide ? 1202 : 1201, 2.4f, INK);
         g2.setStroke(new BasicStroke(1f));
     }
 
-    /** "HP" tag plus a bar that goes green → yellow → red. */
+    /** "HP" written in pencil plus a colored-pencil bar that goes green → yellow → red. */
     private static void paintHpBar(Graphics2D g2, int x, int y, int w, float ratio) {
-        paintTag(g2, x, y, "HP", HP_TAG);
+        paintTag(g2, x, y, "HP", INK);
         Color fill = ratio > 0.5f ? HP_HIGH : ratio > 0.2f ? HP_MID : HP_LOW;
-        paintBar(g2, x + 30, y + 1, w - 30, 10, ratio, fill);
+        paintBar(g2, x + 30, y - 1, w - 30, 13, ratio, fill);
     }
 
     private static void paintTag(Graphics2D g2, int x, int y, String text, Color color) {
-        g2.setColor(TRACK);
-        g2.fill(new RoundRectangle2D.Float(x, y, 28, 12, 6, 6));
-        g2.setFont(Theme.dosFont(Font.BOLD, 11f));
+        g2.setFont(Sketch.hand(Font.BOLD, 13f));
         g2.setColor(color);
-        FontMetrics fm = g2.getFontMetrics();
-        g2.drawString(text, x + (28 - fm.stringWidth(text)) / 2, y + 10);
+        g2.drawString(text, x, y + 11);
     }
 
+    /** A wobbly pencil box hatched in color up to the ratio (seeded by position, so it holds still). */
     private static void paintBar(Graphics2D g2, int x, int y, int w, int h, float ratio, Color fill) {
         ratio = Math.max(0f, Math.min(1f, ratio));
-        g2.setColor(TRACK);
-        g2.fill(new RoundRectangle2D.Float(x - 2, y - 2, w + 4, h + 4, h + 4, h + 4));
-        g2.setColor(new Color(236, 236, 228));
-        g2.fill(new RoundRectangle2D.Float(x, y, w, h, h, h));
-        int fw = Math.round(w * ratio);
-        if (fw > 0) {
-            g2.setColor(fill);
-            g2.fill(new RoundRectangle2D.Float(x, y, fw, h, h, h));
-            // Light upper band gives the bar the glossy two-tone look.
-            g2.setColor(new Color(255, 255, 255, 90));
-            g2.fill(new RoundRectangle2D.Float(x, y, fw, h / 2f, h / 2f, h / 2f));
+        long seed = x * 31L + y * 7L + w;
+        double fw = w * ratio;
+        if (fw > 0.5) {
+            Shape s = new java.awt.geom.Rectangle2D.Double(x, y, fw, h);
+            g2.setColor(new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), 70));
+            g2.fill(s);
+            Sketch.hatch(g2, s, seed, fill, 200, h > 8 ? 3.6 : 3, 60);
         }
+        Sketch.box(g2, x, y, w, h, seed + 1, 1.6f, INK);
     }
-
     /** Trims a name with "…" so it never runs past its box. */
     private static String fit(Graphics2D g2, String text, int maxW) {
         FontMetrics fm = g2.getFontMetrics();

@@ -39,7 +39,7 @@ public class SaveManager {
     }
 
     /** Data lives under the user's OS data folder so it works the same no matter where the game is launched from. */
-    private static File dataDir() {
+    static File dataDir() {
         String appData = System.getenv("APPDATA");
         File dir = (appData != null && !appData.isEmpty())
                 ? new File(appData, "NotebookRPG")
@@ -78,7 +78,7 @@ public class SaveManager {
         if (files == null) return result;
         for (File f : files) {
             String id = f.getName().substring(0, f.getName().length() - 4);
-            Player p = read(f);
+            Player p = load(id);
             if (p != null) result.add(new CharacterSave(id, p, f.lastModified()));
         }
         result.sort((a, b) -> a.id.compareTo(b.id));
@@ -99,13 +99,26 @@ public class SaveManager {
         return id;
     }
 
+    /** The character, or (세이브 백업) the previous save if this one can't be read. */
     public static Player load(String id) {
-        return read(fileFor(id));
+        Player p = read(fileFor(id));
+        File bak = backupFor(id);
+        if (p == null && bak.exists()) {
+            p = read(bak);
+            if (p != null) System.out.println("세이브가 깨져서 백업에서 불러왔습니다: " + id);
+        }
+        return p;
+    }
+
+    /** The previous save, kept by 세이브 백업 (".bak", so it is never listed as a character). */
+    private static File backupFor(String id) {
+        return new File(charactersDir(), id + ".bak");
     }
 
     public static void delete(String id) {
         File f = fileFor(id);
         if (f.exists() && !f.delete()) System.out.println("캐릭터를 삭제하지 못했습니다: " + id);
+        backupFor(id).delete();
         // The character's own drawing goes with it.
         File[] drawings = charactersDir().listFiles((d, name) -> name.startsWith(id + "_") && name.endsWith(".png"));
         if (drawings != null) for (File d : drawings) d.delete();
@@ -127,6 +140,10 @@ public class SaveManager {
             return;
         }
         try {
+            // 세이브 백업: keep the save being replaced, as long as it is itself readable.
+            if (Settings.isSaveBackup() && target.exists() && read(target) != null) {
+                Files.copy(target.toPath(), backupFor(id).toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
             Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
             System.out.println("게임을 저장했습니다.");
         } catch (IOException e) {

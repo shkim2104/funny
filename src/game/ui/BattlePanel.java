@@ -8,6 +8,7 @@ import game.model.Monster;
 import game.model.Player;
 import game.model.RunState;
 import game.model.Skill;
+import game.save.Settings;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -134,13 +135,20 @@ public class BattlePanel extends JPanel {
         add(buildLogWindow(), BorderLayout.EAST);
     }
 
+    /** The whole battle screen sits on a notebook page (margin line on the left), like the dialogs. */
+    @Override
+    protected void paintComponent(Graphics g) {
+        Graphics2D g2 = Sketch.smooth(g);
+        Sketch.paper(g2, getWidth(), getHeight(), 8);
+        g2.dispose();
+    }
     /** Tall message window on the right holding the whole battle log, with the current gold in its header. */
     private JComponent buildLogWindow() {
         JLabel title = new JLabel("전투 기록");
-        title.setFont(Theme.dosFont(Font.BOLD, 16f));
+        title.setFont(Sketch.hand(Font.BOLD, 16f));
         title.setForeground(BattleHud.INK);
-        goldLabel.setFont(Theme.dosFont(Font.BOLD, 14f));
-        goldLabel.setForeground(new Color(168, 112, 20));
+        goldLabel.setFont(Sketch.hand(Font.BOLD, 14f));
+        goldLabel.setForeground(Sketch.BLUE_PENCIL);
         JPanel header = new JPanel(new BorderLayout(8, 0));
         header.setOpaque(false);
         header.setBorder(new EmptyBorder(0, 0, 8, 0));
@@ -152,7 +160,7 @@ public class BattlePanel extends JPanel {
         log.setWrapStyleWord(true);
         log.setOpaque(false);
         log.setForeground(BattleHud.INK);
-        log.setFont(Theme.dosFont(Font.PLAIN, 14f));
+        log.setFont(Sketch.hand(Font.PLAIN, 14f));
         log.setBorder(new EmptyBorder(0, 0, 0, 4));
         JScrollPane logScroll = Theme.scroll(log);
         logScroll.setOpaque(false);
@@ -192,7 +200,7 @@ public class BattlePanel extends JPanel {
         log.setText("");
         actionCards.show(actionArea, "ACTIONS");
         actionArea.revalidate();
-        setButtonsEnabled(true);
+        playerTurn();
         stage.setMonsterName(monster.getName());
         stage.startIdle();
         hud.setMonster(monster.getName(), monster.getHp(), monster.getMaxHp(), true);
@@ -232,7 +240,7 @@ public class BattlePanel extends JPanel {
     public void nextBattle(Monster monster, Consumer<Result> onFinish) {
         this.monster = monster;
         this.onFinish = onFinish;
-        setButtonsEnabled(true);
+        playerTurn();
         stage.setMonsterName(monster.getName());
         stage.startIdle();
         hud.setMonster(monster.getName(), monster.getHp(), monster.getMaxHp(), true);
@@ -290,6 +298,110 @@ public class BattlePanel extends JPanel {
         prompt.setText(text.replace("===", "").trim());
     }
 
+    /** A blow-by-blow line: always in the message window, in the log unless 전투 기록 간단히 is on. */
+    private void logDetail(String text) {
+        if (Settings.isBriefLog()) prompt.setText(text.replace("===", "").trim());
+        else appendLog(text);
+    }
+
+    /** A pause in ms at the chosen 전투 속도. */
+    private static int scaled(int ms) {
+        return (int) Math.max(1, Math.round(ms / Settings.battleSpeed()));
+    }
+
+    // ---------- turn start: 자동 포션, then 자동 전투 ----------
+    private int turnId;
+    private boolean attackMenuOpen;
+
+    /** The player's turn begins: buttons on, then the convenience settings may act for them. */
+    private void playerTurn() {
+        setButtonsEnabled(true);
+        int id = ++turnId;
+        String potion = autoPotion();
+        if (potion != null) {
+            later(scaled(450), id, () -> {
+                setButtonsEnabled(false);
+                logDetail("[자동 포션]");
+                usePotion(potion);
+                monsterTurn();
+            });
+        } else if (Settings.isAutoBattle() && !bossFight) {
+            later(scaled(600), id, () -> exchange(this::playerStrike));
+        }
+    }
+
+    /** The potion 자동 포션 would drink now, or null (off, HP high enough, or none in the bag). */
+    private String autoPotion() {
+        int pct = Settings.getAutoPotionPercent();
+        if (pct <= 0 || player.getHp() * 100 > player.getMaxHp() * pct) return null;
+        boolean high = player.getInventory().contains("하이 포션"), small = player.getInventory().contains("포션");
+        int missing = player.getMaxHp() - player.getHp();
+        if (high && (missing >= 80 || !small)) return "하이 포션";
+        return small ? "포션" : null;
+    }
+
+    /**
+     * Runs an automatic action once the delay passes, but only if it is still this same turn, the
+     * player hasn't acted or opened the skill menu, and no dialog is in front (checked again later if one is).
+     */
+    private void later(int ms, int id, Runnable action) {
+        Timer t = new Timer(ms, e -> {
+            if (id != turnId || !attackBtn.isEnabled() || attackMenuOpen || monster == null || !monster.isAlive()) return;
+            // A modal dialog in front (아이템 list, 설정, Tab info...) holds the action until it closes.
+            for (Window w : Window.getWindows()) {
+                if (w instanceof Dialog && w.isShowing() && ((Dialog) w).isModal()) {
+                    later(400, id, action);
+                    return;
+                }
+            }
+            action.run();
+        });
+        t.setRepeats(false);
+        t.start();
+    }
+
+    // ---------- hotkeys (called by GameFrame) ----------
+
+    /** 1~4: use that skill slot straight away (as if picked from the 공격 menu). */
+    public void hotkeySkill(int slot) {
+        if (player == null || !attackBtn.isEnabled() || player.getJob() == Job.BEGINNER) return;
+        if (!attackMenuOpen) openAttackMenu();
+        if (slotSkills[slot] == null) {
+            closeAttackMenu();
+            setButtonsEnabled(true);
+            return;
+        }
+        useSlot(slot);
+    }
+
+    /** Tab: this run's augments and the equipped gear's effects, on a notebook page. */
+    public void showRunInfo() {
+        if (player == null) return;
+        StringBuilder html = new StringBuilder("<html><body style='width:380px'>");
+        html.append("<b>이번 던전의 증강</b><br>");
+        if (run == null || run.getAugments().isEmpty()) {
+            html.append("<font color='").append(Sketch.hex(Sketch.INK_SOFT)).append("'>아직 고른 증강이 없어요.</font><br>");
+        } else {
+            for (game.model.Augment a : run.getAugments()) {
+                html.append("<font color='").append(a.getTier().getColorHex()).append("'><b>[").append(a.getTier().getLabel())
+                        .append("] ").append(a.getName()).append("</b></font> <font color='").append(Sketch.hex(Sketch.INK_SOFT))
+                        .append("'>").append(a.getDescription()).append("</font><br>");
+            }
+        }
+        html.append("<br><b>장비 효과</b><br>");
+        java.util.List<String> gear = player.getGearBonus().lines();
+        html.append(gear.isEmpty() ? "<font color='" + Sketch.hex(Sketch.INK_SOFT) + "'>없음</font>" : String.join("<br>", gear));
+        html.append("<br><br><b>모두 합친 효과</b><br>");
+        java.util.List<String> total = bonus.lines();
+        html.append("<font color='").append(Sketch.hex(Sketch.RED_PENCIL)).append("'>")
+                .append(total.isEmpty() ? "없음" : String.join("<br>", total)).append("</font></body></html>");
+        JLabel text = new JLabel(html.toString());
+        text.setFont(Sketch.hand(Font.PLAIN, 14f));
+        text.setForeground(Sketch.INK);
+        text.setVerticalAlignment(SwingConstants.TOP);
+        Dialogs.custom(this, "보유 증강 · 장비 효과", Sketch.scroll(text), 520, 520);
+    }
+
     private void setButtonsEnabled(boolean enabled) {
         attackBtn.setEnabled(enabled);
         itemBtn.setEnabled(enabled);
@@ -326,7 +438,7 @@ public class BattlePanel extends JPanel {
         for (int i = 0; i < SKILL_SLOTS; i++) {
             final int slot = i;
             CommandButton b = new CommandButton("", BACK_GRAY);
-            b.setFont(Theme.dosFont(Font.BOLD, 15f));
+            b.setFont(Sketch.hand(Font.BOLD, 15f));
             b.addActionListener(e -> useSlot(slot));
             skillSlotBtns[i] = b;
             grid.add(b);
@@ -396,6 +508,7 @@ public class BattlePanel extends JPanel {
             }
         }
         prompt.setText("어떤 기술을 쓸까?");
+        attackMenuOpen = true;
         actionCards.show(actionArea, "ATTACK_MENU");
         actionArea.revalidate();
         basicAttackBtn.requestFocusInWindow();
@@ -413,8 +526,8 @@ public class BattlePanel extends JPanel {
     }
 
     private void closeAttackMenu() {
+        attackMenuOpen = false;
         actionCards.show(actionArea, "ACTIONS");
-        actionArea.revalidate();
         actionArea.revalidate();
     }
 
@@ -437,7 +550,7 @@ public class BattlePanel extends JPanel {
         setButtonsEnabled(false);
         boolean monsterFirst = !bonus.isAlwaysFirst() && monster.getSpd() > player.getSpd() + bonus.spd();
         if (monsterFirst) {
-            appendLog(monster.getName() + "이(가) 더 빨라 선제공격!");
+            logDetail(monster.getName() + "이(가) 더 빨라 선제공격!");
             monsterStrike(() -> {
                 if (!player.isAlive()) {
                     finishBattle(Result.LOSE);
@@ -473,10 +586,10 @@ public class BattlePanel extends JPanel {
         if (regen > 0 && player.getHp() < player.getMaxHp()) {
             int before = player.getHp();
             player.heal(regen);
-            appendLog("재생으로 HP를 " + (player.getHp() - before) + " 회복했다.");
+            logDetail("재생으로 HP를 " + (player.getHp() - before) + " 회복했다.");
             refreshStatus();
         }
-        setButtonsEnabled(true);
+        playerTurn();
     }
 
     /** MP a skill costs after cost-reduction effects. */
@@ -514,7 +627,7 @@ public class BattlePanel extends JPanel {
         int healed = player.getHp() - before;
         if (healed > 0) {
             stage.playHeal();
-            appendLog("HP를 " + healed + " 흡수했다!");
+            logDetail("HP를 " + healed + " 흡수했다!");
         }
     }
 
@@ -531,7 +644,7 @@ public class BattlePanel extends JPanel {
             int hpBefore = monster.getHp();
             monster.takeDamage(hit[0]);
             stage.showDamage(hit[0], true, crit);
-            appendLog((first ? player.getName() + "의 공격! " : "연속 공격! ") + (crit ? "치명타! " : "")
+            logDetail((first ? player.getName() + "의 공격! " : "연속 공격! ") + (crit ? "치명타! " : "")
                     + monster.getName() + "에게 " + hit[0] + "의 피해!");
             drainFrom(Math.min(hit[0], hpBefore), bonus.lifesteal());
             again[0] = first && monster.isAlive() && rnd.nextDouble() < bonus.doubleStrike();
@@ -545,7 +658,7 @@ public class BattlePanel extends JPanel {
     /** Order of a skill: pay HP (if any) -> hits -> heal (if any). Every part is optional data on the skill. */
     private void castSkill(Skill skill, Runnable onDone) {
         player.useMp(mpCost(skill));
-        appendLog(player.getName() + "의 " + skill.getName() + "!");
+        logDetail(player.getName() + "의 " + skill.getName() + "!");
         refreshStatus();
 
         if (skill.getHpCostRatio() > 0) {
@@ -554,7 +667,7 @@ public class BattlePanel extends JPanel {
             if (cost > 0) {
                 player.takeDamage(cost);
                 stage.showDamage(cost, false, false);
-                appendLog(player.getName() + "은(는) HP " + cost + "을(를) 바쳤다!");
+                logDetail(player.getName() + "은(는) HP " + cost + "을(를) 바쳤다!");
                 refreshStatus();
             }
         }
@@ -564,7 +677,7 @@ public class BattlePanel extends JPanel {
                 int before = player.getHp();
                 player.heal((int) Math.round(player.getMaxHp() * skill.getHealRatio()));
                 stage.playHeal();
-                appendLog("HP를 " + (player.getHp() - before) + " 회복했다!");
+                logDetail("HP를 " + (player.getHp() - before) + " 회복했다!");
                 refreshStatus();
             }
             onDone.run();
@@ -574,7 +687,7 @@ public class BattlePanel extends JPanel {
             skillHits(skill, skill.getHits(), 0, afterHits);
         } else {
             // Pure support skill: a short pause so the turn doesn't feel instant.
-            Timer pause = new Timer(350, e -> afterHits.run());
+            Timer pause = new Timer(scaled(350), e -> afterHits.run());
             pause.setRepeats(false);
             pause.start();
         }
@@ -591,7 +704,7 @@ public class BattlePanel extends JPanel {
             int hpBefore = monster.getHp();
             monster.takeDamage(finalDmg);
             stage.showDamage(finalDmg, true, crit);
-            appendLog((hits > 1 ? (index + 1) + "타! " : "") + (crit ? "치명타! " : "")
+            logDetail((hits > 1 ? (index + 1) + "타! " : "") + (crit ? "치명타! " : "")
                     + monster.getName() + "에게 " + finalDmg + "의 피해!");
             // Drain from the damage that actually landed, so overkill on the last hit doesn't over-heal.
             drainFrom(Math.min(finalDmg, hpBefore), skill.getDrainRatio() + bonus.lifesteal());
@@ -605,7 +718,7 @@ public class BattlePanel extends JPanel {
     private void monsterStrike(Runnable onDone) {
         stage.animateAttack(false, () -> {
             if (rnd.nextDouble() < bonus.dodge()) {
-                appendLog(monster.getName() + "의 공격! " + player.getName() + "은(는) 가볍게 피했다!");
+                logDetail(monster.getName() + "의 공격! " + player.getName() + "은(는) 가볍게 피했다!");
                 return;
             }
             int def = (int) Math.round(player.getDef() * (1 + bonus.defPct()));
@@ -615,13 +728,13 @@ public class BattlePanel extends JPanel {
             int taken = dmg - absorbed;
             player.takeDamage(taken);
             stage.showDamage(taken, false, false);
-            appendLog(monster.getName() + "의 공격! " + player.getName() + "이(가) " + taken + "의 피해를 입었다!"
+            logDetail(monster.getName() + "의 공격! " + player.getName() + "이(가) " + taken + "의 피해를 입었다!"
                     + (absorbed > 0 ? " (보호막이 " + absorbed + " 막음)" : ""));
             int reflected = (int) Math.round(dmg * bonus.thorns());
             if (reflected > 0) {
                 monster.takeDamage(reflected);
                 stage.showDamage(reflected, true, false);
-                appendLog("가시가 " + monster.getName() + "에게 " + reflected + "의 피해를 돌려주었다!");
+                logDetail("가시가 " + monster.getName() + "에게 " + reflected + "의 피해를 돌려주었다!");
             }
             if (!player.isAlive() && bonus.revive() > 0 && run != null && !run.isReviveUsed()) {
                 run.useRevive();
@@ -646,10 +759,16 @@ public class BattlePanel extends JPanel {
         if (idx < 0) return;
 
         setButtonsEnabled(false);
-        String itemName = usable.get(idx);
+        usePotion(usable.get(idx));
+        monsterTurn();
+    }
+
+    /** Drinks a potion or ether from the bag (used by 아이템 and by 자동 포션). */
+    private void usePotion(String itemName) {
         Item item = ItemCatalog.get(itemName);
         if (item.getType() == Item.Type.POTION) {
             player.heal(item.getValue());
+            stage.playHeal();
             appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 HP를 " + item.getValue() + " 회복했다!");
         } else if (item.getType() == Item.Type.ETHER) {
             player.restoreMp(item.getValue());
@@ -657,7 +776,6 @@ public class BattlePanel extends JPanel {
         }
         player.removeItem(itemName);
         refreshStatus();
-        monsterTurn();
     }
 
     private void onFlee() {
@@ -673,7 +791,7 @@ public class BattlePanel extends JPanel {
 
     private void monsterTurn() {
         if (!monster.isAlive()) {
-            setButtonsEnabled(true);
+            playerTurn();
             return;
         }
         setButtonsEnabled(false);
@@ -696,12 +814,12 @@ public class BattlePanel extends JPanel {
             int before = player.getHp();
             player.heal(heal);
             stage.playHeal();
-            appendLog("전투 후 HP를 " + (player.getHp() - before) + " 회복했다.");
+            logDetail("전투 후 HP를 " + (player.getHp() - before) + " 회복했다.");
         }
         if (bonus.mpOnKill() > 0 && player.getMp() < player.getMaxMp()) {
             int before = player.getMp();
             player.restoreMp(bonus.mpOnKill());
-            appendLog("MP를 " + (player.getMp() - before) + " 회복했다.");
+            logDetail("MP를 " + (player.getMp() - before) + " 회복했다.");
         }
         refreshStatus();
     }
@@ -718,7 +836,7 @@ public class BattlePanel extends JPanel {
         } else if (result == Result.LOSE) {
             appendLog(player.getName() + "은(는) 쓰러졌다...");
         }
-        Timer timer = new Timer(700, e -> onFinish.accept(result));
+        Timer timer = new Timer(scaled(700), e -> onFinish.accept(result));
         timer.setRepeats(false);
         timer.start();
     }

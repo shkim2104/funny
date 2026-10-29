@@ -213,6 +213,46 @@ public class Player {
         return baseDef + (armor != null ? armor.getValue() : 0);
     }
 
+    /**
+     * 새 장비 자동 장착: wears a just-obtained weapon or armor if its stat beats what is worn now (or
+     * nothing is). Returns true if it was put on.
+     */
+    public boolean equipIfBetter(String itemName) {
+        Item item = ItemCatalog.get(itemName);
+        if (item == null || (item.getType() != Item.Type.WEAPON && item.getType() != Item.Type.ARMOR)) return false;
+        boolean weapon = item.getType() == Item.Type.WEAPON;
+        String worn = weapon ? weaponName : armorName;
+        Item current = worn != null ? ItemCatalog.get(worn) : null;
+        if (current != null && current.getValue() >= item.getValue()) return false;
+        if (weapon) weaponName = itemName;
+        else armorName = itemName;
+        return true;
+    }
+
+    /**
+     * 일반 장비 자동 판매: sells every [일반] weapon and armor in the bag that isn't being worn, at the
+     * shop's half price. Returns {pieces sold, gold earned}.
+     */
+    public int[] sellCommonGear() {
+        int count = 0, gold = 0;
+        for (java.util.Iterator<String> it = inventory.iterator(); it.hasNext(); ) {
+            String name = it.next();
+            Item item = ItemCatalog.get(name);
+            if (item == null || item.getGrade() != Item.Grade.COMMON) continue;
+            if (item.getType() != Item.Type.WEAPON && item.getType() != Item.Type.ARMOR) continue;
+            if (name.equals(weaponName) || name.equals(armorName)) {
+                // Keep the worn piece itself, but only one copy of it.
+                long copies = inventory.stream().filter(name::equals).count();
+                if (copies <= 1) continue;
+            }
+            it.remove();
+            count++;
+            gold += item.getPrice() / 2;
+        }
+        this.gold += gold;
+        return new int[]{count, gold};
+    }
+
     /** Special effects of the equipped weapon and armor (boss gear), added up. */
     public Bonus getGearBonus() {
         Bonus b = Bonus.NONE;

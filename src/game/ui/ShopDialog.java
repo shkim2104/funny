@@ -3,6 +3,7 @@ package game.ui;
 import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Player;
+import game.save.Settings;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -201,7 +202,15 @@ public class ShopDialog extends JDialog {
         if (selectedSellEntry == null) return;
         String name = selectedSellEntry.name;
         Item item = ItemCatalog.get(name);
+        // 비싼 장비 판매 확인: 영웅 and up (incl. boss-only 신화) ask once more.
+        if (Settings.isSellConfirm() && item.getGrade().ordinal() >= Item.Grade.EPIC.ordinal()
+                && (item.getType() == Item.Type.WEAPON || item.getType() == Item.Type.ARMOR)
+                && !Dialogs.confirm(this, "판매 확인", "[" + item.getGrade().getLabel() + "] " + name + "을(를) "
+                + (item.getPrice() / 2) + "G에 팔까요?")) {
+            return;
+        }
         player.removeItem(name);
+        Sfx.play(Sfx.Sound.COIN);
         player.earnGold(item.getPrice() / 2);
         selectedSellEntry = null;
         refresh();

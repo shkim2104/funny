@@ -47,8 +47,9 @@ public final class Sketch {
         return new Font("맑은 고딕", Font.PLAIN, 12);
     }
 
+    /** The pencil UI font; 글자 크게 scales every size up by 12%. */
     public static Font hand(int style, float size) {
-        return HAND_BASE.deriveFont(style, size);
+        return HAND_BASE.deriveFont(style, game.save.Settings.isLargeText() ? size * 1.12f : size);
     }
 
     /** Grade colors re-inked for paper: the dark-theme hexes are too pale on cream. */

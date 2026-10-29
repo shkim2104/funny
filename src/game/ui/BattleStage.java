@@ -1,5 +1,7 @@
 package game.ui;
 
+import game.save.Settings;
+
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
@@ -392,12 +394,13 @@ public class BattleStage extends JComponent {
     /** Spawns a floating damage number over the player (onMonster=false) or monster (onMonster=true). */
     public void showDamage(int amount, boolean onMonster, boolean crit) {
         damageTexts.add(new DamageText(String.valueOf(amount), onMonster, crit));
+        if (inImpact) Sfx.play(onMonster ? (crit ? Sfx.Sound.CRIT : Sfx.Sound.HIT) : Sfx.Sound.HURT);
         if (inImpact) {
             // Feedback scaled to the hit: a normal hit nudges, a crit punches, getting hit stings.
             if (onMonster) {
                 addTrauma(crit ? 0.6f : 0.35f);
                 pendingHitStopMs = Math.max(pendingHitStopMs, crit ? 110 : 50);
-                if (crit) screenFlash = 1f;
+                if (crit && !Settings.isReducedEffects()) screenFlash = 1f;
             } else {
                 addTrauma(0.5f);
                 pendingHitStopMs = Math.max(pendingHitStopMs, 70);
@@ -415,6 +418,7 @@ public class BattleStage extends JComponent {
     }
 
     private void addTrauma(float amount) {
+        if (Settings.isReducedEffects()) return;   // 연출 줄이기: no screen shake
         trauma = Math.min(1f, trauma + amount);   // hits add up rather than reset
     }
 
@@ -427,18 +431,21 @@ public class BattleStage extends JComponent {
 
     /** Plays the recovery effect over the player (healing skills). */
     public void playHeal() {
+        Sfx.play(Sfx.Sound.HEAL);
         healFxs.add(new HealFx());
         repaint();
     }
 
     /** Plays the kill reward: coins fly into the player, then gained gold and EXP pop up beside them. */
     public void showRewards(int exp, int gold) {
+        Sfx.play(Sfx.Sound.COIN);
         rewardFxs.add(new RewardFx(exp, gold));
         repaint();
     }
 
     /** Plays the old-MapleStory-style level-up effect over the player. */
     public void playLevelUp() {
+        Sfx.play(Sfx.Sound.LEVEL_UP);
         levelUpFx = new LevelUpFx();
         repaint();
     }
@@ -449,7 +456,9 @@ public class BattleStage extends JComponent {
         final int half = frames / 2;
         final int[] frame = {0};
         final Timer[] holder = new Timer[1];
-        Timer timer = new Timer(18, null);
+        // 전투 속도: the same 12 frames, just shown faster.
+        double speed = Settings.battleSpeed();
+        Timer timer = new Timer((int) Math.max(6, Math.round(18 / speed)), null);
         timer.addActionListener(e -> {
             frame[0]++;
             int f = frame[0];
@@ -477,9 +486,9 @@ public class BattleStage extends JComponent {
                     inImpact = false;
                 }
                 // Hit-stop: hold the lunge at the point of impact for a beat before it returns.
-                if (pendingHitStopMs > 0) {
+                if (pendingHitStopMs > 0 && !Settings.isReducedEffects()) {
                     holder[0].stop();
-                    Timer resume = new Timer(pendingHitStopMs, ev -> holder[0].start());
+                    Timer resume = new Timer((int) Math.round(pendingHitStopMs / speed), ev -> holder[0].start());
                     resume.setRepeats(false);
                     resume.start();
                 }

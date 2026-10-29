@@ -182,7 +182,7 @@ public class MapScreen extends JPanel {
                     10f, new float[] {10f, 7f}, 0f));
             g2.setColor(HOVER_LINE);
             g2.draw(shape);
-            if (mouse != null) {
+            if (mouse != null && game.save.Settings.isBuildingLabels()) {
                 String label = hovered.locked.getAsBoolean() ? hovered.label + " (잠김)" : hovered.label;
                 drawPill(g2, label, mouse.x + 16, mouse.y + 28, 1f, 15f);
             }

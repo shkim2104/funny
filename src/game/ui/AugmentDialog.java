@@ -2,7 +2,10 @@ package game.ui;
 
 import game.model.Augment;
 import game.model.Item;
+import game.model.Bonus;
+import game.model.Player;
 import game.model.RunState;
+import game.save.Settings;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -19,10 +22,11 @@ import java.util.Random;
  * rerolls per run. Also hosts the boss-loot popup, since both show pencil icons on cards.
  */
 public final class AugmentDialog {
-    private static final int CARD_W = 210, CARD_H = 290;
+    private static final int CARD_W = 210, CARD_H = 330;
 
     private final JDialog dialog;
     private final RunState run;
+    private final Player player;
     private final Random rnd;
     private final JPanel cardRow = new JPanel(new GridLayout(1, RunState.OFFER_SIZE, 14, 0));
     private final JLabel tierLabel = new JLabel("", SwingConstants.CENTER);
@@ -32,16 +36,17 @@ public final class AugmentDialog {
     private List<Augment> current = new ArrayList<>();
 
     /** Shows the pick and returns the chosen augment (never null while there is anything left to offer). */
-    public static Augment pick(Component owner, RunState run, Random rnd) {
+    public static Augment pick(Component owner, RunState run, Player player, Random rnd) {
         List<Augment> first = run.offer(rnd);
         if (first.isEmpty()) return null;
-        AugmentDialog d = new AugmentDialog(owner, run, rnd);
+        AugmentDialog d = new AugmentDialog(owner, run, player, rnd);
         d.show(first);
         return d.chosen;
     }
 
-    private AugmentDialog(Component owner, RunState run, Random rnd) {
+    private AugmentDialog(Component owner, RunState run, Player player, Random rnd) {
         this.run = run;
+        this.player = player;
         this.rnd = rnd;
         Window w = (owner instanceof Window) ? (Window) owner : SwingUtilities.getWindowAncestor(owner);
         dialog = new JDialog(w, "증강 선택", Dialog.ModalityType.APPLICATION_MODAL);
@@ -80,7 +85,34 @@ public final class AugmentDialog {
         dialog.add(bottom, BorderLayout.SOUTH);
     }
 
+    /**
+     * 증강 효과 미리 보기: how picking `a` changes the player's numbers, e.g. "치명타 확률 22% → 30%"
+     * (gear effects and the augments already taken are counted, the same way the battle adds them).
+     */
+    private String preview(Augment a) {
+        Bonus now = player.getGearBonus().plus(run.total());
+        Bonus next = now.plus(a.getBonus());
+        List<String> out = new ArrayList<>();
+        diff(out, "공격력", player.getAtk() * (1 + now.atkPct()), player.getAtk() * (1 + next.atkPct()), "");
+        diff(out, "방어력", player.getDef() * (1 + now.defPct()), player.getDef() * (1 + next.defPct()), "");
+        diff(out, "치명타 확률", Math.min(100, player.getCritChance() + now.critChance()),
+                Math.min(100, player.getCritChance() + next.critChance()), "%");
+        diff(out, "치명타 피해", 175 * (1 + now.critDmg()), 175 * (1 + next.critDmg()), "%");
+        diff(out, "스킬 피해", 100 * (1 + now.skillDmg()), 100 * (1 + next.skillDmg()), "%");
+        diff(out, "받는 피해 감소", 100 * now.dmgReduction(), 100 * next.dmgReduction(), "%");
+        diff(out, "회피", 100 * now.dodge(), 100 * next.dodge(), "%");
+        diff(out, "흡혈", 100 * now.lifesteal(), 100 * next.lifesteal(), "%");
+        diff(out, "공격속도", player.getSpd() + now.spd(), player.getSpd() + next.spd(), "");
+        return out.isEmpty() ? null : String.join("<br>", out.subList(0, Math.min(3, out.size())));
+    }
+
+    private static void diff(List<String> out, String what, double before, double after, String unit) {
+        long b = Math.round(before), a = Math.round(after);
+        if (a != b) out.add(what + " " + b + unit + " → " + a + unit);
+    }
+
     private void show(List<Augment> offer) {
+        Sfx.play(Sfx.Sound.CARD);
         setCards(offer);
         dialog.pack();
         dialog.setLocationRelativeTo(dialog.getOwner());
@@ -92,7 +124,7 @@ public final class AugmentDialog {
         cardRow.removeAll();
         List<JButton> buttons = new ArrayList<>();
         for (Augment a : offer) {
-            Card card = new Card(a);
+            Card card = new Card(a, Settings.isAugmentPreview() ? preview(a) : null);
             card.addActionListener(e -> {
                 chosen = a;
                 dialog.dispose();
@@ -117,7 +149,7 @@ public final class AugmentDialog {
         private final Color tierColor;
         private boolean hover;
 
-        Card(Augment a) {
+        Card(Augment a, String previewHtml) {
             tierColor = Color.decode(a.getTier().getColorHex());
             setLayout(new BorderLayout(0, 10));
             setContentAreaFilled(false);
@@ -148,7 +180,8 @@ public final class AugmentDialog {
             name.setFont(Theme.dosFont(Font.BOLD, 19f));
             name.setForeground(tierColor);
             JLabel desc = new JLabel("<html><div style='text-align:center;width:160px'>"
-                    + String.join("<br>", a.getBonus().lines()) + "</div></html>", SwingConstants.CENTER);
+                    + String.join("<br>", a.getBonus().lines())
+                    + (previewHtml == null ? "" : "<br><br><font color='#c7a86a'>" + previewHtml + "</font>") + "</div></html>", SwingConstants.CENTER);
             desc.setFont(Theme.BODY_FONT.deriveFont(14f));
             desc.setForeground(Theme.TEXT);
             desc.setVerticalAlignment(SwingConstants.TOP);
