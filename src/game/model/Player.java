@@ -12,7 +12,8 @@ public class Player {
     public static final int POINTS_PER_LEVEL = 4;
     public static final int HP_PER_POINT = 8;
     public static final int MP_PER_POINT = 4;
-    public static final int ATK_PER_POINT = 2;
+    /** Halved from 2: ATK grew much faster than monsters, so most fights ended in one hit. */
+    public static final int ATK_PER_POINT = 1;
     public static final int DEF_PER_POINT = 2;
     public static final int LUCK_PER_POINT = 1;
     public static final int SPD_PER_POINT = 1;
@@ -190,11 +191,12 @@ public class Player {
     }
 
     /**
-     * Power behind magic skills: weapon attack plus half of max MP. At half, a stat point in MP adds as
-     * much magic as one in ATK (4 MP = +2, same as +2 ATK) and also grows the mana pool, so it pays off for mages.
+     * Power behind magic skills: weapon attack plus a quarter of max MP. At a quarter, a stat point in MP
+     * adds as much magic as one in ATK (4 MP = +1, same as +1 ATK) and also grows the mana pool, so it pays
+     * off for mages. (It was half while a point gave +2 ATK.)
      */
     public int getMagicAtk() {
-        return getAtk() + maxMp / 2;
+        return getAtk() + maxMp / 4;
     }
 
     public boolean useMp(int amount) {

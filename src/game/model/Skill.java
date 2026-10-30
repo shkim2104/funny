@@ -5,7 +5,7 @@ package game.model;
  *
  * Damage per hit starts from a power value that adds up the caster's stats times their ratios:
  *   power = ATK x atkRatio + MaxHP x hpRatio + DEF x defRatio + magic power x magicRatio
- *         + SPD x spdRatio + LUK x lukRatio
+ *         + (SPD x spdRatio + LUK x lukRatio) x STAT_PARITY
  * and then goes through the usual defense formula. Build skills with the fluent setters, e.g.
  *   Skill.of("브랜디쉬", 20, 12).atk(1.4).hits(2).desc("...")
  */
@@ -68,16 +68,22 @@ public class Skill {
     public Skill atk(double ratio) { this.atkRatio = ratio; return this; }
     public Skill hp(double ratio) { this.hpRatio = ratio; return this; }
     public Skill def(double ratio) { this.defRatio = ratio; return this; }
-    /** Scales with magic power (ATK + MaxMP/2). */
+    /** Scales with magic power (ATK + MaxMP/4). */
     public Skill magic(double ratio) { this.magicRatio = ratio; return this; }
     /**
-     * Scales with speed. A stat point gives +1 SPD but +2 ATK, so a speed ratio of exactly 2x the skill's
-     * ATK ratio makes both stats worth the same per point: damage then doesn't depend on how the points are
-     * split, and SPD's extra perk is striking first while ATK's is a stronger basic attack.
+     * Scales with speed. The ratios in Job are written 2x the skill's ATK ratio, from when a stat point gave
+     * +2 ATK; powerFor applies them at STAT_PARITY (half), so with a point now giving +1 ATK and +1 SPD both
+     * stats stay worth the same per point. SPD's extra perk is striking first, ATK's a stronger basic attack.
      */
     public Skill spd(double ratio) { this.spdRatio = ratio; return this; }
-    /** Scales with luck. Like SPD, a stat point gives +1 LUK, so 2x the ATK ratio keeps ATK and LUK worth the same. */
+    /** Scales with luck, the same way as SPD (applied at STAT_PARITY). */
     public Skill luk(double ratio) { this.lukRatio = ratio; return this; }
+
+    /**
+     * SPD and LUK skill ratios are counted at this share: they were balanced against +2 ATK per point,
+     * and a point gives +1 ATK now.
+     */
+    private static final double STAT_PARITY = Player.ATK_PER_POINT / 2.0;
     /** Heals the caster by this fraction of each hit's damage. */
     public Skill drain(double ratio) { this.drainRatio = ratio; return this; }
     public Skill hits(int hits) { this.hits = hits; return this; }
@@ -109,8 +115,8 @@ public class Skill {
     /** Power of one hit for this caster, before the target's defense. */
     public int powerFor(Player p) {
         double power = p.getAtk() * atkRatio + p.getMaxHp() * hpRatio
-                + p.getDef() * defRatio + p.getMagicAtk() * magicRatio + p.getSpd() * spdRatio
-                + p.getLuck() * lukRatio;
+                + p.getDef() * defRatio + p.getMagicAtk() * magicRatio
+                + (p.getSpd() * spdRatio + p.getLuck() * lukRatio) * STAT_PARITY;
         return (int) Math.round(power);
     }
 }
