@@ -11,6 +11,16 @@ public class ItemCatalog {
     private static final Map<String, Item> ITEMS = new LinkedHashMap<>();
     /** Boss-only gear per dungeon, in World.buildDungeons() order. */
     private static final List<List<Item>> BOSS_DROPS = new ArrayList<>();
+    /** Chest grade odds per dungeon (일반/고급/희귀/영웅/전설), later dungeons weighted toward higher grades. */
+    private static final int[][] CHEST_GRADE_WEIGHTS = {
+            {70, 25, 5, 0, 0},
+            {45, 35, 18, 2, 0},
+            {20, 35, 35, 10, 0},
+            {5, 20, 40, 30, 5},
+            {0, 10, 35, 45, 10},
+            {0, 5, 20, 50, 25},
+            {0, 0, 10, 40, 50},
+    };
 
     // Balance: every piece has a step (1~7, the dungeon it is meant for). Step baseline ATK is
     // 8 / 16 / 26 / 38 / 52 / 68 / 86 and armor is 0.8x that. At the same step, shop gear = baseline
@@ -149,6 +159,25 @@ public class ItemCatalog {
         List<Item> result = new ArrayList<>();
         for (Item item : ITEMS.values()) if (isGear(item) && item.getGrade() == grade) result.add(item);
         return result;
+    }
+
+    /** Treasure from a chest in dungeon index d: a grade by the odds below, then any shop gear of that grade. */
+    public static Item rollChest(int d, Random rnd) {
+        int[] weights = CHEST_GRADE_WEIGHTS[Math.min(d, CHEST_GRADE_WEIGHTS.length - 1)];
+        int total = 0;
+        for (int w : weights) total += w;
+        int roll = rnd.nextInt(total), acc = 0;
+        Item.Grade[] grades = Item.Grade.values();
+        Item.Grade chosen = grades[weights.length - 1];   // chests never hold boss-only (MYTHIC) gear
+        for (int i = 0; i < weights.length; i++) {
+            acc += weights[i];
+            if (roll < acc) {
+                chosen = grades[i];
+                break;
+            }
+        }
+        List<Item> candidates = equipableOfGrade(chosen);
+        return candidates.get(rnd.nextInt(candidates.size()));
     }
 
     private static boolean isGear(Item item) {

@@ -12,6 +12,8 @@ import java.util.Random;
 public final class RunState {
     public static final int OFFER_SIZE = 3;
     public static final int REROLLS_PER_RUN = 2;
+    /** An augment comes every this many floors; the floors between pay a FloorReward. */
+    public static final int AUGMENT_EVERY = 3;
 
     private final int dungeonIndex;
     private final List<Augment> augments = new ArrayList<>();
@@ -21,6 +23,11 @@ public final class RunState {
 
     public RunState(int dungeonIndex) {
         this.dungeonIndex = dungeonIndex;
+    }
+
+    /** True if clearing this floor (1-based) offers an augment. */
+    public static boolean isAugmentFloor(int floor) {
+        return floor % AUGMENT_EVERY == 0;
     }
 
     public List<Augment> getAugments() { return Collections.unmodifiableList(augments); }

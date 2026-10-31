@@ -49,6 +49,8 @@ public class Skill {
     private boolean alwaysCrit;
     /** Fraction of max HP paid before attacking (never lethal). */
     private double hpCostRatio;
+    /** Fraction of the HP paid that turns into a shield for this fight. */
+    private double hpCostShield;
     /** Fraction of max HP restored (after the hits, if the skill also attacks). */
     private double healRatio;
     private Fx fx = Fx.NONE;
@@ -84,12 +86,18 @@ public class Skill {
      * and a point gives +1 ATK now.
      */
     private static final double STAT_PARITY = Player.ATK_PER_POINT / 2.0;
+
+    /** A shield from paid HP never grows past this share of max HP. */
+    public static final double MAX_HP_SHIELD = 0.75;
+
     /** Heals the caster by this fraction of each hit's damage. */
     public Skill drain(double ratio) { this.drainRatio = ratio; return this; }
     public Skill hits(int hits) { this.hits = hits; return this; }
     public Skill ignoreDefense() { this.ignoreDefense = true; return this; }
     public Skill alwaysCrit() { this.alwaysCrit = true; return this; }
     public Skill hpCost(double ratio) { this.hpCostRatio = ratio; return this; }
+    /** The HP paid by hpCost comes back as a shield, this share of it. */
+    public Skill hpShield(double ratio) { this.hpCostShield = ratio; return this; }
     public Skill heal(double ratio) { this.healRatio = ratio; return this; }
     public Skill desc(String description) { this.description = description; return this; }
     public Skill fx(Fx fx, int rgb) { this.fx = fx; this.fxColor = rgb; return this; }
@@ -102,6 +110,7 @@ public class Skill {
     public boolean isIgnoreDefense() { return ignoreDefense; }
     public boolean isAlwaysCrit() { return alwaysCrit; }
     public double getHpCostRatio() { return hpCostRatio; }
+    public double getHpCostShield() { return hpCostShield; }
     public double getHealRatio() { return healRatio; }
     public double getDrainRatio() { return drainRatio; }
     public Fx getFx() { return fx; }

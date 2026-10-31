@@ -1,5 +1,6 @@
 package game.ui;
 
+import game.model.GearPiece;
 import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Player;
@@ -83,6 +84,7 @@ public class ShopDialog extends JDialog {
 
         sellList.setCellRenderer(new SellRowRenderer());
         sellList.setFixedCellHeight(60);
+        sellList.setFixedCellWidth(1);   // rows take the list's width, however long a name is
         sellList.setOpaque(false);
         sellList.addListSelectionListener(e -> {
             if (e.getValueIsAdjusting()) return;
@@ -178,7 +180,11 @@ public class ShopDialog extends JDialog {
         }
         Item item = ItemCatalog.get(entry.name);
         showItem(item);
-        detailOwned.setText("가진 개수: " + entry.count + "개");
+        if (entry.piece != null) {
+            detailName.setText(entry.piece.getDisplayName());
+            detailStat.setText(Sketch.itemDetailHtml(item, entry.piece.getStatDetail()));
+        }
+        detailOwned.setText(entry.piece != null ? " " : "가진 개수: " + entry.count + "개");
         detailPrice.setText("판매가 " + (item.getPrice() / 2) + "G");
         detailAction.setText("판매하기");
         detailAction.setEnabled(true);
@@ -200,18 +206,23 @@ public class ShopDialog extends JDialog {
 
     private void sell() {
         if (selectedSellEntry == null) return;
-        String name = selectedSellEntry.name;
-        Item item = ItemCatalog.get(name);
-        // 비싼 장비 판매 확인: 영웅 and up (incl. boss-only 신화) ask once more.
-        if (Settings.isSellConfirm() && item.getGrade().ordinal() >= Item.Grade.EPIC.ordinal()
-                && (item.getType() == Item.Type.WEAPON || item.getType() == Item.Type.ARMOR)
+        GearPiece piece = selectedSellEntry.piece;
+        String name = piece != null ? piece.getDisplayName() : selectedSellEntry.name;
+        Item item = ItemCatalog.get(selectedSellEntry.name);
+        // 비싼 장비 판매 확인: 영웅 and up (incl. boss-only 신화) ask once more. Enhanced gear always asks.
+        boolean valuable = Settings.isSellConfirm() && item.getGrade().ordinal() >= Item.Grade.EPIC.ordinal();
+        if (piece != null && (valuable || piece.getEnhance() > 0)
                 && !Dialogs.confirm(this, "판매 확인", "[" + item.getGrade().getLabel() + "] " + name + "을(를) "
                 + (item.getPrice() / 2) + "G에 팔까요?")) {
             return;
         }
-        player.removeItem(name);
+        if (piece != null) {
+            player.sellGear(piece);
+        } else {
+            player.removeItem(name);
+            player.earnGold(item.getPrice() / 2);
+        }
         Sfx.play(Sfx.Sound.COIN);
-        player.earnGold(item.getPrice() / 2);
         selectedSellEntry = null;
         refresh();
         showSellDetail(null);
@@ -223,10 +234,13 @@ public class ShopDialog extends JDialog {
         buyModel.clear();
         for (Item item : ItemCatalog.shopItems()) buyModel.addElement(item);
 
-        Map<String, Integer> counts = player.getItemCounts();
         sellModel.clear();
-        for (Map.Entry<String, Integer> e : counts.entrySet()) {
-            sellModel.addElement(new SellEntry(e.getKey(), e.getValue()));
+        for (Map.Entry<String, Integer> e : player.getConsumableCounts().entrySet()) {
+            sellModel.addElement(new SellEntry(e.getKey(), e.getValue(), null));
+        }
+        // Worn, locked and destroyed gear can't be sold, so it isn't listed.
+        for (GearPiece g : player.getGear()) {
+            if (player.isSpare(g) && !g.isDestroyed()) sellModel.addElement(new SellEntry(g.getItemName(), 1, g));
         }
 
         if (selectedBuyItem != null) detailAction.setEnabled(!sellMode && player.getGold() >= selectedBuyItem.getPrice());
@@ -236,7 +250,9 @@ public class ShopDialog extends JDialog {
     private static class SellEntry {
         final String name;
         final int count;
-        SellEntry(String name, int count) { this.name = name; this.count = count; }
+        /** The exact piece of gear, or null for a stack of potions. */
+        final GearPiece piece;
+        SellEntry(String name, int count, GearPiece piece) { this.name = name; this.count = count; this.piece = piece; }
     }
 
     // ---------- row renderers ----------
@@ -257,7 +273,8 @@ public class ShopDialog extends JDialog {
         public Component getListCellRendererComponent(JList<? extends SellEntry> list, SellEntry entry, int index,
                                                       boolean isSelected, boolean cellHasFocus) {
             Item item = ItemCatalog.get(entry.name);
-            return row.set(item, entry.name + " x" + entry.count, (item.getPrice() / 2) + "G", isSelected, index);
+            String name = entry.piece != null ? entry.piece.getDisplayName() : entry.name + " x" + entry.count;
+            return row.set(item, name, (item.getPrice() / 2) + "G", isSelected, index);
         }
     }
 }

@@ -1,13 +1,16 @@
 package game.ui;
 
 import game.model.Bonus;
+import game.model.FightStatus;
 import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Job;
 import game.model.Monster;
+import game.model.MonsterSkill;
 import game.model.Player;
 import game.model.RunState;
 import game.model.Skill;
+import game.model.World;
 import game.save.Settings;
 
 import javax.swing.*;
@@ -30,6 +33,7 @@ public class BattlePanel extends JPanel {
     private Bonus bonus = Bonus.NONE;
     private boolean bossFight;
     private int shieldHp;
+    private FightStatus status = new FightStatus();
     private boolean firstHitDone;
 
     // Command colors, after the handheld games' FIGHT / BAG / RUN buttons.
@@ -227,7 +231,13 @@ public class BattlePanel extends JPanel {
 
     /** Re-reads the effects (augments may have been picked since) and raises the fight-start barrier. */
     private void beginFight() {
-        bonus = player.getGearBonus().plus(run != null ? run.total() : Bonus.NONE);
+        Bonus augments = run != null ? run.total() : Bonus.NONE;
+        if (bossFight) {
+            augments = augments.scaled(World.BOSS_AUGMENT_SHARE);
+            if (run != null && !run.getAugments().isEmpty()) appendLog("보스의 위압에 증강 효과가 약해진다!");
+        }
+        bonus = player.getGearBonus().plus(augments);
+        status = new FightStatus();
         firstHitDone = false;
         shieldHp = (int) Math.round(player.getMaxHp() * bonus.shield());
         if (shieldHp > 0) appendLog("보호막이 피해 " + shieldHp + "을(를) 막아 준다.");
@@ -582,12 +592,23 @@ public class BattlePanel extends JPanel {
 
     /** End of a round with both sides standing: regeneration ticks, then it's the player's turn again. */
     private void roundOver() {
+        int poison = status.endRound(player);
+        if (poison > 0) {
+            stage.showDamage(poison, false, false);
+            logDetail("지속 피해로 HP를 " + poison + " 잃었다.");
+            refreshStatus();
+        }
         int regen = (int) Math.round(player.getMaxHp() * bonus.regen());
         if (regen > 0 && player.getHp() < player.getMaxHp()) {
             int before = player.getHp();
             player.heal(regen);
             logDetail("재생으로 HP를 " + (player.getHp() - before) + " 회복했다.");
             refreshStatus();
+        }
+        if (status.consumeStun()) {
+            appendLog(player.getName() + "은(는) 기절해서 움직일 수 없다!");
+            monsterTurn();
+            return;
         }
         playerTurn();
     }
@@ -616,6 +637,7 @@ public class BattlePanel extends JPanel {
         if (player.getHp() <= player.getMaxHp() * 0.3) mul *= 1 + bonus.lowHpDmg();
         boolean crit = forceCrit || rnd.nextInt(100) < player.getCritChance() + bonus.critChance();
         if (crit) mul *= 1.75 * (1 + bonus.critDmg());
+        if (monster.consumeGuard()) mul *= 0.5;
         return new int[]{Math.max(1, (int) Math.round(dmg * mul)), crit ? 1 : 0};
     }
 
@@ -668,6 +690,11 @@ public class BattlePanel extends JPanel {
                 player.takeDamage(cost);
                 stage.showDamage(cost, false, false);
                 logDetail(player.getName() + "은(는) HP " + cost + "을(를) 바쳤다!");
+                if (skill.getHpCostShield() > 0) {
+                    shieldHp = Math.min((int) Math.round(player.getMaxHp() * Skill.MAX_HP_SHIELD),
+                            shieldHp + (int) Math.round(cost * skill.getHpCostShield()));
+                    logDetail("바친 피가 보호막이 되었다. (보호막 " + shieldHp + ")");
+                }
                 refreshStatus();
             }
         }
@@ -717,24 +744,27 @@ public class BattlePanel extends JPanel {
 
     private void monsterStrike(Runnable onDone) {
         stage.animateAttack(false, () -> {
+            MonsterSkill skill = monster.rollSkill(rnd);
+            if (skill != null) appendLog(monster.getName() + "의 " + skill.getName() + "!");
+            if (skill != null && !skill.attacks()) {
+                useSupportSkill(skill);
+                refreshStatus();
+                return;
+            }
             if (rnd.nextDouble() < bonus.dodge()) {
                 logDetail(monster.getName() + "의 공격! " + player.getName() + "은(는) 가볍게 피했다!");
                 return;
             }
-            int def = (int) Math.round(player.getDef() * (1 + bonus.defPct()));
-            int dmg = Math.max(1, (int) Math.round(computeDamage(monster.getAtk(), def) * (1 - bonus.dmgReduction())));
-            int absorbed = Math.min(shieldHp, dmg);
-            shieldHp -= absorbed;
-            int taken = dmg - absorbed;
-            player.takeDamage(taken);
-            stage.showDamage(taken, false, false);
-            logDetail(monster.getName() + "의 공격! " + player.getName() + "이(가) " + taken + "의 피해를 입었다!"
-                    + (absorbed > 0 ? " (보호막이 " + absorbed + " 막음)" : ""));
-            int reflected = (int) Math.round(dmg * bonus.thorns());
-            if (reflected > 0) {
-                monster.takeDamage(reflected);
-                stage.showDamage(reflected, true, false);
-                logDetail("가시가 " + monster.getName() + "에게 " + reflected + "의 피해를 돌려주었다!");
+            int hits = skill == null ? 1 : skill.hits();
+            int total = 0;
+            for (int i = 0; i < hits && player.isAlive(); i++) total += landMonsterHit(skill == null ? 1 : skill.damageMul());
+            if (skill != null && player.isAlive()) {
+                status.apply(skill);
+                if (skill.getKind() == MonsterSkill.Kind.DRAIN) {
+                    int healed = (int) Math.round(total * skill.getPower());
+                    monster.heal(healed);
+                    logDetail(monster.getName() + "이(가) HP를 " + healed + " 회복했다.");
+                }
             }
             if (!player.isAlive() && bonus.revive() > 0 && run != null && !run.isReviveUsed()) {
                 run.useRevive();
@@ -744,6 +774,44 @@ public class BattlePanel extends JPanel {
             }
             refreshStatus();
         }, onDone);
+    }
+
+    /** One monster hit on the player, after shield and thorns. Returns the damage before the shield. */
+    private int landMonsterHit(double damageMul) {
+        int def = (int) Math.round(player.getDef() * (1 + bonus.defPct()) * status.defenseMul());
+        int dmg = Math.max(1, (int) Math.round(computeDamage(monster.getAtk(), def) * damageMul * (1 - bonus.dmgReduction())));
+        int absorbed = Math.min(shieldHp, dmg);
+        shieldHp -= absorbed;
+        int taken = dmg - absorbed;
+        player.takeDamage(taken);
+        stage.showDamage(taken, false, false);
+        logDetail(monster.getName() + "의 공격! " + player.getName() + "이(가) " + taken + "의 피해를 입었다!"
+                + (absorbed > 0 ? " (보호막이 " + absorbed + " 막음)" : ""));
+        int reflected = (int) Math.round(dmg * bonus.thorns());
+        if (reflected > 0) {
+            monster.takeDamage(reflected);
+            stage.showDamage(reflected, true, false);
+            logDetail("가시가 " + monster.getName() + "에게 " + reflected + "의 피해를 돌려주었다!");
+        }
+        return dmg;
+    }
+
+    /** A monster skill that spends its turn on itself instead of attacking. */
+    private void useSupportSkill(MonsterSkill skill) {
+        switch (skill.getKind()) {
+            case GUARD:
+                monster.guard();
+                logDetail(monster.getName() + "이(가) 다음 공격에 대비한다.");
+                break;
+            case ENRAGE:
+                monster.enrage(skill.getPower());
+                appendLog(monster.getName() + "의 공격력이 크게 올랐다!");
+                break;
+            default:
+                int healed = (int) Math.round(monster.getMaxHp() * skill.getPower());
+                monster.heal(healed);
+                appendLog(monster.getName() + "이(가) HP를 " + healed + " 회복했다!");
+        }
     }
 
     private void onItem() {

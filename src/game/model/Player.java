@@ -45,10 +45,13 @@ public class Player {
     private int statPoints;
     private int gold;
     private int unlockedDungeon;
-    private String weaponName;
-    private String armorName;
+    private GearPiece weapon;
+    private GearPiece armor;
+    /** Potions and ether, by name. Weapons and armor live in gear, one object per piece. */
     private final List<String> inventory = new ArrayList<>();
+    private final List<GearPiece> gear = new ArrayList<>();
     private final List<Job> jobPath = new ArrayList<>();
+    private final int[] materials = new int[Material.values().length];
 
     public Player(String name) {
         this.name = name;
@@ -67,8 +70,6 @@ public class Player {
         this.statPoints = 0;
         this.gold = 50;
         this.unlockedDungeon = 0;
-        this.weaponName = null;
-        this.armorName = null;
     }
 
     public Player(String name, int level, int exp, int expToNext, int maxHp, int hp, int maxMp, int mp,
@@ -89,9 +90,10 @@ public class Player {
         this.statPoints = statPoints;
         this.gold = gold;
         this.unlockedDungeon = unlockedDungeon;
-        this.weaponName = weaponName;
-        this.armorName = armorName;
-        this.inventory.addAll(inventory);
+        // Saves from before gear pieces list weapons and armor here by name: each becomes a +0 piece.
+        for (String item : inventory) addItem(item);
+        this.weapon = pieceNamed(weaponName);
+        this.armor = pieceNamed(armorName);
     }
 
     public String getName() { return name; }
@@ -109,12 +111,25 @@ public class Player {
     public int getStatPoints() { return statPoints; }
     public int getGold() { return gold; }
     public int getUnlockedDungeon() { return unlockedDungeon; }
-    public String getWeaponName() { return weaponName; }
-    public String getArmorName() { return armorName; }
-    public List<String> getInventory() { return Collections.unmodifiableList(inventory); }
+    public String getWeaponName() { return weapon == null ? null : weapon.getItemName(); }
+    public String getArmorName() { return armor == null ? null : armor.getItemName(); }
 
-    public void setWeaponName(String weaponName) { this.weaponName = weaponName; }
-    public void setArmorName(String armorName) { this.armorName = armorName; }
+    /** Names of everything usable the player owns: potions and ether, then gear that isn't destroyed. */
+    public List<String> getInventory() {
+        List<String> all = new ArrayList<>(inventory);
+        for (GearPiece g : gear) if (!g.isDestroyed()) all.add(g.getItemName());
+        return Collections.unmodifiableList(all);
+    }
+
+    public List<String> getConsumables() { return Collections.unmodifiableList(inventory); }
+
+    public void setWeaponName(String weaponName) {
+        if (weaponName == null || !weaponName.equals(getWeaponName())) this.weapon = pieceNamed(weaponName);
+    }
+
+    public void setArmorName(String armorName) {
+        if (armorName == null || !armorName.equals(getArmorName())) this.armor = pieceNamed(armorName);
+    }
     public void setUnlockedDungeon(int unlockedDungeon) { this.unlockedDungeon = unlockedDungeon; }
 
     // ---------- quest board ----------
@@ -206,63 +221,129 @@ public class Player {
     }
 
     public int getAtk() {
-        Item weapon = weaponName != null ? ItemCatalog.get(weaponName) : null;
         return baseAtk + (weapon != null ? weapon.getValue() : 0);
     }
 
     public int getDef() {
-        Item armor = armorName != null ? ItemCatalog.get(armorName) : null;
         return baseDef + (armor != null ? armor.getValue() : 0);
     }
 
+    // ---------- gear pieces ----------
+
+    public List<GearPiece> getGear() { return Collections.unmodifiableList(gear); }
+    public GearPiece getWeapon() { return weapon; }
+    public GearPiece getArmor() { return armor; }
+    public boolean isWorn(GearPiece piece) { return piece == weapon || piece == armor; }
+
+    /** Free to sell, scrap or sacrifice: not worn and not locked. */
+    public boolean isSpare(GearPiece piece) { return !isWorn(piece) && !piece.isLocked(); }
+
+    public void wear(GearPiece piece) {
+        if (piece.isDestroyed()) return;
+        if (piece.isWeapon()) weapon = piece;
+        else armor = piece;
+    }
+
+    public void unequip(GearPiece piece) {
+        if (piece == weapon) weapon = null;
+        if (piece == armor) armor = null;
+    }
+
+    void removeGear(GearPiece piece) {
+        unequip(piece);
+        gear.remove(piece);
+    }
+
+    /** The shop's half price for a spare piece. Returns the gold, or 0 if it can't be sold. */
+    public int sellGear(GearPiece piece) {
+        if (!isSpare(piece) || piece.isDestroyed()) return 0;
+        int price = piece.getItem().getPrice() / 2;
+        removeGear(piece);
+        gold += price;
+        return price;
+    }
+
+    private static boolean isGear(Item item) {
+        return item != null && (item.getType() == Item.Type.WEAPON || item.getType() == Item.Type.ARMOR);
+    }
+
+    /** A usable piece of that item not worn yet, made if the player has none (an old save's lost copy). */
+    private GearPiece pieceNamed(String itemName) {
+        if (!isGear(ItemCatalog.get(itemName == null ? "" : itemName))) return null;
+        for (GearPiece g : gear) {
+            if (g.getItemName().equals(itemName) && !g.isDestroyed() && !isWorn(g)) return g;
+        }
+        GearPiece made = new GearPiece(itemName);
+        gear.add(made);
+        return made;
+    }
+
     /**
-     * 새 장비 자동 장착: wears a just-obtained weapon or armor if its stat beats what is worn now (or
-     * nothing is). Returns true if it was put on.
+     * 새 장비 자동 장착: wears the best spare copy of an item if its stat, enhancement included, beats
+     * what is worn now (or nothing is). Returns true if it was put on.
      */
     public boolean equipIfBetter(String itemName) {
-        Item item = ItemCatalog.get(itemName);
-        if (item == null || (item.getType() != Item.Type.WEAPON && item.getType() != Item.Type.ARMOR)) return false;
-        boolean weapon = item.getType() == Item.Type.WEAPON;
-        String worn = weapon ? weaponName : armorName;
-        Item current = worn != null ? ItemCatalog.get(worn) : null;
-        if (current != null && current.getValue() >= item.getValue()) return false;
-        if (weapon) weaponName = itemName;
-        else armorName = itemName;
+        GearPiece best = null;
+        for (GearPiece g : gear) {
+            if (g.getItemName().equals(itemName) && !g.isDestroyed() && !isWorn(g)
+                    && (best == null || g.getValue() > best.getValue())) best = g;
+        }
+        if (best == null) return false;
+        GearPiece current = best.isWeapon() ? weapon : armor;
+        if (current != null && current.getValue() >= best.getValue()) return false;
+        wear(best);
         return true;
     }
 
     /**
-     * 일반 장비 자동 판매: sells every [일반] weapon and armor in the bag that isn't being worn, at the
-     * shop's half price. Returns {pieces sold, gold earned}.
+     * 일반 장비 자동 판매: sells every plain [일반] weapon and armor in the bag at the shop's half price.
+     * Worn, locked, enhanced and destroyed pieces stay. Returns {pieces sold, gold earned}.
      */
     public int[] sellCommonGear() {
-        int count = 0, gold = 0;
-        for (java.util.Iterator<String> it = inventory.iterator(); it.hasNext(); ) {
-            String name = it.next();
-            Item item = ItemCatalog.get(name);
-            if (item == null || item.getGrade() != Item.Grade.COMMON) continue;
-            if (item.getType() != Item.Type.WEAPON && item.getType() != Item.Type.ARMOR) continue;
-            if (name.equals(weaponName) || name.equals(armorName)) {
-                // Keep the worn piece itself, but only one copy of it.
-                long copies = inventory.stream().filter(name::equals).count();
-                if (copies <= 1) continue;
+        int count = 0, earned = 0;
+        for (GearPiece g : new ArrayList<>(gear)) {
+            if (g.getItem().getGrade() != Item.Grade.COMMON || g.getEnhance() > 0 || g.isDestroyed()) continue;
+            int price = sellGear(g);
+            if (price > 0) {
+                count++;
+                earned += price;
             }
-            it.remove();
-            count++;
-            gold += item.getPrice() / 2;
         }
-        this.gold += gold;
-        return new int[]{count, gold};
+        return new int[]{count, earned};
     }
 
     /** Special effects of the equipped weapon and armor (boss gear), added up. */
     public Bonus getGearBonus() {
         Bonus b = Bonus.NONE;
-        for (String name : new String[]{weaponName, armorName}) {
-            Item item = name != null ? ItemCatalog.get(name) : null;
-            if (item != null) b = b.plus(item.getBonus());
+        for (GearPiece piece : new GearPiece[]{weapon, armor}) {
+            if (piece != null) b = b.plus(piece.getItem().getBonus());
         }
         return b;
+    }
+
+    // ---------- save format: name|level|flags per piece, joined by ';' (flags: W worn, L locked, D destroyed) ----------
+
+    public String encodeGear() {
+        List<String> parts = new ArrayList<>();
+        for (GearPiece g : gear) {
+            parts.add(g.getItemName() + "|" + g.getEnhance() + "|" + (isWorn(g) ? "W" : "") + (g.isLocked() ? "L" : "") + (g.isDestroyed() ? "D" : ""));
+        }
+        return String.join(";", parts);
+    }
+
+    /** Replaces all gear from a saved line. Pieces of items that no longer exist are dropped. */
+    public void decodeGear(String line) {
+        gear.clear();
+        weapon = null;
+        armor = null;
+        if (line.trim().isEmpty()) return;
+        for (String part : line.trim().split(";")) {
+            String[] f = part.split("\\|", -1);
+            if (f.length < 3 || !isGear(ItemCatalog.get(f[0]))) continue;
+            GearPiece g = new GearPiece(f[0], Integer.parseInt(f[1]), f[2].contains("L"), f[2].contains("D"));
+            gear.add(g);
+            if (f[2].contains("W")) wear(g);
+        }
     }
 
     /** Percent chance (0~100) to land a critical hit, driven by luck. */
@@ -279,12 +360,44 @@ public class Player {
     public void earnGold(int amount) { gold += amount; }
     public void spendGold(int amount) { gold = Math.max(0, gold - amount); }
 
-    public void addItem(String itemName) { inventory.add(itemName); }
-    public boolean removeItem(String itemName) { return inventory.remove(itemName); }
+    public int getMaterial(Material m) { return materials[m.ordinal()]; }
+    public void addMaterial(Material m, int amount) { materials[m.ordinal()] += amount; }
+
+    /** Takes the amount if the player has that much. Returns false (and takes nothing) otherwise. */
+    public boolean spendMaterial(Material m, int amount) {
+        if (materials[m.ordinal()] < amount) return false;
+        materials[m.ordinal()] -= amount;
+        return true;
+    }
+
+    public void addItem(String itemName) {
+        if (isGear(ItemCatalog.get(itemName))) gear.add(new GearPiece(itemName));
+        else inventory.add(itemName);
+    }
+
+    /** Uses up a potion or ether, or (console shop) a plain spare piece of gear by name. */
+    public boolean removeItem(String itemName) {
+        if (inventory.remove(itemName)) return true;
+        for (GearPiece g : gear) {
+            if (g.getItemName().equals(itemName) && isSpare(g) && g.getEnhance() == 0 && !g.isDestroyed()) {
+                removeGear(g);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Map<String, Integer> getConsumableCounts() {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String item : inventory) {
+            counts.merge(item, 1, Integer::sum);
+        }
+        return counts;
+    }
 
     public Map<String, Integer> getItemCounts() {
         Map<String, Integer> counts = new LinkedHashMap<>();
-        for (String item : inventory) {
+        for (String item : getInventory()) {
             counts.merge(item, 1, Integer::sum);
         }
         return counts;

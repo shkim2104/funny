@@ -55,8 +55,12 @@ public final class Quest {
         return dungeon >= 0 && dungeon < dungeons.size() ? dungeons.get(dungeon).getName() : "";
     }
 
+    /** Boss requests also pay in 지우개 가루, the steadiest way to get it. */
+    public int getEraserDust() { return type == Type.BOSS ? 1 : 0; }
+
     public String getRewardText() {
-        return gold + "G · EXP " + exp + (item != null ? " · " + item : "");
+        return gold + "G · EXP " + exp + (item != null ? " · " + item : "")
+                + (getEraserDust() > 0 ? " · " + Material.ERASER_DUST.getLabel() + " " + getEraserDust() + "개" : "");
     }
 
     /** Counts a kill toward this quest; true if that kill just completed it. */

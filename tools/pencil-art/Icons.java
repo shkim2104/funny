@@ -8,7 +8,8 @@ import static java.lang.Math.*;
 
 /**
  * Pencil icons on a 256x256 transparent canvas: weapons and armor (images/items/*.png, file names match
- * ItemCatalog's icon ids), potions, and the augment category icons (images/augments/*.png).
+ * ItemCatalog's icon ids), potions, the augment category icons (images/augments/*.png) and the
+ * forging materials (images/materials/*.png).
  * Weapons are drawn upright and turned 45 degrees, tip to the top-right, like inventory icons.
  */
 final class Icons {
@@ -337,7 +338,79 @@ final class Icons {
         p.dot(C, 120, 10, GREEN);
     }
 
+    // ================= forging materials (대장간 강화 재화) =================
+
+    /** A four-pointed sparkle in colored pencil. */
+    private static void glint(Pencil p, double x, double y, double size, Color c) {
+        p.colorLine(2.6, c, x, y - size, x, y + size);
+        p.colorLine(2.6, c, x - size, y, x + size, y);
+    }
+
+    /** A shape filled solid with one color, for things too small or dark for hatching alone to read. */
+    private static void solid(Pencil p, Shape s, Color fill, double tone, double line) {
+        p.g.setColor(fill);
+        p.g.fill(s);
+        p.shade(s, tone);
+        p.outline(s, line);
+    }
+
+    /** 흑연 조각: a jagged chunk of graphite, dark with silvery broken faces, and two crumbs of it. */
+    private static void graphiteChip(Pencil p) {
+        Color dark = new Color(62, 60, 70), mid = new Color(112, 112, 124), light = new Color(182, 184, 196);
+        p.smudge(Pencil.ell(C, 218, 106, 20), Pencil.LEAD, 45);
+        solid(p, Pencil.poly(52, 216, 34, 152, 78, 96, 112, 34, 158, 70, 200, 60, 226, 138, 204, 216), dark, 0.5, 3.0);
+        solid(p, Pencil.poly(78, 96, 112, 34, 158, 70, 126, 122), light, 0.1, 2.2);
+        solid(p, Pencil.poly(158, 70, 200, 60, 226, 138, 172, 128), mid, 0.2, 2.2);
+        solid(p, Pencil.poly(34, 152, 78, 96, 126, 122, 96, 164), mid, 0.3, 2.2);
+        p.ink(126, 122, 172, 128, 2.2);
+        p.ink(96, 164, 112, 216, 2.2);
+        p.ink(172, 128, 158, 216, 2.2);
+        solid(p, Pencil.poly(196, 236, 208, 214, 232, 218, 238, 236), dark, 0.5, 2.2);
+        solid(p, Pencil.poly(18, 238, 24, 220, 42, 218, 50, 236), dark, 0.5, 2.2);
+    }
+
+    /** 단단한 심: one thick sharpened lead, blue-black, with a gold ring and sparkles. */
+    private static void hardLead(Pencil p) {
+        Color body = new Color(58, 66, 88), shine = new Color(164, 196, 226), tip = new Color(40, 44, 60);
+        solid(p, t(Pencil.poly(C - 34, 84, C + 34, 84, C + 34, 222, C - 34, 222)), body, 0.3, 3.0);
+        solid(p, t(Pencil.poly(C - 22, 90, C - 6, 90, C - 6, 216, C - 22, 216)), shine, 0.05, 1.8);
+        double[] e0 = tp(C + 14, 86), e1 = tp(C + 14, 220);
+        p.ink(e0[0], e0[1], e1[0], e1[1], 2.2);
+        solid(p, t(Pencil.poly(C - 34, 84, C, 6, C + 34, 84)), tip, 0.3, 3.0);
+        solid(p, t(Pencil.poly(C - 20, 80, C - 3, 40, C - 3, 80)), shine, 0.05, 1.6);
+        solid(p, t(Pencil.poly(C - 38, 166, C + 38, 166, C + 38, 192, C - 38, 192)), GOLD, 0.1, 2.4);
+        glint(p, 58, 70, 28, GOLD);
+        glint(p, 212, 178, 22, GOLD);
+        glint(p, 112, 26, 14, GOLD);
+    }
+
+    /** 지우개 가루: a pile of pink rubbed-off crumbs under a small worn eraser in its paper sleeve. */
+    private static void eraserDust(Pencil p) {
+        Color pink = new Color(240, 148, 168), sleeve = new Color(150, 196, 232);
+        AffineTransform tilt = new AffineTransform();
+        tilt.rotate(toRadians(-20), C, 78);
+        tilt.translate(C, 78);
+        tilt.scale(0.72, 0.72);
+        tilt.translate(-C, -100);
+        solid(p, tilt.createTransformedShape(Pencil.blob(46, 84, 66, 56, 120, 54, 120, 142, 72, 144, 44, 124)), pink, 0.05, 3.0);
+        solid(p, tilt.createTransformedShape(Pencil.poly(112, 48, 214, 48, 214, 150, 112, 150)), sleeve, 0.1, 3.0);
+        solid(p, tilt.createTransformedShape(Pencil.poly(150, 48, 178, 48, 178, 150, 150, 150)), GOLD, 0.05, 2.0);
+        double[][] crumbs = {{24, 232, 46, 220, 66, 232}, {62, 206, 82, 190, 104, 202}, {78, 236, 100, 224, 122, 236},
+                {112, 180, 130, 168, 150, 180}, {118, 212, 138, 198, 158, 210}, {142, 238, 162, 224, 184, 236},
+                {168, 196, 186, 184, 206, 196}, {192, 226, 212, 214, 234, 226}, {36, 196, 50, 186, 64, 194}};
+        p.smudge(Pencil.ell(C, 226, 116, 20), pink, 80);
+        for (double[] c : crumbs) solid(p, Pencil.limb(19, c), pink, 0.03, 1.8);
+    }
+
     // ================= catalogs =================
+
+    static Map<String, Monsters.Drawing> materials() {
+        Map<String, Monsters.Drawing> m = new LinkedHashMap<>();
+        m.put("graphite_chip", Icons::graphiteChip);
+        m.put("hard_lead", Icons::hardLead);
+        m.put("eraser_dust", Icons::eraserDust);
+        return m;
+    }
 
     static Map<String, Monsters.Drawing> items() {
         Map<String, Monsters.Drawing> m = new LinkedHashMap<>();

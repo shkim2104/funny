@@ -1,9 +1,11 @@
 package game.ui;
 
 import game.model.Dungeon;
+import game.model.FloorReward;
 import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Job;
+import game.model.Material;
 import game.model.Monster;
 import game.model.Augment;
 import game.model.Player;
@@ -26,17 +28,6 @@ import java.util.Random;
 public class GameFrame extends JFrame {
     private final Random rnd = new Random();
     private final List<Dungeon> dungeons = World.buildDungeons();
-
-    /** Chest grade odds per dungeon tier (일반/고급/희귀/영웅/전설), later dungeons weighted toward higher grades. */
-    private static final int[][] CHEST_GRADE_WEIGHTS = {
-            {70, 25, 5, 0, 0},
-            {45, 35, 18, 2, 0},
-            {20, 35, 35, 10, 0},
-            {5, 20, 40, 30, 5},
-            {0, 10, 35, 45, 10},
-            {0, 5, 20, 50, 25},
-            {0, 0, 10, 40, 50},
-    };
 
     private Player player;
 
@@ -334,7 +325,7 @@ public class GameFrame extends JFrame {
     private JPanel buildTownPanel() {
         // The job hall (전직소) is drawn into the pencil town art itself; JobHallArt.AREA still marks its hotspot.
         townMap = new MapScreen(loadImage("images/town.png"));
-        townMap.addHotspot("대장간", 130, 200, 430, 350, () -> townMap.toast(NOT_READY));
+        townMap.addHotspot("대장간", 130, 200, 430, 350, this::openBlacksmith);
         townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("상점", 725, 630, 345, 340, this::openShop);
         townMap.addHotspot("던전 입구", 860, 990, 330, 260, () -> openDungeonMap(true));
@@ -501,6 +492,8 @@ public class GameFrame extends JFrame {
         townInfoLabel.setText("<html>Lv." + player.getLevel() + " " + player.getJob().getDisplayName() + " " + player.getName()
                 + "<br>HP " + player.getHp() + "/" + player.getMaxHp()
                 + "<br>골드 " + player.getGold() + "G"
+                + "<br>흑연 " + player.getMaterial(Material.GRAPHITE) + " · 심 " + player.getMaterial(Material.HARD_LEAD)
+                + " · 가루 " + player.getMaterial(Material.ERASER_DUST)
                 + statPointsNote + "</html>");
     }
 
@@ -590,6 +583,13 @@ public class GameFrame extends JFrame {
         });
     }
 
+    private void openBlacksmith() {
+        pageTurner.turnToBlankPage(() -> {
+            new BlacksmithDialog(this, player, rnd).setVisible(true);
+            refreshTown();
+        });
+    }
+
     private void openShop() {
         pageTurner.turnToBlankPage(() -> {
             new ShopDialog(this, player).setVisible(true);
@@ -669,7 +669,10 @@ public class GameFrame extends JFrame {
         int expGain = run.exp(monster.getExpReward()), goldGain = run.gold(monster.getGoldReward());
         player.gainExp(expGain);
         player.earnGold(goldGain);
-        StringBuilder msg = new StringBuilder("EXP " + expGain + ", 골드 " + goldGain + "G 획득!");
+        int graphite = bossStage ? 0 : Material.rollKillGraphite(currentDungeonIndex, player.getLuck(), rnd);
+        player.addMaterial(Material.GRAPHITE, graphite);
+        StringBuilder msg = new StringBuilder("EXP " + expGain + ", 골드 " + goldGain + "G"
+                + (graphite > 0 ? ", " + Material.GRAPHITE.getLabel() + " " + graphite + "개" : "") + " 획득!");
         if (player.getLevel() > beforeLevel) {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
             msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! (스탯 포인트 +")
@@ -679,6 +682,7 @@ public class GameFrame extends JFrame {
         }
 
         if (!bossStage) {
+            int clearedFloor = currentFloor;
             if (currentFloor >= dungeon.getFloors()) {
                 battlePanel.logResult(msg + "\n>>> 보스 등장! <<<");
                 bossStage = true;
@@ -686,7 +690,8 @@ public class GameFrame extends JFrame {
                 battlePanel.logResult(msg.toString());
                 currentFloor++;
             }
-            offerAugment();
+            if (RunState.isAugmentFloor(clearedFloor)) offerAugment();
+            else giveFloorReward(dungeon);
             startNextFight();
             return;
         }
@@ -698,8 +703,9 @@ public class GameFrame extends JFrame {
             finalMsg.append("\n").append(dungeon.getName()).append(" 클리어 보상! EXP ")
                     .append(dungeon.getRewardExp()).append(", 골드 ").append(dungeon.getRewardGold()).append("G 추가 획득!");
         }
+        finalMsg.append("\n강화 재화 획득! ").append(rollBossMaterials());
 
-        Item chestItem = rollChestItem(currentDungeonIndex);
+        Item chestItem = ItemCatalog.rollChest(currentDungeonIndex, rnd);
         player.addItem(chestItem.getName());
         finalMsg.append("\n보물 상자를 발견했다! ").append(chestItem.describe()).append(" 획득!");
         autoEquip(chestItem.getName(), finalMsg);
@@ -724,6 +730,19 @@ public class GameFrame extends JFrame {
         endDungeonRun(finalMsg.toString());
     }
 
+    /** Gives this dungeon boss's materials and returns them as one line, e.g. "흑연 조각 5개, 단단한 심 1개". */
+    private String rollBossMaterials() {
+        int[] counts = {Material.bossGraphite(currentDungeonIndex), Material.bossHardLead(currentDungeonIndex), Material.rollBossEraser(rnd)};
+        Material[] kinds = {Material.GRAPHITE, Material.HARD_LEAD, Material.ERASER_DUST};
+        List<String> parts = new ArrayList<>();
+        for (int i = 0; i < kinds.length; i++) {
+            if (counts[i] <= 0) continue;
+            player.addMaterial(kinds[i], counts[i]);
+            parts.add(kinds[i].getLabel() + " " + counts[i] + "개");
+        }
+        return String.join(", ", parts);
+    }
+
     /** After a level-up: announce newly learned skills and a newly reachable job advancement. */
     private void appendGrowthNotes(StringBuilder msg, List<Skill> beforeSkills, boolean couldAdvance) {
         for (Skill s : player.getSkills()) {
@@ -744,25 +763,6 @@ public class GameFrame extends JFrame {
         return icons;
     }
 
-    private Item rollChestItem(int dungeonIndex) {
-        int[] weights = CHEST_GRADE_WEIGHTS[Math.min(dungeonIndex, CHEST_GRADE_WEIGHTS.length - 1)];
-        int total = 0;
-        for (int w : weights) total += w;
-        int roll = rnd.nextInt(total);
-        Item.Grade[] grades = Item.Grade.values();
-        Item.Grade chosenGrade = grades[weights.length - 1];   // chests never hold boss-only (MYTHIC) gear
-        int acc = 0;
-        for (int i = 0; i < weights.length; i++) {
-            acc += weights[i];
-            if (roll < acc) {
-                chosenGrade = grades[i];
-                break;
-            }
-        }
-        List<Item> candidates = ItemCatalog.equipableOfGrade(chosenGrade);
-        return candidates.get(rnd.nextInt(candidates.size()));
-    }
-
     private void handleDefeat() {
         int penalty = player.getGold() / 4;
         player.spendGold(penalty);
@@ -779,7 +779,15 @@ public class GameFrame extends JFrame {
         battlePanel.endRun(outcome + "\n던전을 나서며 MP가 모두 회복되었다." + fade, "던전 지도로", this::returnToDungeonMap);
     }
 
-    /** After a kill on the way to the boss: pick one of three augments for the rest of this run. */
+    /** A floor without an augment: one random find, shown in the log so 자동 전투 keeps going. */
+    private void giveFloorReward(Dungeon dungeon) {
+        FloorReward reward = FloorReward.give(currentDungeonIndex, dungeon, player, rnd);
+        StringBuilder note = new StringBuilder("[발견] " + reward.getText() + " 획득!");
+        if (reward.getGearName() != null) autoEquip(reward.getGearName(), note);
+        battlePanel.logResult(note.toString());
+    }
+
+    /** After a kill on an augment floor: pick one of three augments for the rest of this run. */
     private void offerAugment() {
         Augment a = AugmentDialog.pick(this, run, player, rnd);
         if (a == null) return;

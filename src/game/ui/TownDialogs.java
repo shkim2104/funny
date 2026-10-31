@@ -3,6 +3,7 @@ package game.ui;
 import game.model.Dungeon;
 import game.model.Item;
 import game.model.ItemCatalog;
+import game.model.Material;
 import game.model.Player;
 import game.model.Quest;
 import game.save.Settings;
@@ -152,7 +153,8 @@ public final class TownDialogs {
         text.setOpaque(false);
         String kind = q.getType() == Quest.Type.BOSS ? "보스 토벌" : "사냥";
         text.add(Sketch.label("[" + kind + "] " + q.getTitle(), Font.BOLD, 15f, q.getType() == Quest.Type.BOSS ? Sketch.RED_PENCIL : Sketch.INK));
-        text.add(Sketch.label("장소: " + q.getPlace(dungeons) + "     보상: " + q.getRewardText(), Font.PLAIN, 12f, Sketch.INK_SOFT));
+        text.add(Sketch.label("장소: " + q.getPlace(dungeons), Font.PLAIN, 12f, Sketch.INK_SOFT));
+        text.add(Sketch.label("보상: " + q.getRewardText(), Font.PLAIN, 12f, Sketch.INK_SOFT));
         Sketch.Bar bar = new Sketch.Bar(q.isDone() ? new Color(54, 134, 58) : Sketch.BLUE_PENCIL, 8300 + index);
         bar.set(q.getProgress(), q.getNeed());
         text.add(bar);
@@ -166,6 +168,7 @@ public final class TownDialogs {
             player.earnGold(q.getGold());
             player.gainExp(q.getExp());
             if (q.getItem() != null) player.addItem(q.getItem());
+            player.addMaterial(Material.ERASER_DUST, q.getEraserDust());
             player.replaceQuest(q, dungeons, rnd);
             note.setText("보상을 받았다!  " + q.getRewardText());
             refresh[0].run();
@@ -194,20 +197,23 @@ public final class TownDialogs {
         final int[] weights;
         /** Chance (%) that the chest holds potions instead of gear. */
         final int potionChance;
+        /** Chance (%) of 지우개 가루 on top of whatever the wheel gives. */
+        final int eraserChance;
 
-        Chest(String name, String icon, int price, int potionChance, int... weights) {
+        Chest(String name, String icon, int price, int potionChance, int eraserChance, int... weights) {
             this.name = name;
             this.icon = icon;
             this.price = price;
             this.potionChance = potionChance;
+            this.eraserChance = eraserChance;
             this.weights = weights;
         }
     }
 
     private static final Chest[] CHESTS = {
-            new Chest("나무 상자", "chest_wood", 100, 30, 60, 30, 9, 1, 0),
-            new Chest("은 상자", "chest_silver", 400, 10, 15, 40, 33, 10, 2),
-            new Chest("황금 상자", "chest_gold", 1200, 0, 0, 10, 45, 35, 10),
+            new Chest("나무 상자", "chest_wood", 100, 30, 3, 60, 30, 9, 1, 0),
+            new Chest("은 상자", "chest_silver", 400, 10, 10, 15, 40, 33, 10, 2),
+            new Chest("황금 상자", "chest_gold", 1200, 0, 30, 0, 10, 45, 35, 10),
     };
 
     /** One wedge of the wheel: what it gives (a grade, or null = potions), its share, its pencil color. */
@@ -272,10 +278,12 @@ public final class TownDialogs {
         JLabel resultIcon = new JLabel("", SwingConstants.CENTER);
         JLabel resultName = center(Sketch.label("돌림판을 돌려 보세요!", Font.BOLD, 15f, Sketch.INK_SOFT));
         JLabel resultInfo = center(Sketch.label(" ", Font.PLAIN, 13f, Sketch.INK));
-        JPanel resultText = new JPanel(new GridLayout(2, 1, 0, 4));
+        JLabel resultBonus = center(Sketch.label(" ", Font.BOLD, 13f, Sketch.RED_PENCIL));
+        JPanel resultText = new JPanel(new GridLayout(3, 1, 0, 4));
         resultText.setOpaque(false);
         resultText.add(resultName);
         resultText.add(resultInfo);
+        resultText.add(resultBonus);
         result.add(resultIcon, BorderLayout.CENTER);
         result.add(resultText, BorderLayout.SOUTH);
 
@@ -308,16 +316,20 @@ public final class TownDialogs {
                         : randomOfGrade(w.grade, rnd);
                 player.addItem(got.getName());
                 boolean worn = Settings.isAutoEquip() && player.equipIfBetter(got.getName());
+                boolean eraser = rnd.nextInt(100) < c.eraserChance;
+                if (eraser) player.addMaterial(Material.ERASER_DUST, 1);
                 resultIcon.setIcon(null);
                 resultName.setText("두근두근...");
                 resultName.setForeground(Sketch.INK_SOFT);
                 resultInfo.setText(" ");
+                resultBonus.setText(" ");
                 wheel.setWedges(ws, c.name);
                 wheel.spin(hit, rnd, () -> {
                     resultIcon.setIcon(ItemArt.item(got, 110));
                     resultName.setText(got.getName());
                     resultName.setForeground(Sketch.gradeInk(got.getGrade()));
                     resultInfo.setText("[" + got.getGrade().getLabel() + "] " + got.getStatText() + (worn ? " · 바로 장착!" : ""));
+                    if (eraser) resultBonus.setText("+ " + Material.ERASER_DUST.getLabel() + " 1개!");
                     refresh.run();
                 });
                 refresh.run();
@@ -359,7 +371,7 @@ public final class TownDialogs {
         JDialog d = page(owner, "확률 보기", 560, 600, pg);
         d.add(Sketch.title("아이템별 확률"), BorderLayout.NORTH);
 
-        StringBuilder html = new StringBuilder("<html><body style='width:400px'>");
+        StringBuilder html = new StringBuilder("<html><body style='width:340px'>");
         for (Chest c : CHESTS) {
             html.append("<br><b><font size='4' color='").append(Sketch.hex(Sketch.INK)).append("'>")
                     .append(c.name).append("</font></b>  <font color='").append(Sketch.hex(Sketch.BLUE_PENCIL)).append("'>")
@@ -378,6 +390,8 @@ public final class TownDialogs {
                 for (String n : names) parts.add(n + " " + pct(each));
                 html.append(String.join(", ", parts)).append("</font><br>");
             }
+            html.append("<font color='").append(Sketch.hex(Sketch.INK_SOFT)).append("'>추가로 ").append(Material.ERASER_DUST.getLabel())
+                    .append(" 1개: ").append(pct(c.eraserChance)).append("</font><br>");
         }
         html.append("<br><font color='").append(Sketch.hex(Sketch.RED_PENCIL))
                 .append("'>※ 보스 전용 [신화] 장비는 보물 상자에서 나오지 않아요.</font></body></html>");

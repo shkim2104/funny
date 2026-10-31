@@ -1,6 +1,7 @@
 package game.save;
 
 import game.model.Job;
+import game.model.Material;
 import game.model.Player;
 import game.model.Quest;
 
@@ -168,7 +169,7 @@ public class SaveManager {
         pw.println(p.getUnlockedDungeon());
         pw.println(p.getWeaponName() == null ? "NONE" : p.getWeaponName());
         pw.println(p.getArmorName() == null ? "NONE" : p.getArmorName());
-        List<String> inv = p.getInventory();
+        List<String> inv = p.getConsumables();
         pw.println(inv.size());
         for (String item : inv) pw.println(item);
         pw.println(p.getSpd());
@@ -180,6 +181,14 @@ public class SaveManager {
         }
         pw.println(path);
         pw.println(Quest.encodeAll(p.getQuests()));
+        // Material counts, comma-separated in Material's order.
+        StringBuilder materials = new StringBuilder();
+        for (Material m : Material.values()) {
+            if (materials.length() > 0) materials.append(',');
+            materials.append(p.getMaterial(m));
+        }
+        pw.println(materials);
+        pw.println(p.encodeGear());
     }
 
     private static Player read(File file) {
@@ -239,6 +248,21 @@ public class SaveManager {
 
             // Saves from before the quest board have no line here; the board is filled on first visit.
             player.setQuests(Quest.decodeAll(br.readLine()));
+
+            // Saves from before forging materials have no line here and start with none.
+            String materialLine = br.readLine();
+            if (materialLine != null && !materialLine.trim().isEmpty()) {
+                String[] counts = materialLine.trim().split(",");
+                Material[] all = Material.values();
+                for (int i = 0; i < all.length && i < counts.length; i++) {
+                    player.addMaterial(all[i], Integer.parseInt(counts[i].trim()));
+                }
+            }
+
+            // Saves from before gear pieces have no line here: the constructor already turned their
+            // weapons and armor, listed in the inventory by name, into +0 pieces.
+            String gearLine = br.readLine();
+            if (gearLine != null) player.decodeGear(gearLine);
             return player;
         } catch (IOException | RuntimeException e) {
             System.out.println("불러오기에 실패했습니다: " + file.getName() + " (" + e.getMessage() + ")");

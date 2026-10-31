@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * A run augment (롤토체스 증강 style): picked from three cards after each kill, active only until the
+ * A run augment (롤토체스 증강 style): picked from three cards every few floors, active only until the
  * player leaves the dungeon. Its effect is a {@link Bonus}; the icon key names its pencil icon
  * (images/augments/{icon}.png).
  */

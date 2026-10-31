@@ -1,8 +1,9 @@
 package game.ui;
 
+import game.model.GearPiece;
 import game.model.Item;
-import game.model.ItemCatalog;
 import game.model.Job;
+import game.model.Material;
 import game.model.Player;
 import game.model.Skill;
 
@@ -59,10 +60,17 @@ public class StatusDialog {
         stats.add(stat("coin", "골드", player.getGold() + "G", " "));
         add(body, stats);
 
+        // ---------- forging materials ----------
+        add(body, section("강화 재화"));
+        JPanel materials = new JPanel(new GridLayout(1, 0, 8, 0));
+        materials.setOpaque(false);
+        for (Material m : Material.values()) materials.add(material(m, player.getMaterial(m)));
+        add(body, materials);
+
         // ---------- gear ----------
         add(body, section("장비"));
-        add(body, gear("무기", player.getWeaponName()));
-        add(body, gear("방어구", player.getArmorName()));
+        add(body, gear("무기", player.getWeapon()));
+        add(body, gear("방어구", player.getArmor()));
 
         // ---------- skills ----------
         add(body, section("스킬"));
@@ -78,9 +86,9 @@ public class StatusDialog {
 
         // ---------- bag ----------
         add(body, section("소지품"));
-        Map<String, Integer> counts = player.getItemCounts();
         List<String> bag = new ArrayList<>();
-        for (Map.Entry<String, Integer> e : counts.entrySet()) bag.add(e.getKey() + " x" + e.getValue());
+        for (Map.Entry<String, Integer> e : player.getConsumableCounts().entrySet()) bag.add(e.getKey() + " x" + e.getValue());
+        for (GearPiece g : player.getGear()) bag.add(g.getDisplayName());
         add(body, note(bag.isEmpty() ? "없음" : String.join(", ", bag), Sketch.INK));
 
         JScrollPane scroll = Sketch.scroll(body);
@@ -143,8 +151,20 @@ public class StatusDialog {
         return cell;
     }
 
-    private static JComponent gear(String slot, String itemName) {
-        Item item = itemName == null ? null : ItemCatalog.get(itemName);
+    private static JComponent material(Material m, int count) {
+        JPanel cell = new JPanel(new BorderLayout(6, 0));
+        cell.setOpaque(false);
+        cell.add(new JLabel(ItemArt.material(m, 40)), BorderLayout.WEST);
+        JPanel text = new JPanel(new GridLayout(2, 1));
+        text.setOpaque(false);
+        text.add(Sketch.label(m.getLabel(), Font.BOLD, 13f, Sketch.INK));
+        text.add(Sketch.label(count + "개", Font.BOLD, 15f, Sketch.BLUE_PENCIL));
+        cell.add(text, BorderLayout.CENTER);
+        return cell;
+    }
+
+    private static JComponent gear(String slot, GearPiece piece) {
+        Item item = piece == null ? null : piece.getItem();
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
         row.add(new JLabel(ItemArt.item(item, 44)), BorderLayout.WEST);
@@ -154,8 +174,8 @@ public class StatusDialog {
             html.append("<font color='").append(Sketch.hex(Sketch.INK_SOFT)).append("'>없음</font>");
         } else {
             html.append("<b><font color='").append(Sketch.hex(Sketch.gradeInk(item.getGrade()))).append("'>")
-                    .append(item.getName()).append("</font></b>  <font color='").append(Sketch.hex(Sketch.BLUE_PENCIL)).append("'>")
-                    .append(item.getStatText()).append("</font>");
+                    .append(piece.getDisplayName()).append("</font></b>  <font color='").append(Sketch.hex(Sketch.BLUE_PENCIL)).append("'>")
+                    .append(piece.getStatText()).append("</font>");
             for (String line : item.getBonus().lines()) {
                 html.append("<br><font color='").append(Sketch.hex(Sketch.RED_PENCIL)).append("'>✎ ").append(line).append("</font>");
             }
@@ -168,7 +188,7 @@ public class StatusDialog {
     }
 
     private static JComponent note(String html, Color color) {
-        JLabel l = new JLabel("<html><body style='width:380px'>✎ " + html + "</body></html>");
+        JLabel l = new JLabel("<html><body style='width:330px'>✎ " + html + "</body></html>");
         l.setFont(Sketch.hand(Font.PLAIN, 14f));
         l.setForeground(color);
         return l;

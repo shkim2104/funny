@@ -1,5 +1,6 @@
 package game.ui;
 
+import game.model.GearPiece;
 import game.model.Item;
 import game.model.ItemCatalog;
 import game.model.Player;
@@ -7,17 +8,24 @@ import game.model.Player;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /** Inventory / equipment, drawn as a pencil sketch on a notebook page (see Sketch). */
 public class EquipDialog extends JDialog {
+    private static final int WEAPONS = 0, ARMOR = 1, CONSUMABLES = 2;
+
     private final Player player;
     private final JLabel currentLabel = new JLabel();
 
-    private final DefaultListModel<String> weaponModel = new DefaultListModel<>();
-    private final JList<String> weaponList = new JList<>(weaponModel);
-    private final DefaultListModel<String> armorModel = new DefaultListModel<>();
-    private final JList<String> armorList = new JList<>(armorModel);
+    private final DefaultListModel<GearPiece> weaponModel = new DefaultListModel<>();
+    private final JList<GearPiece> weaponList = new JList<>(weaponModel);
+    private final DefaultListModel<GearPiece> armorModel = new DefaultListModel<>();
+    private final JList<GearPiece> armorList = new JList<>(armorModel);
+    private final DefaultListModel<Map.Entry<String, Integer>> consumableModel = new DefaultListModel<>();
+    private final JList<Map.Entry<String, Integer>> consumableList = new JList<>(consumableModel);
 
     private final JPanel detailBody = new JPanel();
     private final JLabel detailPlaceholder = new JLabel(
@@ -29,16 +37,15 @@ public class EquipDialog extends JDialog {
     private final JLabel detailStat = new JLabel();
     private final JLabel detailStatus = new JLabel();
     private final JButton detailAction = new Sketch.Button("장착하기", true);
+    private final JButton detailLock = new Sketch.Button("잠그기", false);
 
-    private Item.Type activeType = Item.Type.WEAPON;
-    private String selectedWeapon;
-    private String selectedArmor;
+    private int activeTab = WEAPONS;
 
     public EquipDialog(JFrame owner, Player player) {
         super(owner, "장비 변경", true);
         this.player = player;
-        setSize(720, 560);
-        setMinimumSize(new Dimension(580, 440));
+        setSize(760, 580);
+        setMinimumSize(new Dimension(620, 460));
         setLocationRelativeTo(owner);
         Sketch.Page page = new Sketch.Page(new BorderLayout(14, 12), 34);
         page.setBorder(new EmptyBorder(16, 52, 14, 22));
@@ -71,28 +78,29 @@ public class EquipDialog extends JDialog {
 
     // ---------- left: tabbed item list ----------
     private JComponent buildListArea() {
-        for (JList<String> list : List.of(weaponList, armorList)) {
+        for (JList<GearPiece> list : List.of(weaponList, armorList)) {
             list.setCellRenderer(new EquipRowRenderer());
             list.setFixedCellHeight(60);
+            list.setFixedCellWidth(1);   // rows take the list's width, however long a name is
             list.setOpaque(false);
+            list.addListSelectionListener(e -> {
+                if (!e.getValueIsAdjusting()) showDetail();
+            });
         }
-        weaponList.addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) return;
-            selectedWeapon = weaponList.getSelectedValue();
-            showDetail(selectedWeapon);
-        });
-        armorList.addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) return;
-            selectedArmor = armorList.getSelectedValue();
-            showDetail(selectedArmor);
+        consumableList.setCellRenderer(new ConsumableRowRenderer());
+        consumableList.setFixedCellHeight(60);
+        consumableList.setOpaque(false);
+        consumableList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) showDetail();
         });
 
         Sketch.Tabs tabs = new Sketch.Tabs(4101);
         tabs.addTab("무기", Sketch.scroll(weaponList));
         tabs.addTab("방어구", Sketch.scroll(armorList));
+        tabs.addTab("소모품", Sketch.scroll(consumableList));
         tabs.onChange(i -> {
-            activeType = i == 0 ? Item.Type.WEAPON : Item.Type.ARMOR;
-            showDetail(activeType == Item.Type.WEAPON ? selectedWeapon : selectedArmor);
+            activeTab = i;
+            showDetail();
         });
         return tabs;
     }
@@ -120,7 +128,13 @@ public class EquipDialog extends JDialog {
         detailStatus.setFont(Sketch.hand(Font.BOLD, 14f));
         detailStatus.setForeground(Sketch.RED_PENCIL);
         detailAction.addActionListener(e -> toggleEquip());
-        for (JComponent c : new JComponent[]{detailIcon, detailName, detailStat, detailStatus, detailAction}) {
+        detailLock.addActionListener(e -> toggleLock());
+        JPanel buttons = new JPanel(new GridLayout(1, 2, 8, 0));
+        buttons.setOpaque(false);
+        buttons.add(detailAction);
+        buttons.add(detailLock);
+        buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
+        for (JComponent c : new JComponent[]{detailIcon, detailName, detailStat, detailStatus, buttons}) {
             c.setAlignmentX(Component.LEFT_ALIGNMENT);
         }
         detailBody.add(detailIcon);
@@ -131,7 +145,7 @@ public class EquipDialog extends JDialog {
         detailBody.add(Box.createVerticalGlue());
         detailBody.add(detailStatus);
         detailBody.add(Box.createVerticalStrut(10));
-        detailBody.add(detailAction);
+        detailBody.add(buttons);
 
         detailCardHost.add(placeholderWrap, "EMPTY");
         detailCardHost.add(detailBody, "ITEM");
@@ -140,57 +154,109 @@ public class EquipDialog extends JDialog {
         return wrap;
     }
 
-    private void showDetail(String itemName) {
-        if (itemName == null) {
+    private GearPiece selectedPiece() {
+        return activeTab == WEAPONS ? weaponList.getSelectedValue() : activeTab == ARMOR ? armorList.getSelectedValue() : null;
+    }
+
+    private void showDetail() {
+        if (activeTab == CONSUMABLES) {
+            Map.Entry<String, Integer> entry = consumableList.getSelectedValue();
+            if (entry == null) {
+                detailCards.show(detailCardHost, "EMPTY");
+                return;
+            }
+            Item item = ItemCatalog.get(entry.getKey());
+            detailIcon.setIcon(ItemArt.item(item, 80));
+            detailName.setText(item.getName());
+            detailName.setForeground(Sketch.INK);
+            detailStat.setText(Sketch.itemDetailHtml(item));
+            detailStatus.setText("가진 개수: " + entry.getValue() + "개");
+            detailAction.setVisible(false);
+            detailLock.setVisible(false);
+            detailCards.show(detailCardHost, "ITEM");
+            return;
+        }
+        GearPiece piece = selectedPiece();
+        if (piece == null) {
             detailCards.show(detailCardHost, "EMPTY");
             return;
         }
-        Item item = ItemCatalog.get(itemName);
-        boolean equipped = itemName.equals(activeType == Item.Type.WEAPON ? player.getWeaponName() : player.getArmorName());
-
-        detailIcon.setIcon(ItemArt.item(item, 80));
-        detailName.setText(item.getName());
+        Item item = piece.getItem();
+        boolean worn = player.isWorn(piece);
+        detailIcon.setIcon(ItemArt.piece(piece, 80));
+        detailName.setText(piece.getDisplayName());
         detailName.setForeground(Sketch.gradeInk(item.getGrade()));
-        detailStat.setText(Sketch.itemDetailHtml(item));
-        detailStatus.setText(equipped ? "√ 지금 장착 중" : " ");
-        detailAction.setText(equipped ? "장착 해제" : "장착하기");
+        detailStat.setText(Sketch.itemDetailHtml(item, piece.getStatDetail()));
+        detailStatus.setText(worn ? "√ 지금 장착 중" : piece.isLocked() ? "잠금: 판매·분해되지 않아요" : " ");
+        detailAction.setVisible(true);
+        detailLock.setVisible(true);
+        detailAction.setText(worn ? "장착 해제" : "장착하기");
+        detailAction.setEnabled(!piece.isDestroyed());
+        detailLock.setText(piece.isLocked() ? "잠금 해제" : "잠그기");
         detailCards.show(detailCardHost, "ITEM");
     }
 
     private void toggleEquip() {
-        String selected = activeType == Item.Type.WEAPON ? selectedWeapon : selectedArmor;
-        if (selected == null) return;
-        boolean equipped = selected.equals(activeType == Item.Type.WEAPON ? player.getWeaponName() : player.getArmorName());
-        if (activeType == Item.Type.WEAPON) {
-            player.setWeaponName(equipped ? null : selected);
-        } else {
-            player.setArmorName(equipped ? null : selected);
-        }
+        GearPiece piece = selectedPiece();
+        if (piece == null) return;
+        if (player.isWorn(piece)) player.unequip(piece);
+        else player.wear(piece);
         refresh();
-        showDetail(selected);
+        showDetail();
+    }
+
+    private void toggleLock() {
+        GearPiece piece = selectedPiece();
+        if (piece == null) return;
+        piece.setLocked(!piece.isLocked());
+        refresh();
+        showDetail();
     }
 
     private void refresh() {
-        currentLabel.setText("무기: " + (player.getWeaponName() == null ? "없음" : player.getWeaponName())
-                + "      방어구: " + (player.getArmorName() == null ? "없음" : player.getArmorName()));
+        currentLabel.setText("무기: " + (player.getWeapon() == null ? "없음" : player.getWeapon().getDisplayName())
+                + "      방어구: " + (player.getArmor() == null ? "없음" : player.getArmor().getDisplayName()));
 
-        weaponModel.clear();
-        for (String name : player.getItemsByType(Item.Type.WEAPON)) weaponModel.addElement(name);
-        armorModel.clear();
-        for (String name : player.getItemsByType(Item.Type.ARMOR)) armorModel.addElement(name);
+        List<GearPiece> sorted = new ArrayList<>(player.getGear());
+        sorted.sort(Comparator.comparing((GearPiece g) -> !player.isWorn(g)).thenComparing(GearPiece::isDestroyed)
+                .thenComparing(g -> -g.getItem().getGrade().ordinal()).thenComparing(g -> -g.getValue()));
+        fill(weaponList, weaponModel, sorted, true);
+        fill(armorList, armorModel, sorted, false);
+
+        consumableModel.clear();
+        for (Map.Entry<String, Integer> e : player.getConsumableCounts().entrySet()) consumableModel.addElement(e);
         repaint();
     }
 
-    // ---------- row renderer ----------
-    private final class EquipRowRenderer implements ListCellRenderer<String> {
+    /** Refills a gear list, keeping the selected piece selected. */
+    private static void fill(JList<GearPiece> list, DefaultListModel<GearPiece> model, List<GearPiece> pieces, boolean weapons) {
+        GearPiece selected = list.getSelectedValue();
+        model.clear();
+        for (GearPiece g : pieces) if (g.isWeapon() == weapons) model.addElement(g);
+        if (selected != null && model.contains(selected)) list.setSelectedValue(selected, false);
+    }
+
+    // ---------- row renderers ----------
+    private final class EquipRowRenderer implements ListCellRenderer<GearPiece> {
         private final Sketch.Row row = new Sketch.Row();
 
         @Override
-        public Component getListCellRendererComponent(JList<? extends String> list, String itemName, int index,
+        public Component getListCellRendererComponent(JList<? extends GearPiece> list, GearPiece piece, int index,
                                                       boolean isSelected, boolean cellHasFocus) {
-            Item item = ItemCatalog.get(itemName);
-            boolean worn = itemName.equals(player.getWeaponName()) || itemName.equals(player.getArmorName());
-            return row.set(item, item.getName() + (worn ? "  √" : ""), item.getStatText(), isSelected, index);
+            String state = player.isWorn(piece) ? (piece.isLocked() ? "장착 · 잠금" : "장착") : piece.isLocked() ? "잠금" : "";
+            return row.set(piece.getItem(), piece.getDisplayName(), piece.getStatText(), isSelected, index).note(state)
+                    .icon(ItemArt.piece(piece, 44));
+        }
+    }
+
+    private static final class ConsumableRowRenderer implements ListCellRenderer<Map.Entry<String, Integer>> {
+        private final Sketch.Row row = new Sketch.Row();
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends Map.Entry<String, Integer>> list, Map.Entry<String, Integer> entry,
+                                                      int index, boolean isSelected, boolean cellHasFocus) {
+            Item item = ItemCatalog.get(entry.getKey());
+            return row.set(item, entry.getKey() + " x" + entry.getValue(), item.getStatText(), isSelected, index);
         }
     }
 }

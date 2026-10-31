@@ -450,7 +450,8 @@ public final class Sketch {
             west.setOpaque(false);
             west.add(icon, BorderLayout.WEST);
             west.add(text, BorderLayout.CENTER);
-            add(west, BorderLayout.WEST);
+            // CENTER, so a long name shortens itself instead of pushing the value out of the row.
+            add(west, BorderLayout.CENTER);
             value.setFont(hand(Font.BOLD, 14f));
             value.setForeground(BLUE_PENCIL);
             add(value, BorderLayout.EAST);
@@ -467,6 +468,18 @@ public final class Sketch {
             return this;
         }
 
+        /** Replaces the icon set() chose (a destroyed piece looks different from its item). */
+        public Row icon(Icon picture) {
+            icon.setIcon(picture);
+            return this;
+        }
+
+        /** Adds a short state after the grade tag, e.g. "장착 · 잠금". Empty adds nothing. */
+        public Row note(String text) {
+            if (!text.isEmpty()) tag.setText(tag.getText() + " · " + text);
+            return this;
+        }
+
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = smooth(g);
@@ -479,12 +492,17 @@ public final class Sketch {
 
     /** Detail-pane text for an item on paper: grade tag, type, stat, then special effects in red pencil. */
     public static String itemDetailHtml(Item item) {
+        return itemDetailHtml(item, item.getStatText());
+    }
+
+    /** The same, with the stat line given (an enhanced piece differs from its catalog item). */
+    public static String itemDetailHtml(Item item, String statText) {
         StringBuilder sb = new StringBuilder("<html><body style='width:210px'>")
                 .append("<font color='").append(hex(gradeInk(item.getGrade()))).append("'><b>[")
                 .append(item.getGrade().getLabel()).append("]</b></font> ").append(item.getTypeLabel())
                 .append(item.isGachaOnly() ? " <font color='" + hex(INK_SOFT) + "'>· 보물 뽑기 전용</font>" : "")
                 .append(item.getGrade() == Item.Grade.MYTHIC ? " <font color='" + hex(INK_SOFT) + "'>· 보스 전용</font>" : "")
-                .append("<br><font color='").append(hex(BLUE_PENCIL)).append("'><b>").append(item.getStatText()).append("</b></font>");
+                .append("<br><font color='").append(hex(BLUE_PENCIL)).append("'><b>").append(statText).append("</b></font>");
         for (String line : item.getBonus().lines()) {
             sb.append("<br><font color='").append(hex(RED_PENCIL)).append("'>✎ ").append(line).append("</font>");
         }

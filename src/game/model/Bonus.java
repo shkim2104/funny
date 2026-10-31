@@ -98,6 +98,39 @@ public final class Bonus {
         return b;
     }
 
+    /** These effects at the given strength: 0.5 halves every number. "항상 먼저 공격" stays as it is. */
+    public Bonus scaled(double k) {
+        Bonus b = new Bonus();
+        b.atkPct = atkPct * k;
+        b.defPct = defPct * k;
+        b.dmgReduction = dmgReduction * k;
+        b.skillDmg = skillDmg * k;
+        b.critChance = critChance * k;
+        b.critDmg = critDmg * k;
+        b.ignoreDef = ignoreDef * k;
+        b.firstStrike = firstStrike * k;
+        b.execute = execute * k;
+        b.bossDmg = bossDmg * k;
+        b.lowHpDmg = lowHpDmg * k;
+        b.stackAtkPerKill = stackAtkPerKill * k;
+        b.doubleStrike = doubleStrike * k;
+        b.lifesteal = lifesteal * k;
+        b.thorns = thorns * k;
+        b.dodge = dodge * k;
+        b.shield = shield * k;
+        b.regen = regen * k;
+        b.hpOnKill = hpOnKill * k;
+        b.healAfterFight = healAfterFight * k;
+        b.goldPct = goldPct;
+        b.expPct = expPct;
+        b.revive = revive * k;
+        b.spd = (int) Math.round(spd * k);
+        b.mpOnKill = (int) Math.round(mpOnKill * k);
+        b.mpCostReduce = (int) Math.round(mpCostReduce * k);
+        b.alwaysFirst = alwaysFirst;
+        return b;
+    }
+
     /** Multiplicative stacking of "+x%" effects: (1 + a)(1 + b) - 1. */
     private static double mul(double a, double b) {
         return (1 + a) * (1 + b) - 1;

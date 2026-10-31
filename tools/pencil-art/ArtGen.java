@@ -108,6 +108,7 @@ public class ArtGen {
         }
         writeIcons(new File(root, "items"), Icons.items(), 501, sheets == null ? null : new File(sheets, "items_sheet.png"));
         writeIcons(new File(root, "augments"), Icons.augments(), 777, sheets == null ? null : new File(sheets, "augments_sheet.png"));
+        writeIcons(new File(root, "materials"), Icons.materials(), 909, sheets == null ? null : new File(sheets, "materials_sheet.png"));
     }
 
     /** One 256px transparent PNG per icon; optionally a grid sheet of them on paper. */
