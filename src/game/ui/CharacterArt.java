@@ -6,7 +6,12 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -231,6 +236,42 @@ public final class CharacterArt {
         // A second, slightly darker pass doubles each stroke, like pressing the pencil harder.
         g.drawImage(buf, x + 1, y, null);
         g.drawImage(buf, x, y, null);
+    }
+
+    // ---------- sending to the other player in a duel ----------
+
+    /** Each part as a Base64 PNG, in Part order. */
+    public List<String> toBase64() {
+        List<String> out = new ArrayList<>();
+        for (Part p : Part.values()) {
+            try {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                ImageIO.write(image(p), "png", bytes);
+                out.add(Base64.getEncoder().encodeToString(bytes.toByteArray()));
+            } catch (Exception e) {
+                out.add("");
+            }
+        }
+        return out;
+    }
+
+    /** The drawing from toBase64(); anything missing or unreadable falls back to the default doodle. */
+    public static CharacterArt fromBase64(List<String> encoded) {
+        Part[] all = Part.values();
+        if (encoded.size() != all.length) return defaultDoodle();
+        CharacterArt art = new CharacterArt();
+        for (Part p : all) {
+            try {
+                BufferedImage img = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(encoded.get(p.ordinal()))));
+                if (img == null) return defaultDoodle();
+                Graphics2D g = art.image(p).createGraphics();
+                g.drawImage(img, 0, 0, p.w, p.h, null);
+                g.dispose();
+            } catch (Exception e) {
+                return defaultDoodle();
+            }
+        }
+        return art;
     }
 
     // ---------- save / load ----------

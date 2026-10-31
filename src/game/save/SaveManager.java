@@ -9,6 +9,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -193,80 +195,102 @@ public class SaveManager {
 
     private static Player read(File file) {
         try (BufferedReader br = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
-            String name = br.readLine();
-            int level = Integer.parseInt(br.readLine());
-            int exp = Integer.parseInt(br.readLine());
-            int expToNext = Integer.parseInt(br.readLine());
-            int maxHp = Integer.parseInt(br.readLine());
-            int hp = Integer.parseInt(br.readLine());
-            int maxMp = Integer.parseInt(br.readLine());
-            int mp = Integer.parseInt(br.readLine());
-            int baseAtk = Integer.parseInt(br.readLine());
-            int baseDef = Integer.parseInt(br.readLine());
-            int luck = Integer.parseInt(br.readLine());
-            int statPoints = Integer.parseInt(br.readLine());
-            int gold = Integer.parseInt(br.readLine());
-            int unlockedDungeon = Integer.parseInt(br.readLine());
-            String weaponName = br.readLine();
-            if ("NONE".equals(weaponName)) weaponName = null;
-            String armorName = br.readLine();
-            if ("NONE".equals(armorName)) armorName = null;
-            int invSize = Integer.parseInt(br.readLine());
-            List<String> inventory = new ArrayList<>();
-            for (int i = 0; i < invSize; i++) inventory.add(br.readLine());
-
-            // Older saves predate the speed stat: default to a mid-range value when the line is missing.
-            String spdLine = br.readLine();
-            int spd = spdLine != null ? Integer.parseInt(spdLine) : 6;
-
-            // The EXP curve is recomputed from the level rather than trusting the saved value, so
-            // saves made under an older curve pick up the current one. Progress toward the next
-            // level is kept but capped just below it (no surprise level-ups on load).
-            expToNext = Player.expRequiredFor(level);
-            exp = Math.min(exp, expToNext - 1);
-            Player player = new Player(name, level, exp, expToNext, maxHp, hp, maxMp, mp,
-                    baseAtk, baseDef, luck, spd, statPoints, gold, unlockedDungeon, weaponName, armorName, inventory);
-
-            // Saves from before jobs existed (no line) load as a beginner, free to advance once eligible.
-            // The path stops at the first unknown/out-of-order job (e.g. a job renamed since), so
-            // the player can simply re-pick that tier.
-            String jobLine = br.readLine();
-            List<Job> path = new ArrayList<>();
-            if (jobLine != null && !jobLine.trim().isEmpty()) {
-                for (String part : jobLine.trim().split(",")) {
-                    Job j;
-                    try {
-                        j = Job.valueOf(part.trim());
-                    } catch (IllegalArgumentException unknownJob) {
-                        break;
-                    }
-                    if (j.getTier() != path.size() + 1) break;
-                    path.add(j);
-                }
-            }
-            player.setJobPath(path);
-
-            // Saves from before the quest board have no line here; the board is filled on first visit.
-            player.setQuests(Quest.decodeAll(br.readLine()));
-
-            // Saves from before forging materials have no line here and start with none.
-            String materialLine = br.readLine();
-            if (materialLine != null && !materialLine.trim().isEmpty()) {
-                String[] counts = materialLine.trim().split(",");
-                Material[] all = Material.values();
-                for (int i = 0; i < all.length && i < counts.length; i++) {
-                    player.addMaterial(all[i], Integer.parseInt(counts[i].trim()));
-                }
-            }
-
-            // Saves from before gear pieces have no line here: the constructor already turned their
-            // weapons and armor, listed in the inventory by name, into +0 pieces.
-            String gearLine = br.readLine();
-            if (gearLine != null) player.decodeGear(gearLine);
-            return player;
+            return parse(br);
         } catch (IOException | RuntimeException e) {
             System.out.println("불러오기에 실패했습니다: " + file.getName() + " (" + e.getMessage() + ")");
             return null;
         }
+    }
+
+    /** A character as text, the same lines a save file holds (sent to the other player in a duel). */
+    public static String encode(Player p) {
+        StringWriter text = new StringWriter();
+        try (PrintWriter pw = new PrintWriter(text)) {
+            write(pw, p);
+        }
+        return text.toString();
+    }
+
+    /** The character from encode()'s text, or null if it can't be read. */
+    public static Player decode(String text) {
+        try (BufferedReader br = new BufferedReader(new StringReader(text))) {
+            return parse(br);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static Player parse(BufferedReader br) throws IOException {
+        String name = br.readLine();
+        int level = Integer.parseInt(br.readLine());
+        int exp = Integer.parseInt(br.readLine());
+        int expToNext = Integer.parseInt(br.readLine());
+        int maxHp = Integer.parseInt(br.readLine());
+        int hp = Integer.parseInt(br.readLine());
+        int maxMp = Integer.parseInt(br.readLine());
+        int mp = Integer.parseInt(br.readLine());
+        int baseAtk = Integer.parseInt(br.readLine());
+        int baseDef = Integer.parseInt(br.readLine());
+        int luck = Integer.parseInt(br.readLine());
+        int statPoints = Integer.parseInt(br.readLine());
+        int gold = Integer.parseInt(br.readLine());
+        int unlockedDungeon = Integer.parseInt(br.readLine());
+        String weaponName = br.readLine();
+        if ("NONE".equals(weaponName)) weaponName = null;
+        String armorName = br.readLine();
+        if ("NONE".equals(armorName)) armorName = null;
+        int invSize = Integer.parseInt(br.readLine());
+        List<String> inventory = new ArrayList<>();
+        for (int i = 0; i < invSize; i++) inventory.add(br.readLine());
+
+        // Older saves predate the speed stat: default to a mid-range value when the line is missing.
+        String spdLine = br.readLine();
+        int spd = spdLine != null ? Integer.parseInt(spdLine) : 6;
+
+        // The EXP curve is recomputed from the level rather than trusting the saved value, so
+        // saves made under an older curve pick up the current one. Progress toward the next
+        // level is kept but capped just below it (no surprise level-ups on load).
+        expToNext = Player.expRequiredFor(level);
+        exp = Math.min(exp, expToNext - 1);
+        Player player = new Player(name, level, exp, expToNext, maxHp, hp, maxMp, mp,
+                baseAtk, baseDef, luck, spd, statPoints, gold, unlockedDungeon, weaponName, armorName, inventory);
+
+        // Saves from before jobs existed (no line) load as a beginner, free to advance once eligible.
+        // The path stops at the first unknown/out-of-order job (e.g. a job renamed since), so
+        // the player can simply re-pick that tier.
+        String jobLine = br.readLine();
+        List<Job> path = new ArrayList<>();
+        if (jobLine != null && !jobLine.trim().isEmpty()) {
+            for (String part : jobLine.trim().split(",")) {
+                Job j;
+                try {
+                    j = Job.valueOf(part.trim());
+                } catch (IllegalArgumentException unknownJob) {
+                    break;
+                }
+                if (j.getTier() != path.size() + 1) break;
+                path.add(j);
+            }
+        }
+        player.setJobPath(path);
+
+        // Saves from before the quest board have no line here; the board is filled on first visit.
+        player.setQuests(Quest.decodeAll(br.readLine()));
+
+        // Saves from before forging materials have no line here and start with none.
+        String materialLine = br.readLine();
+        if (materialLine != null && !materialLine.trim().isEmpty()) {
+            String[] counts = materialLine.trim().split(",");
+            Material[] all = Material.values();
+            for (int i = 0; i < all.length && i < counts.length; i++) {
+                player.addMaterial(all[i], Integer.parseInt(counts[i].trim()));
+            }
+        }
+
+        // Saves from before gear pieces have no line here: the constructor already turned their
+        // weapons and armor, listed in the inventory by name, into +0 pieces.
+        String gearLine = br.readLine();
+        if (gearLine != null) player.decodeGear(gearLine);
+        return player;
     }
 }

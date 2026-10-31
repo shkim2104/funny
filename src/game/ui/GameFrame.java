@@ -34,6 +34,8 @@ public class GameFrame extends JFrame {
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel cards = new JPanel(cardLayout);
     private final BattlePanel battlePanel = new BattlePanel();
+    private final PvpPanel pvpPanel = new PvpPanel();
+    private JButton multiverseBackButton;
     private final PageTurner pageTurner = new PageTurner(this);
 
     /** Clickable regions on dungeonentrence.png (artwork pixels), in the same order as World.buildDungeons(). */
@@ -87,6 +89,8 @@ public class GameFrame extends JFrame {
         cards.add(buildCharacterSelectPanel(), "SELECT");
         cards.add(buildTownPanel(), "TOWN");
         cards.add(buildDungeonMapPanel(), "DUNGEON_MAP");
+        cards.add(buildMultiversePanel(), "MULTIVERSE");
+        cards.add(pvpPanel, "PVP");
         cards.add(battlePanel, "BATTLE");
         setContentPane(cards);
         setGlassPane(pageTurner);
@@ -327,6 +331,7 @@ public class GameFrame extends JFrame {
         townMap = new MapScreen(loadImage("images/town.png"));
         townMap.addHotspot("대장간", 130, 200, 430, 350, this::openBlacksmith);
         townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
+        townMap.addHotspot("???", 100, 505, 165, 195, this::openMultiverse);
         townMap.addHotspot("상점", 725, 630, 345, 340, this::openShop);
         townMap.addHotspot("던전 입구", 860, 990, 330, 260, () -> openDungeonMap(true));
         Rectangle hall = JobHallArt.AREA;
@@ -363,6 +368,17 @@ public class GameFrame extends JFrame {
         }
         dungeonBackButton = menuButton("마을로 돌아가기", () -> showTown(false));
         return mapWithSideMenu(dungeonMap, "던전 입구", null, "지역을 클릭해 입장하세요", dungeonBackButton);
+    }
+
+    /** The road between worlds: the colosseum, and four planets that aren't open yet. */
+    private JPanel buildMultiversePanel() {
+        MapScreen map = new MapScreen(loadImage("images/multiverse.png"));
+        map.addHotspot("콜로세움", 430, 225, 450, 430, this::openColosseum);
+        for (int[] planet : new int[][]{{100, 110, 300, 270}, {930, 110, 270, 260}, {120, 650, 270, 240}, {930, 640, 260, 240}}) {
+            map.addHotspot("???", planet[0], planet[1], planet[2], planet[3], () -> map.toast("아직은 때가 아니다..."));
+        }
+        multiverseBackButton = menuButton("마을로 돌아가기", () -> showTown(false));
+        return mapWithSideMenu(map, "차원의 길", null, "행성을 클릭해 이동하세요", multiverseBackButton);
     }
 
     /** Map on the left, a slim menu column on the right (title, optional info, hint, buttons). */
@@ -595,6 +611,27 @@ public class GameFrame extends JFrame {
             new ShopDialog(this, player).setVisible(true);
             refreshTown();
         });
+    }
+
+    private void openMultiverse() {
+        showCard("MULTIVERSE", true);
+        Theme.focusFirst(multiverseBackButton);
+    }
+
+    /** The colosseum's gate; once two heroes are matched the whole window becomes the arena. */
+    private void openColosseum() {
+        CharacterArt art = CharacterArt.load(currentSaveId);
+        new PvpDialog(this, player, art, (session, opponent, opponentArt) -> {
+            currentCard = "PVP";
+            Music.play("boss");
+            pageTurner.turn(() -> {
+                cardLayout.show(cards, "PVP");
+                pvpPanel.start(session, player, art, opponent, opponentArt, () -> {
+                    Music.play("town");
+                    openMultiverse();
+                });
+            }, true);
+        }).setVisible(true);
     }
 
     private void openEquip() {

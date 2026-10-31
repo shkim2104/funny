@@ -10,7 +10,7 @@ import static java.lang.Math.*;
  * corner of the town (290,1060 310x225) is left as grass: JobHallArt paints the hall there at runtime.
  */
 final class Maps {
-    static final int TOWN_W = 1199, TOWN_H = 1312, WORLD_W = 1312, WORLD_H = 1199;
+    static final int TOWN_W = 1199, TOWN_H = 1312, WORLD_W = 1312, WORLD_H = 1199, MULTI_W = 1312, MULTI_H = 1000;
     private static final Color INK = Pencil.LEAD, BLUE = new Color(52, 86, 170);
     private static final Color RED = Monsters.RED, ORANGE = Monsters.ORANGE, ICE = Monsters.ICE, GOLD = Monsters.GOLD,
             PURPLE = Monsters.PURPLE, GREEN = Monsters.GREEN, YELLOW = Monsters.YELLOW, BROWN = Monsters.BROWN;
@@ -222,8 +222,138 @@ final class Maps {
         p.dot(1114, 120, 3, INK);
         p.dot(1138, 120, 3, INK);
         p.text("언젠가 여기서 퀘스트를...!", 36, 1302, 20, BLUE, -2);
+        portalHouse(p);
     }
 
+    /** The door to other worlds, drawn last over the plain house on that spot so the rest of the town keeps its strokes. */
+    private static void portalHouse(Pencil p) {
+        house(p, 110, 600, 130, 90, PURPLE, false);
+        p.smudge(Pencil.ell(175, 640, 58, 62), PURPLE, 60);
+        p.part(Pencil.ell(175, 648, 30, 42), 0.35, PURPLE, 1.0);
+        p.part(Pencil.ell(175, 648, 19, 29), 0.08, ICE, 0.9);
+        p.curve(2.2, 175, 648, 184, 642, 180, 630, 166, 632, 160, 650, 172, 668, 190, 662);
+        label(p, "???", 150, 534, 26, -2, false);
+    }
+
+    // ================= the road between worlds =================
+
+    /** A planet with nothing to see yet: solid graphite, only its outline hints at what it will be. */
+    private static void silhouette(Pencil p, double x, double y, double r, int kind) {
+        Color dark = new Color(46, 44, 54);
+        p.smudge(Pencil.ell(x, y, r * 1.28, r * 1.28), Pencil.PAPER, 225);
+        java.util.function.Consumer<Shape> solid = s -> {
+            p.g.setColor(dark);
+            p.g.fill(s);
+            p.outline(s, 2.6);
+        };
+        if (kind == 0) {
+            solid.accept(Pencil.limb(r * 0.16, x - r * 1.35, y + r * 0.34, x, y + r * 0.1, x + r * 1.35, y - r * 0.34));
+        } else if (kind == 1) {
+            for (int i = 0; i < 7; i++) {
+                double a = -PI * 0.92 + i * PI * 0.84 / 6, tip = r * 1.34;
+                solid.accept(Pencil.poly(x + cos(a - 0.2) * r * 0.9, y + sin(a - 0.2) * r * 0.9, x + cos(a) * tip, y + sin(a) * tip,
+                        x + cos(a + 0.2) * r * 0.9, y + sin(a + 0.2) * r * 0.9));
+            }
+        } else if (kind == 2) {
+            solid.accept(Pencil.ell(x + r * 1.05, y - r * 0.8, r * 0.3, r * 0.3));
+            solid.accept(Pencil.ell(x - r * 1.1, y + r * 0.72, r * 0.2, r * 0.2));
+        }
+        solid.accept(kind == 3 ? Pencil.rock(p.r, x, y, r * 1.1, r * 1.2, 11) : Pencil.ell(x, y, r, r));
+        if (kind != 3) p.hatch(Pencil.ell(x, y, r * 0.96, r * 0.96), 1, 42, new Color(90, 88, 100));
+    }
+
+    /** The planet of heroes: an arena standing on a round world, the only one that can be seen. */
+    private static void colosseumPlanet(Pencil p) {
+        double x = 656, y = 470, r = 178;
+        p.smudge(Pencil.ell(x, y, r * 1.36, r * 1.36), Pencil.PAPER, 235);
+        p.smudge(Pencil.ell(x, y, r * 1.26, r * 1.26), ORANGE, 42);
+        p.part(Pencil.ell(x, y, r, r), 0.18, ORANGE, 0.7);
+        for (double[] c : new double[][]{{-92, 74, 30}, {78, 104, 22}, {112, -8, 18}, {-118, -22, 14}}) {
+            p.part(Pencil.ell(x + c[0], y + c[1], c[2], c[2] * 0.72), 0.45, BROWN, 0.5);
+        }
+        p.outlineOpen(Pencil.spline(x - 262, y + 46, x - 120, y + 98, x + 120, y + 96, x + 262, y + 40), 3.2);
+        // The arena, sitting on top of the world.
+        double top = y - 212, w = 182;
+        p.part(Pencil.ell(x, top + 118, w * 1.04, 30), 0.5, BROWN, 0.6);
+        p.part(Pencil.poly(x - w, top + 112, x - w + 10, top + 30, x + w - 10, top + 30, x + w, top + 112), 0.08, GOLD, 0.45);
+        p.part(Pencil.ell(x, top + 30, w - 10, 26), 0.42, BROWN, 0.6);
+        p.part(Pencil.ell(x, top + 30, w - 42, 15), 0.1, ORANGE, 0.55);
+        for (int i = 0; i < 9; i++) {
+            double ax = x - w + 30 + i * (w * 2 - 60) / 8.0;
+            p.part(Pencil.poly(ax - 11, top + 104, ax - 11, top + 74, ax, top + 60, ax + 11, top + 74, ax + 11, top + 104), 0.72, BROWN, 0.4);
+        }
+        for (double fx : new double[]{x - w + 20, x, x + w - 20}) {
+            p.ink(fx, top + 26, fx, top - 28, 2.2);
+            p.part(Pencil.poly(fx, top - 28, fx + 30, top - 19, fx, top - 8), 0.08, RED, 0.95);
+        }
+        label(p, "콜로세움", x - 76, y + 120, 34, -2, false);
+    }
+
+    static void multiverse(Pencil p) {
+        p.hatch(new java.awt.Rectangle(0, 0, MULTI_W, MULTI_H), 0.42, 38, Pencil.LEAD);
+        p.hatch(new java.awt.Rectangle(0, 0, MULTI_W, MULTI_H), 0.3, -40, Pencil.LEAD);
+        for (int i = 0; i < 90; i++) {
+            double sx = p.r.nextDouble() * MULTI_W, sy = p.r.nextDouble() * MULTI_H;
+            if (i % 5 == 0) star(p, sx, sy, 7 + p.r.nextDouble() * 6, null);
+            else p.smudge(Pencil.ell(sx, sy, 2.4, 2.4), Pencil.PAPER, 235);
+        }
+        // The roads out of the door, one to each world.
+        double gateX = 656, gateY = 905;
+        for (double[] to : new double[][]{{656, 650}, {250, 245}, {1062, 245}, {250, 770}, {1062, 770}}) {
+            p.dots(19, 3.6, Pencil.PAPER, gateX, gateY, (gateX + to[0]) / 2, (gateY + to[1]) / 2 + 46, to[0], to[1]);
+        }
+        p.smudge(Pencil.ell(gateX, gateY, 118, 72), Pencil.PAPER, 225);
+        p.smudge(Pencil.ell(gateX, gateY, 96, 56), PURPLE, 110);
+        p.part(Pencil.ell(gateX, gateY, 78, 42), 0.3, PURPLE, 1.0);
+        p.part(Pencil.ell(gateX, gateY, 48, 25), 0.06, ICE, 0.95);
+        p.curve(2.4, gateX, gateY, gateX + 22, gateY - 9, gateX + 8, gateY - 20, gateX - 26, gateY - 8, gateX - 18, gateY + 16, gateX + 34, gateY + 14);
+
+        silhouette(p, 250, 245, 104, 0);
+        silhouette(p, 1062, 245, 96, 1);
+        silhouette(p, 250, 770, 92, 2);
+        silhouette(p, 1062, 770, 106, 3);
+        colosseumPlanet(p);
+
+        p.smudge(Pencil.ell(226, 72, 190, 54), Pencil.PAPER, 235);
+        p.part(Pencil.poly(60, 30, 390, 22, 398, 112, 66, 120), 0.0);
+        p.text("차원의 길", 96, 94, 54, BLUE, -2);
+    }
+
+    /** The duel stage: sand in front, the stands and their crowd behind. Feet land on the sand. */
+    static void arena(Pencil p) {
+        int w = Backdrops.W, h = Backdrops.H;
+        double horizon = Backdrops.HORIZON;
+        p.part(Pencil.poly(0, horizon - 20, w, horizon - 20, w, h, 0, h), 0.1, YELLOW, 0.5);
+        for (int ring = 1; ring <= 3; ring++) p.outline(Pencil.ell(w / 2.0, 760, 250 * ring, 66 * ring), 1.5);
+        for (int i = 0; i < 70; i++) {
+            double sx = p.r.nextDouble() * w, sy = horizon + 30 + p.r.nextDouble() * (h - horizon - 40);
+            p.ink(sx, sy, sx + 18 + p.r.nextDouble() * 26, sy + 1, 1.2);
+        }
+        // The wall around the sand, with gates.
+        p.part(Pencil.poly(0, horizon - 110, w, horizon - 110, w, horizon - 18, 0, horizon - 18), 0.5, BROWN, 0.6);
+        for (int i = 0; i < 9; i++) {
+            double ax = 90 + i * 186;
+            p.part(Pencil.poly(ax - 46, horizon - 18, ax - 46, horizon - 74, ax, horizon - 102, ax + 46, horizon - 74, ax + 46, horizon - 18), 0.95);
+            p.ink(ax - 22, horizon - 18, ax - 22, horizon - 90, 1.8);
+            p.ink(ax + 22, horizon - 18, ax + 22, horizon - 90, 1.8);
+            p.ink(ax - 46, horizon - 56, ax + 46, horizon - 56, 1.8);
+        }
+        // Rows of stands rising behind it, full of little heads.
+        for (int row = 0; row < 7; row++) {
+            double y1 = horizon - 110 - row * 62, y0 = y1 - 62;
+            p.part(Pencil.poly(0, y1, w, y1, w, y0, 0, y0), row % 2 == 0 ? 0.3 : 0.2, BROWN, 0.35);
+            for (double hx = 14 + (row % 2) * 16; hx < w; hx += 33) {
+                double hy = y0 + 25 + p.r.nextDouble() * 7;
+                Color shirt = hx % 5 < 1.5 ? RED : hx % 5 < 3 ? ICE : GOLD;
+                p.smudge(Pencil.ell(hx, hy + 18, 12, 10), shirt, 150);
+                p.outline(Pencil.ell(hx, hy, 8.5, 8.5), 1.3);
+            }
+        }
+        for (double fx : new double[]{170, 480, 836, 1190, 1500}) {
+            p.ink(fx, horizon - 110, fx, 50, 3);
+            p.part(Pencil.poly(fx, 50, fx + 104, 80, fx + 76, 122, fx + 104, 164, fx, 136), 0.08, RED, 0.95);
+        }
+    }
     // ================= world map =================
 
     static void world(Pencil p) {

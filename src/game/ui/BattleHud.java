@@ -39,6 +39,8 @@ public class BattleHud {
     private int hp, maxHp = 1, mp, maxMp = 1, exp, expMax = 1;
     private float shownHp, shownMp, shownExp;
 
+    private boolean expVisible = true;
+
     public BattleHud(Runnable repaint) {
         this.repaint = repaint;
         anim = new Timer(16, e -> tick());
@@ -70,6 +72,12 @@ public class BattleHud {
     }
 
     /** Updates only MP (refilled on leaving a dungeon) without touching the HP shown. */
+    /** Hides the EXP strip and shortens the box: a duel earns no EXP. */
+    public void setExpVisible(boolean visible) {
+        expVisible = visible;
+        repaint.run();
+    }
+
     public void setPlayerMp(int mp, int maxMp) {
         this.mp = Math.max(0, mp);
         this.maxMp = Math.max(1, maxMp);
@@ -118,7 +126,7 @@ public class BattleHud {
         int bw = Math.max(220, Math.min(320, Math.round(w * 0.34f)));
         if (!monsterName.isEmpty()) paintMonsterBox(g2, 14, 14, bw);
         if (!playerName.isEmpty()) {
-            int ph = 116;
+            int ph = expVisible ? 116 : 96;
             paintPlayerBox(g2, w - bw - 14, h - ph - 14, bw, ph);
         }
         g2.dispose();
@@ -169,6 +177,8 @@ public class BattleHud {
         paintBar(g2, mpBarX, mpY + 1, mpBarW, 9, shownMp / maxMp, MP_FILL);
         g2.setColor(INK);
         g2.drawString(mpNums, right - mpNumW, mpY + 10);
+
+        if (!expVisible) return;
 
         // EXP strip along the bottom edge of the box.
         int expY = y + bh - 18;

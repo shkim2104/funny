@@ -46,7 +46,9 @@ public class BattleStage extends JComponent {
     /** Backdrop per dungeon index, in World.buildDungeons() order. */
     private static final String[] BACKDROP_PATHS = {
             "images/dungeon1/bg.png", "images/dungeon2/bg.png", "images/dungeon3/bg.png", "images/dungeon4/bg.png",
-            "images/dungeon5/bg.png", "images/dungeon6/bg.png", "images/dungeon7/bg.png"};
+            "images/dungeon5/bg.png", "images/dungeon6/bg.png", "images/dungeon7/bg.png", "images/colosseum/bg.png"};
+    /** setDungeon() index of the colosseum, which comes after the dungeons. */
+    public static final int ARENA = 7;
     private static final BufferedImage[] BACKDROPS = new BufferedImage[BACKDROP_PATHS.length];
     private static final float BACKDROP_FOCUS_Y = 0.62f;     // which band of a tall backdrop survives the crop (0 = top)
     private static final double MONSTER_GROUND_ON_BACKDROP = 0.63;   // monster's feet, as a fraction of stage height
@@ -198,14 +200,16 @@ public class BattleStage extends JComponent {
         final game.model.Skill.Fx type;
         final Color color;
         final boolean mirrored;        // alternate hits of a multi-hit skill flip their angle / arc
+        final boolean onPlayer;        // the other player's skill, landing on our hero instead of the far side
         final double[] sparkAngles = new double[SLASH_SPARKS];
         final double[] sparkSpeeds = new double[SLASH_SPARKS];
         final double[] boltJitter = new double[BOLT_SEGMENTS + 1];
 
-        SkillFx(game.model.Skill.Fx type, Color color, boolean mirrored) {
+        SkillFx(game.model.Skill.Fx type, Color color, boolean mirrored, boolean onPlayer) {
             this.type = type;
             this.color = color;
             this.mirrored = mirrored;
+            this.onPlayer = onPlayer;
             java.util.Random r = new java.util.Random();
             for (int i = 0; i < SLASH_SPARKS; i++) {
                 sparkAngles[i] = r.nextDouble() * Math.PI * 2;
@@ -424,8 +428,13 @@ public class BattleStage extends JComponent {
 
     /** Plays a skill's hit effect on the monster; hitIndex alternates the direction for multi-hit skills. */
     public void playSkillFx(game.model.Skill.Fx fx, int rgb, int hitIndex) {
+        playSkillFx(fx, rgb, hitIndex, false);
+    }
+
+    /** The same, with onPlayer true for a skill the other player used on our hero in a duel. */
+    public void playSkillFx(game.model.Skill.Fx fx, int rgb, int hitIndex, boolean onPlayer) {
         if (fx == null || fx == game.model.Skill.Fx.NONE) return;
-        skillFxs.add(new SkillFx(fx, new Color(rgb), hitIndex % 2 == 1));
+        skillFxs.add(new SkillFx(fx, new Color(rgb), hitIndex % 2 == 1, onPlayer));
         repaint();
     }
 
@@ -622,6 +631,7 @@ public class BattleStage extends JComponent {
 
     /** Drawing extent of the current monster in its unscaled coordinates: the vector box, or the sprite's own size. */
     private Rectangle monsterBox(MonsterSprite sprite) {
+        if (opponentArt != null) return new Rectangle(-170, -OPPONENT_HEIGHT - 60, 340, OPPONENT_HEIGHT + 90);
         if (sprite == null || monsterSpritePx <= 0) return MONSTER_BOX;
         int uh = (int) Math.ceil(monsterSpritePx / MONSTER_SCALE);
         int halfW = (int) Math.ceil(uh * sprite.image.getWidth() / (double) sprite.image.getHeight() / 2) + 6;
@@ -630,6 +640,7 @@ public class BattleStage extends JComponent {
 
     /** Height above the monster's ground line where hit effects should land: mid-body for sprites. */
     private int monsterHitHeight() {
+        if (opponentArt != null) return OPPONENT_HEIGHT / 2;
         return monsterSpritePx > 0 ? Math.round(monsterSpritePx * 0.45f) : 24;
     }
 
@@ -858,8 +869,8 @@ public class BattleStage extends JComponent {
     private void drawSkillFxs(Graphics2D g2, int playerCx, int playerGroundY, int monsterCx, int monsterGroundY) {
         if (skillFxs.isEmpty()) return;
         long now = System.currentTimeMillis();
-        int cx = monsterCx, cy = monsterGroundY - monsterHitHeight();
-        double sx = playerCx + playerBodyW() * 0.3, sy = playerGroundY - playerBodyH() * 0.62;
+        int monsterHitY = monsterGroundY - monsterHitHeight(), playerHitY = (int) Math.round(playerGroundY - playerBodyH() * 0.55);
+        double playerHandX = playerCx + playerBodyW() * 0.3, playerHandY = playerGroundY - playerBodyH() * 0.62;
         // Grows with the stage so it still reads as big in fullscreen (1.0 at the default 260px height).
         float k = Math.max(1f, Math.min(1.8f, getHeight() / 260f));
         Iterator<SkillFx> it = skillFxs.iterator();
@@ -872,10 +883,14 @@ public class BattleStage extends JComponent {
             }
             float t = elapsed / (float) fx.duration();
             Graphics2D g = (Graphics2D) g2.create();
+            // Ranged effects fly from whoever cast them to whoever is struck.
+            int cx = fx.onPlayer ? playerCx : monsterCx, cy = fx.onPlayer ? playerHitY : monsterHitY;
+            int groundY = fx.onPlayer ? playerGroundY : monsterGroundY;
+            double sx = fx.onPlayer ? monsterCx : playerHandX, sy = fx.onPlayer ? monsterHitY : playerHandY;
             switch (fx.type) {
                 case SLASH: drawSlash(g, fx, t, cx, cy, k); break;
                 case THRUST: drawThrust(g, fx, t, sx, sy, cx, cy, k); break;
-                case SMASH: drawSmash(g, fx, t, cx, cy, monsterGroundY, k); break;
+                case SMASH: drawSmash(g, fx, t, cx, cy, groundY, k); break;
                 case MAGIC: drawMagic(g, fx, t, sx, sy, cx, cy, k); break;
                 case LIGHTNING: drawLightning(g, fx, t, cx, cy, k); break;
                 case ARROW: drawArrow(g, fx, t, sx, sy, cx, cy, k); break;
@@ -1487,6 +1502,15 @@ public class BattleStage extends JComponent {
     private CharacterArt playerArt;
     /** A drawn hero is a little taller than the old sprite: pencil lines need the size to read. */
     private static final int DRAWN_HERO_HEIGHT = 172;
+    /** The far hero, before the monster scale is applied. */
+    private static final int OPPONENT_HEIGHT = 150;
+    private CharacterArt opponentArt;
+
+    /** In the colosseum: the other player's hero stands where a monster would. Null for a monster again. */
+    public void setOpponentArt(CharacterArt art) {
+        this.opponentArt = art;
+        repaint();
+    }
 
     public void setPlayerArt(CharacterArt art) {
         this.playerArt = art;
@@ -1526,6 +1550,15 @@ public class BattleStage extends JComponent {
 
     // ---------- monster dispatch ----------
     private void drawMonster(Graphics2D g2, String name, int x, int groundY) {
+        if (opponentArt != null) {
+            // Mirrored so the two heroes face each other.
+            Graphics2D gm = (Graphics2D) g2.create();
+            gm.scale(-1, 1);
+            double t = (System.currentTimeMillis() - startTime) / 1000.0 + 1.3;
+            opponentArt.drawPosed(gm, -x, groundY, OPPONENT_HEIGHT, t, Math.max(0, monsterOffsetX / (double) LUNGE));
+            gm.dispose();
+            return;
+        }
         MonsterSprite sprite = MONSTER_SPRITES.get(name);
         if (sprite != null && monsterSpritePx > 0) {
             // g2 is already scaled by MONSTER_SCALE, so draw at unscaled size to land at monsterSpritePx on screen.
