@@ -40,6 +40,14 @@ public class Monster {
         return m;
     }
 
+    /** A fresh copy with HP, ATK and DEF multiplied; speed and rewards stay. */
+    public Monster scaled(double mul) {
+        Monster m = new Monster(name, (int) Math.round(maxHp * mul), (int) Math.round(atk * mul), (int) Math.round(def * mul),
+                spd, expReward, goldReward);
+        m.skills.addAll(skills);
+        return m;
+    }
+
     /** Gives the monster its skills, in the order they are tried each turn. */
     public Monster skills(MonsterSkill... list) {
         skills.addAll(Arrays.asList(list));

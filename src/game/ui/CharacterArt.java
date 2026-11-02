@@ -22,19 +22,25 @@ import java.util.Random;
  */
 public final class CharacterArt {
     public enum Part {
-        HEAD("머리", 200, 200, "얼굴까지 그려 주세요!"),
-        BODY("몸통", 200, 240, "옷이나 갑옷을 그려도 좋아요."),
-        ARM("팔", 90, 220, "왼팔만 그리면 오른팔은 똑같이 붙어요."),
-        LEG("다리", 100, 220, "왼다리만 그리면 오른다리는 똑같이 붙어요.");
+        HEAD("머리", 360, 300, 200, 200, 80, 100, "얼굴에 모자나 긴 머리, 뿔까지 그려 보세요."),
+        BODY("몸통", 340, 300, 200, 240, 70, 0, "옷이나 갑옷, 망토를 그려 보세요."),
+        ARM("팔", 170, 300, 90, 220, 40, 0, "왼팔만 그리면 오른팔은 똑같이 붙어요. 무기를 쥐여 줘도 좋아요."),
+        LEG("다리", 160, 220, 100, 220, 30, 0, "왼다리만 그리면 오른다리는 똑같이 붙어요.");
 
         public final String label;
         public final int w, h;
+        /** The standard spot for this part on its canvas, where drawings from before the canvas grew sit. */
+        public final int baseW, baseH, baseX, baseY;
         public final String tip;
 
-        Part(String label, int w, int h, String tip) {
+        Part(String label, int w, int h, int baseW, int baseH, int baseX, int baseY, String tip) {
             this.label = label;
             this.w = w;
             this.h = h;
+            this.baseW = baseW;
+            this.baseH = baseH;
+            this.baseX = baseX;
+            this.baseY = baseY;
             this.tip = tip;
         }
 
@@ -44,8 +50,10 @@ public final class CharacterArt {
         }
     }
 
-    public static final int FIG_W = 400, FIG_H = 660, FOOT_Y = 650;
-    private static final int SHOULDER_X = 105, SHOULDER_Y = 228, HIP_X = 155, HIP_Y = 430;
+    public static final int FIG_W = 640, FIG_H = 780, FOOT_Y = 770;
+    /** Head to toe of the standard figure; a character's drawn height is measured on this. */
+    private static final int STAND_H = 650;
+    private static final int SHOULDER_X = 225, SHOULDER_Y = 348, HIP_X = 275, HIP_Y = 550;
 
     private final BufferedImage[] parts = new BufferedImage[Part.values().length];
     private BufferedImage flat;
@@ -103,8 +111,8 @@ public final class CharacterArt {
     /** Top-left of a part on the figure; right = the mirrored copy of an arm or leg. */
     public static Point origin(Part p, boolean right) {
         switch (p) {
-            case HEAD: return new Point((FIG_W - p.w) / 2, 10);
-            case BODY: return new Point((FIG_W - p.w) / 2, 210);
+            case HEAD: return new Point((FIG_W - p.w) / 2, 30);
+            case BODY: return new Point((FIG_W - p.w) / 2, 330);
             case ARM: {
                 int x = SHOULDER_X - p.w / 2;
                 return new Point(right ? FIG_W - x - p.w : x, SHOULDER_Y - 14);
@@ -171,7 +179,7 @@ public final class CharacterArt {
 
     /** Draws the figure standing on (cx, groundY), height px tall, scaled smoothly. */
     public void drawStill(Graphics2D g, int cx, int groundY, int height) {
-        double s = height / (double) FOOT_Y;
+        double s = height / (double) STAND_H;
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g2.drawImage(shrunk(height), (int) Math.round(cx - FIG_W * s / 2), (int) Math.round(groundY - FOOT_Y * s), null);
@@ -181,7 +189,7 @@ public final class CharacterArt {
     private BufferedImage shrunkCache;
 
     private BufferedImage shrunk(int height) {
-        int w = (int) Math.round(FIG_W * height / (double) FOOT_Y), h = (int) Math.round(FIG_H * height / (double) FOOT_Y);
+        int w = (int) Math.round(FIG_W * height / (double) STAND_H), h = (int) Math.round(FIG_H * height / (double) STAND_H);
         if (shrunkCache != null && shrunkCache.getHeight() == h) return shrunkCache;
         BufferedImage cur = flat();
         while (cur.getHeight() / 2 >= h) cur = scale(cur, cur.getWidth() / 2, cur.getHeight() / 2);
@@ -203,7 +211,7 @@ public final class CharacterArt {
      * on the monster's side swings up and the legs stride.
      */
     public void drawPosed(Graphics2D g, int cx, int groundY, int height, double t, double attack) {
-        double s = height / (double) FOOT_Y;
+        double s = height / (double) STAND_H;
         double sway = Math.sin(t * 2.4) * 4;
         double armR = 6 + sway + attack * 95;
         double armL = 6 - sway + attack * 15;
@@ -264,14 +272,20 @@ public final class CharacterArt {
             try {
                 BufferedImage img = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(encoded.get(p.ordinal()))));
                 if (img == null) return defaultDoodle();
-                Graphics2D g = art.image(p).createGraphics();
-                g.drawImage(img, 0, 0, p.w, p.h, null);
-                g.dispose();
+                art.put(p, img);
             } catch (Exception e) {
                 return defaultDoodle();
             }
         }
         return art;
+    }
+
+    /** Takes in a stored part; one saved before the canvases grew goes back on its standard spot. */
+    private void put(Part p, BufferedImage img) {
+        Graphics2D g = image(p).createGraphics();
+        if (img.getWidth() == p.baseW && img.getHeight() == p.baseH) g.drawImage(img, p.baseX, p.baseY, null);
+        else g.drawImage(img, 0, 0, p.w, p.h, null);
+        g.dispose();
     }
 
     // ---------- save / load ----------
@@ -300,9 +314,7 @@ public final class CharacterArt {
             try {
                 BufferedImage img = ImageIO.read(f);
                 if (img == null) continue;
-                Graphics2D g = art.image(p).createGraphics();
-                g.drawImage(img, 0, 0, p.w, p.h, null);
-                g.dispose();
+                art.put(p, img);
                 any = true;
             } catch (Exception ignored) {
                 // unreadable part: falls back to the doodle below
@@ -320,7 +332,7 @@ public final class CharacterArt {
     /** A simple notebook stick-buddy, for characters that haven't been drawn yet. */
     public static CharacterArt defaultDoodle() {
         CharacterArt a = new CharacterArt();
-        Graphics2D g = pen(a.image(Part.HEAD));
+        Graphics2D g = a.pen(Part.HEAD);
         doodleOval(g, 100, 110, 72, 70, 11);
         g.fillOval(70, 100, 12, 14);
         g.fillOval(118, 100, 12, 14);
@@ -329,26 +341,28 @@ public final class CharacterArt {
         for (int i = 0; i < 5; i++) g.drawLine(70 + i * 15, 46, 64 + i * 17, 26 + (i % 2) * 8);   // spiky hair
         g.dispose();
 
-        g = pen(a.image(Part.BODY));
+        g = a.pen(Part.BODY);
         doodleRect(g, 52, 6, 96, 222, 21);
         g.drawLine(100, 30, 100, 210);
         for (int y = 70; y <= 170; y += 50) g.fillOval(92, y, 10, 10);
         g.dispose();
 
-        g = pen(a.image(Part.ARM));
+        g = a.pen(Part.ARM);
         doodleRect(g, 30, 6, 30, 170, 31);
         doodleOval(g, 45, 192, 18, 18, 32);
         g.dispose();
 
-        g = pen(a.image(Part.LEG));
+        g = a.pen(Part.LEG);
         doodleRect(g, 32, 0, 36, 180, 41);
         doodleRect(g, 22, 184, 60, 26, 42);
         g.dispose();
         return a;
     }
 
-    private static Graphics2D pen(BufferedImage img) {
-        Graphics2D g = img.createGraphics();
+    /** A pencil on a part, with (0, 0) at the part's standard spot. */
+    private Graphics2D pen(Part p) {
+        Graphics2D g = image(p).createGraphics();
+        g.translate(p.baseX, p.baseY);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setColor(LEAD);
         g.setStroke(new BasicStroke(4.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));

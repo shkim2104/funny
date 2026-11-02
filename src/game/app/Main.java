@@ -242,7 +242,7 @@ public class Main {
 
         for (int floor = 1; floor <= dungeon.getFloors(); floor++) {
             System.out.println("\n-- " + floor + " / " + dungeon.getFloors() + " 층 --");
-            Monster monster = dungeon.randomMonster(rnd);
+            Monster monster = dungeon.randomMonster(floor, rnd);
             Battle.Result result = battle.fight(player, monster);
 
             if (result == Battle.Result.LOSE) {

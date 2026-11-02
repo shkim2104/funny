@@ -9,6 +9,8 @@ import game.save.Settings;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /** The town shop, drawn as a pencil sketch on a notebook page (see Sketch). Boss gear is never sold here. */
@@ -86,21 +88,45 @@ public class ShopDialog extends JDialog {
         sellList.setFixedCellHeight(60);
         sellList.setFixedCellWidth(1);   // rows take the list's width, however long a name is
         sellList.setOpaque(false);
+        Sketch.toggleRows(sellList);
         sellList.addListSelectionListener(e -> {
-            if (e.getValueIsAdjusting()) return;
-            selectedSellEntry = sellList.getSelectedValue();
-            showSellDetail(selectedSellEntry);
+            if (!e.getValueIsAdjusting()) showSellSelection();
         });
 
         Sketch.Tabs tabs = new Sketch.Tabs(5101);
         tabs.addTab("구매", Sketch.scroll(buyList));
-        tabs.addTab("판매", Sketch.scroll(sellList));
+        tabs.addTab("판매", buildSellTab());
         tabs.onChange(i -> {
             sellMode = i == 1;
-            if (sellMode) showSellDetail(selectedSellEntry);
+            if (sellMode) showSellSelection();
             else showBuyDetail(selectedBuyItem);
         });
         return tabs;
+    }
+
+    /** The sell list with its bulk buttons. Rows pick and unpick with a click. */
+    private JComponent buildSellTab() {
+        JButton all = new Sketch.Button("전체 선택", false);
+        all.setToolTipText("포션은 빼고 장비만 골라요.");
+        all.addActionListener(e -> selectAllGear());
+        JButton none = new Sketch.Button("선택 해제", false);
+        none.addActionListener(e -> sellList.clearSelection());
+        JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
+        buttons.setOpaque(false);
+        buttons.add(all);
+        buttons.add(none);
+        JPanel tab = new JPanel(new BorderLayout(0, 6));
+        tab.setOpaque(false);
+        tab.add(Sketch.scroll(sellList), BorderLayout.CENTER);
+        tab.add(buttons, BorderLayout.SOUTH);
+        return tab;
+    }
+
+    /** Every piece of gear on the list. Potions stay out of it so a bulk sale never empties the bag by accident. */
+    private void selectAllGear() {
+        List<Integer> rows = new ArrayList<>();
+        for (int i = 0; i < sellModel.size(); i++) if (sellModel.get(i).piece != null) rows.add(i);
+        sellList.setSelectedIndices(rows.stream().mapToInt(Integer::intValue).toArray());
     }
 
     // ---------- right: selected item detail ----------
@@ -173,6 +199,33 @@ public class ShopDialog extends JDialog {
         detailCards.show(detailCardHost, "ITEM");
     }
 
+    private void showSellSelection() {
+        List<SellEntry> picked = sellList.getSelectedValuesList();
+        selectedSellEntry = picked.size() == 1 ? picked.get(0) : null;
+        if (picked.size() > 1) showBulkDetail(picked);
+        else showSellDetail(selectedSellEntry);
+    }
+
+    /** What the whole of one selected row sells for. */
+    private static int rowPrice(SellEntry entry) {
+        return ItemCatalog.get(entry.name).getPrice() / 2 * entry.count;
+    }
+
+    private void showBulkDetail(List<SellEntry> picked) {
+        int total = picked.stream().mapToInt(ShopDialog::rowPrice).sum();
+        long enhanced = picked.stream().filter(p -> p.piece != null && p.piece.getEnhance() > 0).count();
+        detailIcon.setIcon(null);
+        detailName.setText(picked.size() + "개 선택");
+        detailName.setForeground(Sketch.INK);
+        detailStat.setText("<html><body style='width:190px'>고른 항목을 한 번에 팔아요."
+                + (enhanced > 0 ? "<br>강화한 장비 " + enhanced + "개가 포함되어 있어요." : "") + "</body></html>");
+        detailOwned.setText(" ");
+        detailPrice.setText("합계 " + total + "G");
+        detailAction.setText("모두 판매하기");
+        detailAction.setEnabled(true);
+        detailCards.show(detailCardHost, "ITEM");
+    }
+
     private void showSellDetail(SellEntry entry) {
         if (entry == null) {
             detailCards.show(detailCardHost, "EMPTY");
@@ -205,6 +258,11 @@ public class ShopDialog extends JDialog {
     }
 
     private void sell() {
+        List<SellEntry> picked = sellList.getSelectedValuesList();
+        if (picked.size() > 1) {
+            sellAll(picked);
+            return;
+        }
         if (selectedSellEntry == null) return;
         GearPiece piece = selectedSellEntry.piece;
         String name = piece != null ? piece.getDisplayName() : selectedSellEntry.name;
@@ -221,6 +279,26 @@ public class ShopDialog extends JDialog {
         } else {
             player.removeItem(name);
             player.earnGold(item.getPrice() / 2);
+        }
+        Sfx.play(Sfx.Sound.COIN);
+        selectedSellEntry = null;
+        refresh();
+        showSellDetail(null);
+    }
+
+    /** A bulk sale always asks first. A selected stack of potions sells whole. */
+    private void sellAll(List<SellEntry> picked) {
+        int total = picked.stream().mapToInt(ShopDialog::rowPrice).sum();
+        if (!Dialogs.confirm(this, "판매 확인", picked.size() + "개 항목을 " + total + "G에 팔까요?")) return;
+        for (SellEntry entry : picked) {
+            if (entry.piece != null) {
+                player.sellGear(entry.piece);
+                continue;
+            }
+            for (int i = 0; i < entry.count; i++) {
+                player.removeItem(entry.name);
+                player.earnGold(ItemCatalog.get(entry.name).getPrice() / 2);
+            }
         }
         Sfx.play(Sfx.Sound.COIN);
         selectedSellEntry = null;

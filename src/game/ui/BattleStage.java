@@ -288,13 +288,15 @@ public class BattleStage extends JComponent {
         final String text;
         final boolean onMonster;
         final boolean crit;
+        final boolean heal;
         final long start = System.currentTimeMillis();
         final int jitterX;     // small sideways offset so multi-hit numbers don't stack on one spot
 
-        DamageText(String text, boolean onMonster, boolean crit) {
+        DamageText(String text, boolean onMonster, boolean crit, boolean heal) {
             this.text = text;
             this.onMonster = onMonster;
             this.crit = crit;
+            this.heal = heal;
             this.jitterX = new java.util.Random().nextInt(29) - 14;
         }
     }
@@ -397,7 +399,7 @@ public class BattleStage extends JComponent {
 
     /** Spawns a floating damage number over the player (onMonster=false) or monster (onMonster=true). */
     public void showDamage(int amount, boolean onMonster, boolean crit) {
-        damageTexts.add(new DamageText(String.valueOf(amount), onMonster, crit));
+        damageTexts.add(new DamageText(String.valueOf(amount), onMonster, crit, false));
         if (inImpact) Sfx.play(onMonster ? (crit ? Sfx.Sound.CRIT : Sfx.Sound.HIT) : Sfx.Sound.HURT);
         if (inImpact) {
             // Feedback scaled to the hit: a normal hit nudges, a crit punches, getting hit stings.
@@ -443,6 +445,13 @@ public class BattleStage extends JComponent {
         Sfx.play(Sfx.Sound.HEAL);
         healFxs.add(new HealFx());
         repaint();
+    }
+
+    /** The heal effect with the amount rising in green over the player. */
+    public void showHeal(int amount) {
+        if (amount <= 0) return;
+        damageTexts.add(new DamageText("+" + amount, false, false, true));
+        playHeal();
     }
 
     /** Plays the kill reward: coins fly into the player, then gained gold and EXP pop up beside them. */
@@ -1470,7 +1479,7 @@ public class BattleStage extends JComponent {
             Font font = Theme.dosFont(Font.BOLD, (dt.crit ? 26f : 19f) * pop);
             int tw = g2.getFontMetrics(font).stringWidth(dt.text);
 
-            Color color = dt.crit ? new Color(255, 196, 50)
+            Color color = dt.crit ? new Color(255, 196, 50) : dt.heal ? new Color(110, 230, 130)
                     : dt.onMonster ? Color.WHITE : new Color(255, 120, 110);
             Graphics2D gt = (Graphics2D) g2.create();
             gt.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, alpha)));

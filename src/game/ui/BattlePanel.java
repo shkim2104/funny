@@ -1,5 +1,6 @@
 package game.ui;
 
+import game.model.Augment;
 import game.model.Bonus;
 import game.model.FightStatus;
 import game.model.Item;
@@ -42,18 +43,22 @@ public class BattlePanel extends JPanel {
     private static final Color RUN_BLUE = new Color(62, 126, 220);
     private static final Color BACK_GRAY = new Color(112, 118, 132);
     private static final int ACTION_AREA_HEIGHT = 128;
-    private static final int LOG_MIN_WIDTH = 170;
+    private static final int LOG_MIN_WIDTH = 200;
     private static final int LOG_MAX_WIDTH = 300;
 
     private final BattleStage stage = new BattleStage();
     private final BattleHud hud = stage.getHud();
     private final JLabel goldLabel = new JLabel();
     private final JTextArea log = new JTextArea();
+    // Top of the log window: how far into the run this is and the augments held, always in view.
+    private final JLabel stageLabel = new JLabel(" ");
+    private final JLabel augmentLabel = new JLabel(" ");
+    private final AugmentStrip augmentStrip = new AugmentStrip(24, 5, 2, this::showRunInfo);
     /** Bottom-left message window: the latest battle line, or "무엇을 할까?" when it's the player's turn. */
     private final MessageBox prompt = new MessageBox(new BorderLayout());
     private final MessageBox returnPrompt = new MessageBox(new BorderLayout());
     private final CommandButton attackBtn = new CommandButton("공격", FIGHT_RED);
-    private final CommandButton itemBtn = new CommandButton("아이템", BAG_YELLOW);
+    private final CommandButton itemBtn = new CommandButton("회복", BAG_YELLOW);
     private final CommandButton fleeBtn = new CommandButton("도망", RUN_BLUE);
     private final CommandButton returnBtn = new CommandButton("", RUN_BLUE);
     private final CardLayout actionCards = new CardLayout();
@@ -66,6 +71,14 @@ public class BattlePanel extends JPanel {
     private final CommandButton menuBackBtn = new CommandButton("뒤로", BACK_GRAY);
     private final Skill[] slotSkills = new Skill[SKILL_SLOTS];
     private Runnable onReturn;
+
+    // Heal menu: every consumable as its own button, with no popup in the way of the fight.
+    private static final Color HEAL_GREEN = new Color(58, 146, 84);
+    private static final Color MANA_BLUE = new Color(62, 104, 196);
+    private static final String[] HEAL_ITEMS = {"포션", "하이 포션", "에테르"};
+    private final CommandButton[] healBtns = new CommandButton[HEAL_ITEMS.length];
+    private final CommandButton healBackBtn = new CommandButton("뒤로", BACK_GRAY);
+    private boolean healMenuOpen;
 
     public BattlePanel() {
         // Handheld-style layout: the scene (with its status boxes painted on top) fills the left
@@ -130,6 +143,7 @@ public class BattlePanel extends JPanel {
         actionArea.add(actions, "ACTIONS");
         actionArea.add(returnCard, "RETURN");
         actionArea.add(buildAttackMenu(), "ATTACK_MENU");
+        actionArea.add(buildHealMenu(), "HEAL_MENU");
 
         JPanel battleColumn = new JPanel(new BorderLayout(0, 10));
         battleColumn.setOpaque(false);
@@ -187,11 +201,43 @@ public class BattlePanel extends JPanel {
                 return new Dimension(Math.max(LOG_MIN_WIDTH, Math.min(LOG_MAX_WIDTH, Math.round(total * 0.22f))), 0);
             }
         };
-        window.add(header, BorderLayout.NORTH);
+        JPanel top = new JPanel(new BorderLayout(0, 8));
+        top.setOpaque(false);
+        top.add(buildRunPanel(), BorderLayout.NORTH);
+        top.add(header, BorderLayout.CENTER);
+        window.add(top, BorderLayout.NORTH);
         window.add(body, BorderLayout.CENTER);
         return window;
     }
 
+    /** The stage reached and this run's augments, so they can be checked at any moment. */
+    private JComponent buildRunPanel() {
+        stageLabel.setFont(Sketch.hand(Font.BOLD, 15f));
+        stageLabel.setForeground(Sketch.RED_PENCIL);
+        augmentLabel.setFont(Sketch.hand(Font.BOLD, 13f));
+        augmentLabel.setForeground(BattleHud.INK_SOFT);
+        JPanel line = new JPanel(new BorderLayout(8, 0));
+        line.setOpaque(false);
+        line.add(stageLabel, BorderLayout.WEST);
+        line.add(augmentLabel, BorderLayout.EAST);
+        JPanel panel = new JPanel(new BorderLayout(0, 4));
+        panel.setOpaque(false);
+        panel.add(line, BorderLayout.NORTH);
+        panel.add(augmentStrip, BorderLayout.CENTER);
+        return panel;
+    }
+
+    /** Shows where the run has got to, e.g. "12 / 30 스테이지". */
+    public void setStageText(String text) {
+        stageLabel.setText(text);
+    }
+
+    /** Redraws the augment icons after a pick. */
+    public void refreshRun() {
+        List<Augment> augments = run != null ? run.getAugments() : List.of();
+        augmentStrip.set(augments);
+        augmentLabel.setText("증강 " + augments.size() + "개");
+    }
     /** Sets the stage's backdrop to the given dungeon's (World.buildDungeons() index). */
     public void setDungeon(int dungeonIndex) {
         stage.setDungeon(dungeonIndex);
@@ -222,6 +268,7 @@ public class BattlePanel extends JPanel {
     /** The dungeon run whose augments apply (null outside a run). */
     public void setRun(RunState run) {
         this.run = run;
+        refreshRun();
     }
 
     /** Whether the next fight is the boss (for boss-damage effects). */
@@ -375,7 +422,7 @@ public class BattlePanel extends JPanel {
     /** 1~4: use that skill slot straight away (as if picked from the 공격 menu). */
     public void hotkeySkill(int slot) {
         if (player == null || !attackBtn.isEnabled() || player.getJob() == Job.BEGINNER) return;
-        if (!attackMenuOpen) openAttackMenu();
+        if (!attackMenuOpen || healMenuOpen) openAttackMenu();
         if (slotSkills[slot] == null) {
             closeAttackMenu();
             setButtonsEnabled(true);
@@ -392,8 +439,8 @@ public class BattlePanel extends JPanel {
         if (run == null || run.getAugments().isEmpty()) {
             html.append("<font color='").append(Sketch.hex(Sketch.INK_SOFT)).append("'>아직 고른 증강이 없어요.</font><br>");
         } else {
-            for (game.model.Augment a : run.getAugments()) {
-                html.append("<font color='").append(a.getTier().getColorHex()).append("'><b>[").append(a.getTier().getLabel())
+            for (Augment a : run.getAugments()) {
+                html.append("<font color='").append(Sketch.hex(Sketch.tierInk(a.getTier()))).append("'><b>[").append(a.getTier().getLabel())
                         .append("] ").append(a.getName()).append("</b></font> <font color='").append(Sketch.hex(Sketch.INK_SOFT))
                         .append("'>").append(a.getDescription()).append("</font><br>");
             }
@@ -491,6 +538,7 @@ public class BattlePanel extends JPanel {
      * a 2nd job), greys out ones the player can't afford, and shows the menu.
      */
     private void openAttackMenu() {
+        healMenuOpen = false;
         List<Skill> skills = player.getSkills();
         int from = Math.max(0, skills.size() - SKILL_SLOTS);
         for (int i = 0; i < SKILL_SLOTS; i++) {
@@ -537,6 +585,7 @@ public class BattlePanel extends JPanel {
 
     private void closeAttackMenu() {
         attackMenuOpen = false;
+        healMenuOpen = false;
         actionCards.show(actionArea, "ACTIONS");
         actionArea.revalidate();
     }
@@ -648,7 +697,7 @@ public class BattlePanel extends JPanel {
         player.heal((int) Math.round(dealt * ratio));
         int healed = player.getHp() - before;
         if (healed > 0) {
-            stage.playHeal();
+            stage.showHeal(healed);
             logDetail("HP를 " + healed + " 흡수했다!");
         }
     }
@@ -703,7 +752,7 @@ public class BattlePanel extends JPanel {
             if (skill.getHealRatio() > 0) {
                 int before = player.getHp();
                 player.heal((int) Math.round(player.getMaxHp() * skill.getHealRatio()));
-                stage.playHeal();
+                stage.showHeal(player.getHp() - before);
                 logDetail("HP를 " + (player.getHp() - before) + " 회복했다!");
                 refreshStatus();
             }
@@ -769,7 +818,7 @@ public class BattlePanel extends JPanel {
             if (!player.isAlive() && bonus.revive() > 0 && run != null && !run.isReviveUsed()) {
                 run.useRevive();
                 player.heal((int) Math.round(player.getMaxHp() * bonus.revive()));
-                stage.playHeal();
+                stage.showHeal(player.getHp());
                 appendLog(player.getName() + "은(는) 쓰러지지 않았다! 불굴의 힘으로 HP " + player.getHp() + "으로 일어섰다!");
             }
             refreshStatus();
@@ -814,33 +863,85 @@ public class BattlePanel extends JPanel {
         }
     }
 
-    private void onItem() {
-        List<String> usable = player.getUsableItems();
-        if (usable.isEmpty()) {
-            Dialogs.message(this, "알림", "사용할 수 있는 아이템이 없습니다.");
-            return;
+    private JPanel buildHealMenu() {
+        JPanel grid = new JPanel(new GridLayout(1, HEAL_ITEMS.length, 8, 0));
+        grid.setOpaque(false);
+        for (int i = 0; i < HEAL_ITEMS.length; i++) {
+            final String name = HEAL_ITEMS[i];
+            CommandButton b = new CommandButton(name, HEAL_GREEN);
+            b.setFont(Sketch.hand(Font.BOLD, 16f));
+            b.addActionListener(e -> useHealItem(name));
+            healBtns[i] = b;
+            grid.add(b);
         }
-        String[] options = usable.stream()
-                .map(name -> ItemCatalog.get(name).describe())
-                .toArray(String[]::new);
-        int idx = Dialogs.choose(this, "아이템 사용", "사용할 아이템을 선택하세요", options);
-        if (idx < 0) return;
+        healBackBtn.addActionListener(e -> {
+            closeAttackMenu();
+            setButtonsEnabled(true);
+        });
+        healBackBtn.setPreferredSize(new Dimension(110, 0));
+        JButton[] nav = new JButton[HEAL_ITEMS.length + 1];
+        System.arraycopy(healBtns, 0, nav, 0, HEAL_ITEMS.length);
+        nav[HEAL_ITEMS.length] = healBackBtn;
+        Theme.arrowNav(nav);
 
-        setButtonsEnabled(false);
-        usePotion(usable.get(idx));
-        monsterTurn();
+        JPanel menu = new JPanel(new BorderLayout(10, 0));
+        menu.setOpaque(false);
+        menu.add(grid, BorderLayout.CENTER);
+        menu.add(healBackBtn, BorderLayout.EAST);
+        menu.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke("ESCAPE"), "menu-back");
+        menu.getActionMap().put("menu-back", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                healBackBtn.doClick();
+            }
+        });
+        return menu;
     }
 
+    /** Opens the heal buttons, each showing how much it restores and how many are left. */
+    private void onItem() {
+        for (int i = 0; i < HEAL_ITEMS.length; i++) {
+            Item item = ItemCatalog.get(HEAL_ITEMS[i]);
+            int count = player.getConsumableCounts().getOrDefault(item.getName(), 0);
+            boolean hp = item.getType() == Item.Type.POTION;
+            CommandButton b = healBtns[i];
+            b.setColor(hp ? HEAL_GREEN : MANA_BLUE);
+            b.setSubtitle((hp ? "HP +" : "MP +") + item.getValue() + "  ·  " + count + "개");
+            b.setDimmed(count == 0);
+            b.setEnabled(count > 0);
+        }
+        prompt.setText("무엇으로 회복할까?");
+        attackMenuOpen = true;
+        healMenuOpen = true;
+        actionCards.show(actionArea, "HEAL_MENU");
+        actionArea.revalidate();
+        healBackBtn.requestFocusInWindow();
+    }
+
+    private void useHealItem(String name) {
+        Item item = ItemCatalog.get(name);
+        boolean full = item.getType() == Item.Type.POTION ? player.getHp() >= player.getMaxHp() : player.getMp() >= player.getMaxMp();
+        if (full) {
+            prompt.setText(item.getType() == Item.Type.POTION ? "HP가 이미 가득 찼다." : "MP가 이미 가득 찼다.");
+            return;
+        }
+        closeAttackMenu();
+        setButtonsEnabled(false);
+        usePotion(name);
+        monsterTurn();
+    }
     /** Drinks a potion or ether from the bag (used by 아이템 and by 자동 포션). */
     private void usePotion(String itemName) {
         Item item = ItemCatalog.get(itemName);
         if (item.getType() == Item.Type.POTION) {
+            int before = player.getHp();
             player.heal(item.getValue());
-            stage.playHeal();
-            appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 HP를 " + item.getValue() + " 회복했다!");
+            stage.showHeal(player.getHp() - before);
+            appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 HP를 " + (player.getHp() - before) + " 회복했다!");
         } else if (item.getType() == Item.Type.ETHER) {
+            int before = player.getMp();
             player.restoreMp(item.getValue());
-            appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 MP를 " + item.getValue() + " 회복했다!");
+            appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 MP를 " + (player.getMp() - before) + " 회복했다!");
         }
         player.removeItem(itemName);
         refreshStatus();
@@ -881,7 +982,7 @@ public class BattlePanel extends JPanel {
         if (heal > 0 && player.getHp() < player.getMaxHp()) {
             int before = player.getHp();
             player.heal(heal);
-            stage.playHeal();
+            stage.showHeal(player.getHp() - before);
             logDetail("전투 후 HP를 " + (player.getHp() - before) + " 회복했다.");
         }
         if (bonus.mpOnKill() > 0 && player.getMp() < player.getMaxMp()) {

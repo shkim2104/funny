@@ -21,9 +21,9 @@ public final class Enhancement {
     // Per target level, index 0 = target +1.
     private static final int[] SUCCESS_PCT = {100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 40, 40, 40, 30, 30, 30, 30, 30, 5, 5};
     private static final int[] DESTROY_PCT = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 4, 5, 6, 8, 10, 15};
-    private static final int[] GRAPHITE = {5, 8, 12, 16, 20, 26, 32, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 160, 200};
-    private static final int[] HARD_LEAD = {0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 7, 9, 11, 13, 16, 19, 22, 25, 30, 40};
-    private static final int[] GOLD = {50, 80, 120, 180, 250, 450, 650, 900, 1200, 1500, 2000, 2500, 3000, 3800, 4600, 5500, 6500, 8000, 11000, 15000};
+    private static final int[] GRAPHITE = {12, 20, 30, 40, 50, 65, 80, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 400, 500};
+    private static final int[] HARD_LEAD = {0, 0, 0, 0, 0, 2, 4, 7, 10, 12, 17, 22, 27, 32, 40, 47, 55, 62, 75, 100};
+    private static final int[] GOLD = {100, 160, 240, 360, 500, 900, 1300, 1800, 2400, 3000, 4000, 5000, 6000, 7600, 9200, 11000, 13000, 16000, 22000, 30000};
 
     /** 분해: graphite per grade, 일반 to 전설. Boss gear (신화) gives hard lead instead. */
     private static final int[] SCRAP_GRAPHITE = {1, 2, 4, 8, 15, 0};

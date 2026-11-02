@@ -12,7 +12,6 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -30,7 +29,7 @@ public final class AugmentDialog {
     private final Random rnd;
     private final JPanel cardRow = new JPanel(new GridLayout(1, RunState.OFFER_SIZE, 14, 0));
     private final JLabel tierLabel = new JLabel("", SwingConstants.CENTER);
-    private final JButton rerollBtn = Theme.button("");
+    private final JButton rerollBtn = new Sketch.Button("", false);
     private Augment chosen;
     /** The three cards on screen (a reroll avoids them). */
     private List<Augment> current = new ArrayList<>();
@@ -50,37 +49,36 @@ public final class AugmentDialog {
         this.rnd = rnd;
         Window w = (owner instanceof Window) ? (Window) owner : SwingUtilities.getWindowAncestor(owner);
         dialog = new JDialog(w, "증강 선택", Dialog.ModalityType.APPLICATION_MODAL);
-        Theme.styleDialog(dialog);
         dialog.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);   // a pick is mandatory
-        dialog.setLayout(new BorderLayout(0, 14));
-        ((JComponent) dialog.getContentPane()).setBorder(new EmptyBorder(18, 22, 16, 22));
+        Sketch.Page page = new Sketch.Page(new BorderLayout(0, 12), 34);
+        page.setBorder(new EmptyBorder(16, 52, 14, 24));
+        dialog.setContentPane(page);
 
-        JLabel title = new JLabel("증강을 하나 고르세요", SwingConstants.CENTER);
-        title.setFont(Theme.dosFont(Font.BOLD, 24f));
-        title.setForeground(Theme.TEXT);
-        tierLabel.setFont(Theme.dosFont(Font.BOLD, 15f));
-        JPanel head = new JPanel(new GridLayout(2, 1, 0, 4));
+        tierLabel.setFont(Sketch.hand(Font.BOLD, 17f));
+        JPanel head = new JPanel(new BorderLayout());
         head.setOpaque(false);
-        head.add(title);
-        head.add(tierLabel);
+        head.add(Sketch.title("증강을 하나 고르세요"), BorderLayout.WEST);
+        head.add(tierLabel, BorderLayout.EAST);
         dialog.add(head, BorderLayout.NORTH);
 
         cardRow.setOpaque(false);
         dialog.add(cardRow, BorderLayout.CENTER);
 
-        List<String> owned = new ArrayList<>();
-        for (Augment a : run.getAugments()) owned.add(a.getName());
-        JLabel ownedLabel = new JLabel("<html><body style='width:430px'>보유 증강: "
-                + (owned.isEmpty() ? "없음" : String.join(", ", owned)) + "</body></html>");
-        ownedLabel.setFont(Theme.SMALL_FONT);
-        ownedLabel.setForeground(Theme.TEXT_DIM);
+        JLabel ownedLabel = Sketch.label("보유 증강 " + run.getAugments().size() + "개", Font.BOLD, 14f, Sketch.INK);
+        if (run.getAugments().isEmpty()) ownedLabel.setText("보유 증강 없음");
+        AugmentStrip owned = new AugmentStrip(30, 10, 1, null);
+        owned.set(run.getAugments());
+        JPanel ownedRow = new JPanel(new BorderLayout(10, 0));
+        ownedRow.setOpaque(false);
+        ownedRow.add(ownedLabel, BorderLayout.WEST);
+        ownedRow.add(owned, BorderLayout.CENTER);
         // Same tier, three different cards (see RunState.reroll).
         rerollBtn.addActionListener(e -> {
             if (run.useReroll()) setCards(run.reroll(current, rnd));
         });
         JPanel bottom = new JPanel(new BorderLayout(12, 0));
         bottom.setOpaque(false);
-        bottom.add(ownedLabel, BorderLayout.CENTER);
+        bottom.add(ownedRow, BorderLayout.CENTER);
         bottom.add(rerollBtn, BorderLayout.EAST);
         dialog.add(bottom, BorderLayout.SOUTH);
     }
@@ -134,7 +132,7 @@ public final class AugmentDialog {
         }
         Augment.Tier tier = offer.get(0).getTier();
         tierLabel.setText(tier.getLabel() + " 증강");
-        tierLabel.setForeground(Color.decode(tier.getColorHex()));
+        tierLabel.setForeground(Sketch.tierInk(tier));
         rerollBtn.setText("새로고침 (" + run.getRerollsLeft() + ")");
         rerollBtn.setEnabled(run.getRerollsLeft() > 0);
         JButton[] nav = buttons.toArray(new JButton[0]);
@@ -144,13 +142,15 @@ public final class AugmentDialog {
         cardRow.repaint();
     }
 
-    /** One augment card: tier-colored frame, pencil icon on a paper disc, name and effect. */
+    /** One augment card: a pencil box hatched at the top in the tier's color, with icon, name and effect. */
     private static final class Card extends JButton {
         private final Color tierColor;
+        private final long seed;
         private boolean hover;
 
         Card(Augment a, String previewHtml) {
-            tierColor = Color.decode(a.getTier().getColorHex());
+            tierColor = Sketch.tierInk(a.getTier());
+            seed = a.getName().hashCode();
             setLayout(new BorderLayout(0, 10));
             setContentAreaFilled(false);
             setBorderPainted(false);
@@ -160,30 +160,17 @@ public final class AugmentDialog {
             setBorder(new EmptyBorder(22, 16, 18, 16));
             setPreferredSize(new Dimension(CARD_W, CARD_H));
 
-            JLabel icon = new JLabel(ItemArt.augment(a.getIcon(), 88), SwingConstants.CENTER) {
-                @Override
-                protected void paintComponent(Graphics g) {
-                    Graphics2D g2 = (Graphics2D) g.create();
-                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    int d = 104;
-                    g2.setColor(new Color(247, 243, 230));
-                    g2.fillOval((getWidth() - d) / 2, (getHeight() - d) / 2, d, d);
-                    g2.setColor(tierColor);
-                    g2.setStroke(new BasicStroke(3f));
-                    g2.drawOval((getWidth() - d) / 2, (getHeight() - d) / 2, d, d);
-                    g2.dispose();
-                    super.paintComponent(g);
-                }
-            };
+            JLabel icon = new JLabel(ItemArt.augment(a.getIcon(), 96), SwingConstants.CENTER);
             icon.setPreferredSize(new Dimension(110, 110));
             JLabel name = new JLabel(a.getName(), SwingConstants.CENTER);
-            name.setFont(Theme.dosFont(Font.BOLD, 19f));
+            name.setFont(Sketch.hand(Font.BOLD, 19f));
             name.setForeground(tierColor);
-            JLabel desc = new JLabel("<html><div style='text-align:center;width:160px'>"
+            JLabel desc = new JLabel("<html><div style='text-align:center;width:128px'>"
                     + String.join("<br>", a.getBonus().lines())
-                    + (previewHtml == null ? "" : "<br><br><font color='#c7a86a'>" + previewHtml + "</font>") + "</div></html>", SwingConstants.CENTER);
-            desc.setFont(Theme.BODY_FONT.deriveFont(14f));
-            desc.setForeground(Theme.TEXT);
+                    + (previewHtml == null ? "" : "<br><br><font color='" + Sketch.hex(Sketch.BLUE_PENCIL) + "'>" + previewHtml + "</font>")
+                    + "</div></html>", SwingConstants.CENTER);
+            desc.setFont(Sketch.hand(Font.PLAIN, 14f));
+            desc.setForeground(Sketch.INK);
             desc.setVerticalAlignment(SwingConstants.TOP);
             JPanel text = new JPanel(new BorderLayout(0, 8));
             text.setOpaque(false);
@@ -204,18 +191,12 @@ public final class AugmentDialog {
 
         @Override
         protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            Graphics2D g2 = Sketch.smooth(g);
             boolean lit = hover || isFocusOwner();
-            RoundRectangle2D box = new RoundRectangle2D.Float(2, 2, getWidth() - 4, getHeight() - 4, 18, 18);
-            g2.setColor(lit ? new Color(44, 46, 54) : Theme.SURFACE);
-            g2.fill(box);
-            g2.setPaint(new GradientPaint(0, 0, new Color(tierColor.getRed(), tierColor.getGreen(), tierColor.getBlue(), 70),
-                    0, getHeight() * 0.45f, new Color(tierColor.getRed(), tierColor.getGreen(), tierColor.getBlue(), 0)));
-            g2.fill(box);
-            g2.setColor(tierColor);
-            g2.setStroke(new BasicStroke(lit ? 3.5f : 2f));
-            g2.draw(box);
+            int w = getWidth(), h = getHeight();
+            Sketch.hatch(g2, new java.awt.Rectangle(7, 7, w - 14, Math.round(h * 0.42f)), seed, tierColor, lit ? 150 : 90, 7, 40);
+            if (lit) Sketch.hatch(g2, new java.awt.Rectangle(7, 7, w - 14, h - 14), seed + 1, tierColor, 34, 9, -40);
+            Sketch.box(g2, 5, 5, w - 10, h - 10, seed + 2, lit ? 3.2f : 2.2f, tierColor);
             g2.dispose();
             super.paintComponent(g);
         }

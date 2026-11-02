@@ -8,24 +8,27 @@ public class World {
     private World() {}
 
     /** Regular floors before the boss, in every dungeon. */
-    public static final int FLOORS = 15;
+    public static final int FLOORS = 30;
+    /** Each stage past the first adds this share of a regular monster's HP, ATK and DEF. */
+    public static final double FLOOR_GROWTH = 0.02;
 
     /**
      * Toughness per dungeon (index = dungeon), applied to the base stats written below. Regular monsters
      * are a steady few turns each, since augments pile up over a run; each boss is the dungeon's real
      * test, with its own multipliers and BOSS_AUGMENT_SHARE. Tuned so a typical character with augments
-     * first clears the dungeons around Lv. 5, 10, 18, 28, 38, 50 and 62. Speed, EXP and gold are not scaled.
+     * first clears the dungeons around Lv. 7, 16, 24, 35, 50, 61 and 66. Speed and gold are not scaled.
      */
-    private static final double[] HP_MUL = {0.6, 3.5, 6.0, 9.0, 10.0, 10.5, 9.0};
-    private static final double[] ATK_MUL = {0.5, 1.05, 1.25, 1.5, 1.6, 1.65, 1.6};
-    private static final double[] DEF_MUL = {0.7, 1.7, 2.1, 2.4, 2.5, 2.65, 2.8};
-    private static final double[] BOSS_HP_MUL = {0.7, 2.0, 4.4, 6.2, 6.6, 7.8, 6.5};
-    private static final double[] BOSS_ATK_MUL = {0.55, 0.75, 1.1, 1.35, 1.4, 1.5, 1.4};
+    private static final double[] HP_MUL = {1.3, 6.0, 9.0, 10.5, 10.5, 10.0, 9.0};
+    private static final double[] ATK_MUL = {0.5, 1.05, 1.25, 1.35, 1.5, 1.45, 1.42};
+    private static final double[] DEF_MUL = {0.8, 1.9, 2.3, 2.6, 2.75, 2.9, 3.1};
+    private static final double[] BOSS_HP_MUL = {1.0, 2.6, 5.7, 6.8, 8.0, 8.0, 7.0};
+    private static final double[] BOSS_ATK_MUL = {0.65, 0.85, 1.2, 1.3, 1.5, 1.45, 1.4};
+    private static final double[] EXP_MUL = {1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25};
 
     /** A dungeon's boss, scaled like m() but with the boss multipliers. */
     private static Monster boss(int d, String name, int hp, int atk, int def, int spd, int exp, int gold) {
         return new Monster(name, (int) Math.round(hp * BOSS_HP_MUL[d]), (int) Math.round(atk * BOSS_ATK_MUL[d]),
-                (int) Math.round(def * DEF_MUL[d]), spd, exp, gold);
+                (int) Math.round(def * DEF_MUL[d]), spd, (int) Math.round(exp * EXP_MUL[d]), gold);
     }
 
     /** 위압: in a boss fight, augments work at this strength. Gear and stats still count in full. */
@@ -34,7 +37,7 @@ public class World {
     /** A monster of dungeon d from its base stats: name, HP, ATK, DEF, SPD, EXP, gold. */
     private static Monster m(int d, String name, int hp, int atk, int def, int spd, int exp, int gold) {
         return new Monster(name, (int) Math.round(hp * HP_MUL[d]), (int) Math.round(atk * ATK_MUL[d]),
-                (int) Math.round(def * DEF_MUL[d]), spd, exp, gold);
+                (int) Math.round(def * DEF_MUL[d]), spd, (int) Math.round(exp * EXP_MUL[d]), gold);
     }
 
     public static List<Dungeon> buildDungeons() {

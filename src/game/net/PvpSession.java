@@ -24,7 +24,7 @@ import java.util.concurrent.Executor;
  */
 public final class PvpSession {
     /** Raised when the rules change: two different versions must not duel. */
-    private static final int PROTOCOL = 1;
+    private static final int PROTOCOL = 2;
     private static final Base64.Encoder B64 = Base64.getEncoder();
     private static final Base64.Decoder UNB64 = Base64.getDecoder();
 

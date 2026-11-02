@@ -1,5 +1,6 @@
 package game.ui;
 
+import game.model.Augment;
 import game.model.Item;
 
 import javax.swing.*;
@@ -61,6 +62,15 @@ public final class Sketch {
             case LEGENDARY: return new Color(186, 124, 16);
             case MYTHIC: return new Color(196, 52, 44);
             default: return new Color(100, 100, 106);
+        }
+    }
+
+    /** Augment tier colors re-inked for paper, like gradeInk. */
+    public static Color tierInk(Augment.Tier tier) {
+        switch (tier) {
+            case GOLD: return new Color(186, 134, 20);
+            case PRISM: return new Color(142, 72, 196);
+            default: return new Color(104, 116, 134);
         }
     }
 
@@ -558,6 +568,27 @@ public final class Sketch {
         l.setFont(hand(style, size));
         l.setForeground(color);
         return l;
+    }
+
+    /** Clicking a row picks or unpicks it, without holding Ctrl: for lists sold or scrapped in bulk. */
+    public static void toggleRows(JList<?> list) {
+        list.setSelectionModel(new DefaultListSelectionModel() {
+            private boolean pressed;
+
+            @Override
+            public void setSelectionInterval(int index0, int index1) {
+                if (getValueIsAdjusting() && pressed) return;   // a drag after the press changes nothing
+                if (isSelectedIndex(index0)) removeSelectionInterval(index0, index1);
+                else addSelectionInterval(index0, index1);
+                pressed = getValueIsAdjusting();
+            }
+
+            @Override
+            public void setValueIsAdjusting(boolean adjusting) {
+                if (!adjusting) pressed = false;
+                super.setValueIsAdjusting(adjusting);
+            }
+        });
     }
 
     /** A page title with a scribbled underline. */

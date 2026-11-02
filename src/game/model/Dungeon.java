@@ -25,8 +25,9 @@ public class Dungeon {
     public int getRewardGold() { return rewardGold; }
     public int getRewardExp() { return rewardExp; }
 
-    public Monster randomMonster(Random rnd) {
-        return monsterPool.get(rnd.nextInt(monsterPool.size())).copy();
+    /** A regular monster for this stage (1-based): stronger the further in it is. */
+    public Monster randomMonster(int floor, Random rnd) {
+        return monsterPool.get(rnd.nextInt(monsterPool.size())).scaled(1 + (floor - 1) * World.FLOOR_GROWTH);
     }
 
     public Monster spawnBoss() {

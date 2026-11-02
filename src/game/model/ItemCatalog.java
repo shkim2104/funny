@@ -50,7 +50,7 @@ public class ItemCatalog {
         gacha(armor("징 박힌 가죽 조끼", 17, Item.Grade.UNCOMMON, "studded_vest", Bonus.of().thorns(0.06)));
 
         gacha(weapon("푸른 달의 검", 33, Item.Grade.RARE, "blue_moon_sword", Bonus.of().skillDmg(0.08)));
-        gacha(weapon("피에 젖은 단도", 31, Item.Grade.RARE, "blood_dagger", Bonus.of().lifesteal(0.04)));
+        gacha(weapon("피에 젖은 단도", 31, Item.Grade.RARE, "blood_dagger", Bonus.of().lifesteal(0.02)));
         gacha(weapon("폭풍 도끼", 34, Item.Grade.RARE, "storm_axe", Bonus.of().critDmg(0.15)));
         gacha(armor("수호자의 사슬 갑옷", 26, Item.Grade.RARE, "guardian_chain", Bonus.of().dmgReduction(0.05)));
         gacha(armor("마나 직물 로브", 24, Item.Grade.RARE, "mana_robe", Bonus.of().mpOnKill(3)));
@@ -64,17 +64,17 @@ public class ItemCatalog {
         gacha(armor("성기사의 판금", 39, Item.Grade.EPIC, "paladin_plate", Bonus.of().regen(0.015)));
 
         gacha(weapon("별빛 성검", 66, Item.Grade.LEGENDARY, "starlight_sword", Bonus.of().critChance(8).critDmg(0.20)));
-        gacha(weapon("심연의 낫", 64, Item.Grade.LEGENDARY, "abyss_scythe", Bonus.of().lifesteal(0.07)));
+        gacha(weapon("심연의 낫", 64, Item.Grade.LEGENDARY, "abyss_scythe", Bonus.of().lifesteal(0.03)));
         gacha(armor("황금 사자 갑옷", 52, Item.Grade.LEGENDARY, "golden_lion_armor", Bonus.of().dmgReduction(0.08)));
         gacha(armor("세계수 로브", 50, Item.Grade.LEGENDARY, "world_tree_robe", Bonus.of().regen(0.02).mpOnKill(4)));
 
         // ---------- boss gear: 12 weapons + 12 armor, step = dungeon, each with its own strong effect ----------
-        boss(0, weapon("늑대왕의 송곳니", 12, "wolf_fang", Bonus.of().lifesteal(0.08)),
+        boss(0, weapon("늑대왕의 송곳니", 12, "wolf_fang", Bonus.of().lifesteal(0.03)),
                 armor("우두머리의 가죽 망토", 10, "alpha_cloak", Bonus.of().dodge(0.08)));
         boss(1, weapon("오크 대장의 전투도끼", 25, "orc_axe", Bonus.of().critDmg(0.30)),
                 weapon("동굴 수정 지팡이", 23, "crystal_staff", Bonus.of().skillDmg(0.15).mpCostReduce(1)),
                 armor("오크 족장의 철판 갑옷", 20, "orc_plate", Bonus.of().thorns(0.15)));
-        boss(2, weapon("리치의 영혼 낫", 40, "lich_scythe", Bonus.of().lifesteal(0.12).ignoreDef(0.15)),
+        boss(2, weapon("리치의 영혼 낫", 40, "lich_scythe", Bonus.of().lifesteal(0.05).ignoreDef(0.15)),
                 armor("망자의 로브", 30, "dead_robe", Bonus.of().dmgReduction(0.10).mpOnKill(4)),
                 armor("해골 기사의 뼈 갑옷", 32, "bone_armor", Bonus.of().shield(0.15)));
         boss(3, weapon("마왕의 흑염검", 59, "demon_blade", Bonus.of().execute(0.30).critChance(6)),
@@ -85,7 +85,7 @@ public class ItemCatalog {
                 weapon("빙하 결정 활", 75, "glacier_bow", Bonus.of().critChance(12)),
                 armor("빙결 수호 갑옷", 64, "frozen_plate", Bonus.of().dmgReduction(0.15)),
                 armor("눈보라 망토", 60, "blizzard_cloak", Bonus.of().dodge(0.15)));
-        boss(5, weapon("화염 군주의 용암 대검", 105, "lava_greatsword", Bonus.of().bossDmg(0.30).lifesteal(0.06)),
+        boss(5, weapon("화염 군주의 용암 대검", 105, "lava_greatsword", Bonus.of().bossDmg(0.30).lifesteal(0.03)),
                 weapon("불꽃 악령의 단검", 98, "flame_dagger", Bonus.of().critChance(10).critDmg(0.40)),
                 armor("용암 골렘의 심장 갑옷", 84, "magma_heart_plate", Bonus.of().regen(0.04)),
                 armor("불사조 깃털 갑옷", 78, "phoenix_armor", Bonus.of().revive(0.30)));

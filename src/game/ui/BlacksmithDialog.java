@@ -105,6 +105,7 @@ public class BlacksmithDialog extends JDialog {
                 showDetail();
             });
         }
+        Sketch.toggleRows(scrapList);
         enhanceList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mouseClicked(java.awt.event.MouseEvent e) {
                 if (e.getClickCount() == 2) act();
@@ -112,7 +113,7 @@ public class BlacksmithDialog extends JDialog {
         });
         Sketch.Tabs tabs = new Sketch.Tabs(6101);
         tabs.addTab("강화", Sketch.scroll(enhanceList));
-        tabs.addTab("분해", Sketch.scroll(scrapList));
+        tabs.addTab("분해", buildScrapTab());
         tabs.addTab("복구", Sketch.scroll(restoreList));
         tabs.onChange(i -> {
             mode = Mode.values()[i];
@@ -120,6 +121,30 @@ public class BlacksmithDialog extends JDialog {
             showDetail();
         });
         return tabs;
+    }
+
+    /** The scrap list with its bulk buttons. Rows pick and unpick with a click. */
+    private JComponent buildScrapTab() {
+        JButton all = new Sketch.Button("전체 선택", false);
+        all.addActionListener(e -> selectAllScrap());
+        JButton none = new Sketch.Button("선택 해제", false);
+        none.addActionListener(e -> scrapList.clearSelection());
+        JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
+        buttons.setOpaque(false);
+        buttons.add(all);
+        buttons.add(none);
+        JPanel tab = new JPanel(new BorderLayout(0, 6));
+        tab.setOpaque(false);
+        tab.add(Sketch.scroll(scrapList), BorderLayout.CENTER);
+        tab.add(buttons, BorderLayout.SOUTH);
+        return tab;
+    }
+
+    /** Everything on the list but destroyed pieces, which can still be restored; those are picked by hand. */
+    private void selectAllScrap() {
+        List<Integer> rows = new ArrayList<>();
+        for (int i = 0; i < scrapModel.size(); i++) if (!scrapModel.get(i).isDestroyed()) rows.add(i);
+        scrapList.setSelectedIndices(rows.stream().mapToInt(Integer::intValue).toArray());
     }
 
     private JComponent buildDetail() {
@@ -168,6 +193,11 @@ public class BlacksmithDialog extends JDialog {
     }
 
     private void showDetail() {
+        if (mode == Mode.SCRAP && scrapList.getSelectedValuesList().size() > 1) {
+            showScrapBulk(scrapList.getSelectedValuesList());
+            detailCards.show(detailHost, "PIECE");
+            return;
+        }
         GearPiece piece = activeList().getSelectedValue();
         if (piece == null) {
             placeholder.setText("<html><div style='text-align:center;width:190px'>" + emptyHint() + "</div></html>");
@@ -215,6 +245,20 @@ public class BlacksmithDialog extends JDialog {
         actionBtn.setEnabled(true);
     }
 
+    private void showScrapBulk(List<GearPiece> picked) {
+        int graphite = picked.stream().mapToInt(Enhancement::scrapGraphite).sum();
+        int lead = picked.stream().mapToInt(Enhancement::scrapHardLead).sum();
+        long enhanced = picked.stream().filter(p -> p.getEnhance() > 0).count();
+        detailIcon.setIcon(null);
+        detailName.setText(picked.size() + "개 선택");
+        detailName.setForeground(Sketch.INK);
+        detailInfo.setText(html("분해하면 <b>" + Material.GRAPHITE.getLabel() + " " + graphite + "개</b>"
+                + (lead > 0 ? ", <b>" + Material.HARD_LEAD.getLabel() + " " + lead + "개</b>" : "") + "를 얻어요."
+                + (enhanced > 0 ? "<br>강화한 장비 " + enhanced + "개가 포함되어 있어요." : "")));
+        actionBtn.setText("모두 분해하기");
+        actionBtn.setEnabled(true);
+    }
+
     private void showRestore(GearPiece piece) {
         List<GearPiece> donors = Enhancement.restoreDonors(player, piece);
         if (donors.isEmpty()) {
@@ -232,6 +276,11 @@ public class BlacksmithDialog extends JDialog {
     }
 
     private void act() {
+        List<GearPiece> picked = scrapList.getSelectedValuesList();
+        if (mode == Mode.SCRAP && picked.size() > 1) {
+            scrapAll(picked);
+            return;
+        }
         GearPiece piece = activeList().getSelectedValue();
         if (piece == null) return;
         if (mode == Mode.ENHANCE) enhance(piece);
@@ -257,6 +306,16 @@ public class BlacksmithDialog extends JDialog {
         refresh();
         showDetail();
         result(piece.getDisplayName() + " 분해 완료!", Sketch.BLUE_PENCIL);
+    }
+
+    /** A bulk scrap always asks first. */
+    private void scrapAll(List<GearPiece> picked) {
+        if (!Dialogs.confirm(this, "분해 확인", "장비 " + picked.size() + "개를 분해할까요?")) return;
+        for (GearPiece piece : picked) Enhancement.disassemble(player, piece);
+        Sfx.play(Sfx.Sound.COIN);
+        refresh();
+        showDetail();
+        result("장비 " + picked.size() + "개 분해 완료!", Sketch.BLUE_PENCIL);
     }
 
     private void restore(GearPiece piece) {

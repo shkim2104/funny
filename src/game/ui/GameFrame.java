@@ -362,7 +362,7 @@ public class GameFrame extends JFrame {
             final int idx = i;
             int[] a = DUNGEON_MAP_AREAS[i];
             Dungeon d = dungeons.get(i);
-            dungeonMap.addHotspot(d.getName() + "  (" + d.getFloors() + "층 + 보스)", a[0], a[1], a[2], a[3],
+            dungeonMap.addHotspot(d.getName() + "  (" + d.getFloors() + "스테이지 + 보스)", a[0], a[1], a[2], a[3],
                     () -> tryEnterDungeon(idx),
                     () -> player != null && idx > player.getUnlockedDungeon());
         }
@@ -666,7 +666,8 @@ public class GameFrame extends JFrame {
         battlePanel.setRun(run);
         battlePanel.setBossFight(false);
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
-        Monster monster = dungeon.randomMonster(rnd);
+        Monster monster = dungeon.randomMonster(currentFloor, rnd);
+        showStage(dungeon);
         // Start the battle inside the swap so the incoming page already shows the monster.
         pageTurner.turn(() -> {
             cardLayout.show(cards, "BATTLE");
@@ -678,10 +679,15 @@ public class GameFrame extends JFrame {
 
     private void startNextFight() {
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
-        Monster monster = bossStage ? dungeon.spawnBoss() : dungeon.randomMonster(rnd);
+        Monster monster = bossStage ? dungeon.spawnBoss() : dungeon.randomMonster(currentFloor, rnd);
+        showStage(dungeon);
         if (bossStage) Music.play("boss");
         battlePanel.setBossFight(bossStage);
         battlePanel.nextBattle(monster, result -> onFightFinished(result, monster));
+    }
+
+    private void showStage(Dungeon dungeon) {
+        battlePanel.setStageText(bossStage ? "보스전" : currentFloor + " / " + dungeon.getFloors() + " 스테이지");
     }
 
     private void onFightFinished(BattlePanel.Result result, Monster monster) {
@@ -829,6 +835,7 @@ public class GameFrame extends JFrame {
         Augment a = AugmentDialog.pick(this, run, player, rnd);
         if (a == null) return;
         run.take(a);
+        battlePanel.refreshRun();
         battlePanel.logResult("[" + a.getTier().getLabel() + " 증강] " + a.getName() + " — " + a.getDescription());
     }
 

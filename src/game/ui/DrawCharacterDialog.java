@@ -7,7 +7,6 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.AffineTransform;
 import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
@@ -15,9 +14,10 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 
 /**
- * "Draw your own hero": the player pencils their character part by part (head, body, arm, leg) on a
- * notebook page, over dashed guides showing where each part goes. Arms and legs are drawn once and
- * mirrored. Used when creating a character and for 다시 그리기 on the select screen.
+ * "Draw your own hero": the player draws their character in colored pencil on a notebook page. Parts
+ * are picked freely on the left, the full figure stays in view, and a small preview shows the hero as
+ * they will stand in battle. Arms and legs are drawn once and mirrored. Used when creating a character
+ * and for 다시 그리기 on the select screen.
  */
 public final class DrawCharacterDialog {
     /** What creating hands back: the typed name (may be blank) and the drawing. */
@@ -31,26 +31,37 @@ public final class DrawCharacterDialog {
         }
     }
 
-    private static final Color LEAD = new Color(44, 42, 52, 230);
-    private static final float[] SIZES = {4.5f, 7.5f, 12f};
-    private static final String[] SIZE_NAMES = {"가늘게", "보통", "굵게"};
-    private static final Part[] STEPS = Part.values();
+    private enum Tool { PENCIL, FILL, ERASER }
+
+    private static final Color[] PENCILS = {
+            new Color(44, 42, 52), new Color(120, 116, 112), new Color(122, 78, 44), new Color(240, 196, 160),
+            new Color(214, 58, 50), new Color(238, 134, 40), new Color(244, 200, 50), new Color(66, 156, 76),
+            new Color(52, 120, 214), new Color(40, 56, 130), new Color(142, 78, 190), new Color(238, 130, 170)};
+    private static final int STROKE_ALPHA = 235, FILL_ALPHA = 190;
+    /** Fill stops at pixels at least this opaque, so a lightly shaded area can still be filled. */
+    private static final int FILL_EDGE_ALPHA = 110;
+    private static final float[] SIZES = {4.5f, 7.5f, 12f, 20f};
+    private static final float ERASER_SIZE = 20f;
+    private static final Part[] PARTS = Part.values();
 
     private final JDialog dialog;
     private final CharacterArt art;
     private final JTextField nameField;
     private final Canvas canvas = new Canvas();
-    private final StepBar stepBar = new StepBar();
-    private final JLabel tipLabel = Sketch.label("", Font.PLAIN, 13f, Sketch.INK_SOFT);
-    private final JButton prevBtn = new Sketch.Button("◀ 이전", false);
-    private final JButton nextBtn = new Sketch.Button("다음 ▶", true);
-    private final JButton[] sizeBtns = new JButton[SIZES.length];
+    private final Preview preview = new Preview();
+    private final PartButton[] partBtns = new PartButton[PARTS.length];
+    private final Swatch[] swatches = new Swatch[PENCILS.length];
+    private final SizeDot[] sizeDots = new SizeDot[SIZES.length];
+    private final JButton pencilBtn = new Sketch.Button("연필", false);
+    private final JButton fillBtn = new Sketch.Button("칠하기", false);
     private final JButton eraserBtn = new Sketch.Button("지우개", false);
-    private final Deque<BufferedImage[]> undo = new ArrayDeque<>();   // {snapshot} per stroke, with the step index in slot 1
-    private final Deque<Integer> undoStep = new ArrayDeque<>();
-    private int step;
+    private final JLabel tipLabel = Sketch.label("", Font.PLAIN, 13f, Sketch.INK_SOFT);
+    private final Deque<BufferedImage> undo = new ArrayDeque<>();   // one part's picture before each stroke
+    private final Deque<Part> undoPart = new ArrayDeque<>();
+    private Part part = Part.HEAD;
+    private Color color = PENCILS[0];
     private int size = 1;
-    private boolean eraser;
+    private Tool tool = Tool.PENCIL;
     private boolean confirmed;
 
     public static Result create(Component owner) {
@@ -74,11 +85,11 @@ public final class DrawCharacterDialog {
         this.art = art;
         Window w = (owner instanceof Window) ? (Window) owner : SwingUtilities.getWindowAncestor(owner);
         dialog = new JDialog(w, title, Dialog.ModalityType.APPLICATION_MODAL);
-        Sketch.Page page = new Sketch.Page(new BorderLayout(14, 10), 34);
-        page.setBorder(new EmptyBorder(14, 52, 14, 22));
+        Sketch.Page page = new Sketch.Page(new BorderLayout(12, 10), 34);
+        page.setBorder(new EmptyBorder(14, 52, 14, 20));
         dialog.setContentPane(page);
 
-        // ---------- top: title, name, steps ----------
+        // ---------- top: title and name ----------
         JPanel top = new JPanel(new BorderLayout(16, 6));
         top.setOpaque(false);
         top.add(Sketch.title(fixedName == null ? "내 캐릭터 그리기" : "다시 그리기"), BorderLayout.WEST);
@@ -93,8 +104,19 @@ public final class DrawCharacterDialog {
         } else {
             top.add(Sketch.label(fixedName, Font.BOLD, 18f, Sketch.BLUE_PENCIL), BorderLayout.EAST);
         }
-        top.add(stepBar, BorderLayout.SOUTH);
         dialog.add(top, BorderLayout.NORTH);
+
+        // ---------- left: parts, in any order ----------
+        JPanel parts = new JPanel(new GridLayout(PARTS.length, 1, 0, 8));
+        parts.setOpaque(false);
+        parts.setPreferredSize(new Dimension(116, 0));
+        for (int i = 0; i < PARTS.length; i++) {
+            final Part p = PARTS[i];
+            partBtns[i] = new PartButton(p);
+            partBtns[i].addActionListener(e -> selectPart(p));
+            parts.add(partBtns[i]);
+        }
+        dialog.add(parts, BorderLayout.WEST);
 
         // ---------- center: the page to draw on ----------
         Sketch.Box frame = new Sketch.Box(new BorderLayout(), 7301);
@@ -102,168 +124,295 @@ public final class DrawCharacterDialog {
         frame.add(canvas, BorderLayout.CENTER);
         dialog.add(frame, BorderLayout.CENTER);
 
-        // ---------- right: tools ----------
-        JPanel tools = new JPanel();
-        tools.setOpaque(false);
-        tools.setLayout(new BoxLayout(tools, BoxLayout.Y_AXIS));
-        tools.setPreferredSize(new Dimension(170, 0));
-        addTool(tools, Sketch.label("연필 굵기", Font.BOLD, 15f, Sketch.INK));
-        for (int i = 0; i < SIZES.length; i++) {
-            final int idx = i;
-            sizeBtns[i] = new Sketch.Button("", false);
-            sizeBtns[i].addActionListener(e -> {
-                size = idx;
-                eraser = false;
-                refreshTools();
-            });
-            addTool(tools, sizeBtns[i]);
-        }
-        tools.add(javax.swing.Box.createVerticalStrut(8));
-        eraserBtn.addActionListener(e -> {
-            eraser = !eraser;
-            refreshTools();
-        });
-        addTool(tools, eraserBtn);
-        JButton undoBtn = new Sketch.Button("되돌리기", false);
-        undoBtn.addActionListener(e -> undo());
-        addTool(tools, undoBtn);
-        JButton clearBtn = new Sketch.Button("이 부위 지우기", false);
-        clearBtn.addActionListener(e -> clearPart());
-        addTool(tools, clearBtn);
-        tools.add(javax.swing.Box.createVerticalStrut(14));
-        addTool(tools, tipLabel);
-        tools.add(javax.swing.Box.createVerticalGlue());
-        dialog.add(tools, BorderLayout.EAST);
+        dialog.add(buildTools(), BorderLayout.EAST);
 
-        // ---------- bottom: navigation ----------
+        // ---------- bottom ----------
         JButton cancel = new Sketch.Button("취소", false);
         cancel.addActionListener(e -> dialog.dispose());
-        prevBtn.addActionListener(e -> goTo(step - 1));
-        nextBtn.addActionListener(e -> {
-            if (step < STEPS.length - 1) {
-                goTo(step + 1);
-            } else {
-                confirmed = true;
-                dialog.dispose();
-            }
+        JButton finish = new Sketch.Button(finishText, true);
+        finish.addActionListener(e -> {
+            confirmed = true;
+            dialog.dispose();
         });
-        this.finishText = finishText;
-        JPanel bottom = new JPanel(new BorderLayout());
+        JPanel bottom = new JPanel(new BorderLayout(14, 0));
         bottom.setOpaque(false);
         bottom.add(cancel, BorderLayout.WEST);
-        JPanel nav = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        nav.setOpaque(false);
-        nav.add(prevBtn);
-        nav.add(nextBtn);
-        bottom.add(nav, BorderLayout.EAST);
+        bottom.add(tipLabel, BorderLayout.CENTER);
+        bottom.add(finish, BorderLayout.EAST);
         dialog.add(bottom, BorderLayout.SOUTH);
 
         dialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("ctrl Z"), "undo");
         dialog.getRootPane().getActionMap().put("undo", new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent e) { undo(); }
         });
-        goTo(0);
+        selectPart(Part.HEAD);
         refreshTools();
     }
 
-    private final String finishText;
+    /** Right column: the hero preview, colored pencils, sizes and tools. */
+    private JComponent buildTools() {
+        JPanel tools = new JPanel();
+        tools.setOpaque(false);
+        tools.setLayout(new BoxLayout(tools, BoxLayout.Y_AXIS));
+        tools.setPreferredSize(new Dimension(196, 0));
+
+        addTool(tools, Sketch.label("전투에서 보이는 모습", Font.BOLD, 14f, Sketch.INK));
+        preview.setPreferredSize(new Dimension(196, 150));
+        preview.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
+        addFixed(tools, preview);
+
+        addTool(tools, Sketch.label("색연필", Font.BOLD, 14f, Sketch.INK));
+        JPanel palette = new JPanel(new GridLayout(3, 4, 5, 5));
+        palette.setOpaque(false);
+        for (int i = 0; i < PENCILS.length; i++) {
+            final Color c = PENCILS[i];
+            swatches[i] = new Swatch(c);
+            swatches[i].addActionListener(e -> {
+                color = c;
+                if (tool == Tool.ERASER) tool = Tool.PENCIL;
+                refreshTools();
+            });
+            palette.add(swatches[i]);
+        }
+        palette.setPreferredSize(new Dimension(196, 126));
+        palette.setMaximumSize(new Dimension(Integer.MAX_VALUE, 126));
+        addFixed(tools, palette);
+
+        addTool(tools, Sketch.label("굵기", Font.BOLD, 14f, Sketch.INK));
+        JPanel sizes = new JPanel(new GridLayout(1, SIZES.length, 5, 0));
+        sizes.setOpaque(false);
+        for (int i = 0; i < SIZES.length; i++) {
+            final int idx = i;
+            sizeDots[i] = new SizeDot(SIZES[i]);
+            sizeDots[i].addActionListener(e -> {
+                size = idx;
+                if (tool == Tool.ERASER) tool = Tool.PENCIL;
+                refreshTools();
+            });
+            sizes.add(sizeDots[i]);
+        }
+        sizes.setPreferredSize(new Dimension(196, 40));
+        sizes.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        addFixed(tools, sizes);
+
+        pencilBtn.addActionListener(e -> useTool(Tool.PENCIL));
+        fillBtn.addActionListener(e -> useTool(Tool.FILL));
+        eraserBtn.addActionListener(e -> useTool(Tool.ERASER));
+        JButton undoBtn = new Sketch.Button("되돌리기", false);
+        undoBtn.addActionListener(e -> undo());
+        JButton clearBtn = new Sketch.Button("이 부위 지우기", false);
+        clearBtn.addActionListener(e -> clearPart());
+        JPanel buttons = new JPanel(new GridLayout(5, 1, 0, 0));
+        buttons.setOpaque(false);
+        for (JButton b : new JButton[]{pencilBtn, fillBtn, eraserBtn, undoBtn, clearBtn}) buttons.add(b);
+        addFixed(tools, buttons);
+        tools.add(javax.swing.Box.createVerticalGlue());
+        return tools;
+    }
 
     private static void addTool(JPanel tools, JComponent c) {
         c.setAlignmentX(Component.LEFT_ALIGNMENT);
-        c.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height));
         tools.add(c);
-        tools.add(javax.swing.Box.createVerticalStrut(6));
+        tools.add(javax.swing.Box.createVerticalStrut(4));
+    }
+
+    private static void addFixed(JPanel tools, JComponent c) {
+        addTool(tools, c);
+        tools.add(javax.swing.Box.createVerticalStrut(8));
     }
 
     private void show() {
-        dialog.setSize(900, 760);
-        dialog.setMinimumSize(new Dimension(760, 640));
+        dialog.setSize(1020, 790);
+        dialog.setMinimumSize(new Dimension(900, 720));
         dialog.setLocationRelativeTo(dialog.getOwner());
-        if (nameField.isShowing() || dialog.getTitle().startsWith("내")) SwingUtilities.invokeLater(nameField::requestFocusInWindow);
+        if (dialog.getTitle().startsWith("내")) SwingUtilities.invokeLater(nameField::requestFocusInWindow);
         dialog.setVisible(true);
     }
 
-    private void goTo(int s) {
-        step = Math.max(0, Math.min(STEPS.length - 1, s));
-        Part p = STEPS[step];
-        tipLabel.setText("<html><body style='width:135px'><b>" + (step + 1) + ". " + p.label + "</b><br>" + p.tip
-                + "<br><br>빨간 점선 안에 그려요.</body></html>");
-        prevBtn.setEnabled(step > 0);
-        nextBtn.setText(step == STEPS.length - 1 ? finishText : "다음 ▶");
-        stepBar.repaint();
+    private void selectPart(Part p) {
+        part = p;
+        tipLabel.setText("<html><b>" + p.label + "</b>  " + p.tip + "  빨간 점선 안이라면 어디든 그릴 수 있어요.</html>");
+        for (PartButton b : partBtns) b.repaint();
         canvas.repaint();
     }
 
+    private void useTool(Tool t) {
+        tool = t;
+        refreshTools();
+    }
+
     private void refreshTools() {
-        for (int i = 0; i < SIZES.length; i++) sizeBtns[i].setText((!eraser && size == i ? "√ " : "") + SIZE_NAMES[i]);
-        eraserBtn.setText((eraser ? "√ " : "") + "지우개");
+        pencilBtn.setText((tool == Tool.PENCIL ? "√ " : "") + "연필");
+        fillBtn.setText((tool == Tool.FILL ? "√ " : "") + "칠하기");
+        eraserBtn.setText((tool == Tool.ERASER ? "√ " : "") + "지우개");
+        canvas.setCursor(Cursor.getPredefinedCursor(tool == Tool.FILL ? Cursor.HAND_CURSOR : Cursor.CROSSHAIR_CURSOR));
         dialog.repaint();
     }
 
+    private void drawingChanged() {
+        art.changed();
+        canvas.repaint();
+        preview.repaint();
+        for (PartButton b : partBtns) b.repaint();
+    }
+
     private void snapshot() {
-        BufferedImage src = art.image(STEPS[step]);
+        BufferedImage src = art.image(part);
         BufferedImage copy = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = copy.createGraphics();
         g.drawImage(src, 0, 0, null);
         g.dispose();
-        undo.push(new BufferedImage[]{copy});
-        undoStep.push(step);
+        undo.push(copy);
+        undoPart.push(part);
         while (undo.size() > 40) {
             undo.removeLast();
-            undoStep.removeLast();
+            undoPart.removeLast();
         }
     }
 
     private void undo() {
         if (undo.isEmpty()) return;
-        BufferedImage snap = undo.pop()[0];
-        int s = undoStep.pop();
-        BufferedImage target = art.image(STEPS[s]);
-        Graphics2D g = target.createGraphics();
+        BufferedImage snap = undo.pop();
+        Part p = undoPart.pop();
+        Graphics2D g = art.image(p).createGraphics();
         g.setComposite(AlphaComposite.Src);
         g.drawImage(snap, 0, 0, null);
         g.dispose();
-        art.changed();
-        if (s != step) goTo(s);
-        canvas.repaint();
+        if (p != part) selectPart(p);
+        drawingChanged();
     }
 
     private void clearPart() {
         snapshot();
-        BufferedImage img = art.image(STEPS[step]);
+        BufferedImage img = art.image(part);
         Graphics2D g = img.createGraphics();
         g.setComposite(AlphaComposite.Clear);
         g.fillRect(0, 0, img.getWidth(), img.getHeight());
         g.dispose();
-        art.changed();
-        canvas.repaint();
+        drawingChanged();
     }
 
-    /** "1 머리 · 2 몸통 · 3 팔 · 4 다리" with the current step highlighted. */
-    private final class StepBar extends JComponent {
-        StepBar() {
-            setPreferredSize(new Dimension(400, 34));
-            setFont(Sketch.hand(Font.BOLD, 15f));
+    /** Colors the open area around (x, y) on the part's picture, up to lines of pencil or the canvas edge. */
+    private void fill(int x, int y) {
+        BufferedImage img = art.image(part);
+        int w = img.getWidth(), h = img.getHeight();
+        if (x < 0 || y < 0 || x >= w || y >= h) return;
+        int[] px = img.getRGB(0, 0, w, h, null, 0, w);
+        if ((px[y * w + x] >>> 24) >= FILL_EDGE_ALPHA) return;
+        int paint = (FILL_ALPHA << 24) | (color.getRGB() & 0xFFFFFF);
+        boolean[] seen = new boolean[w * h];
+        int[] stack = new int[w * h];
+        int top = 0;
+        stack[top++] = y * w + x;
+        seen[y * w + x] = true;
+        while (top > 0) {
+            int at = stack[--top];
+            px[at] = paint;
+            int cx = at % w, cy = at / w;
+            for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+                int nx = cx + d[0], ny = cy + d[1];
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                int next = ny * w + nx;
+                if (seen[next] || (px[next] >>> 24) >= FILL_EDGE_ALPHA) continue;
+                seen[next] = true;
+                stack[top++] = next;
+            }
+        }
+        img.setRGB(0, 0, w, h, px, 0, w);
+    }
+
+    /** A part with a small picture of what has been drawn on it so far. */
+    private final class PartButton extends JButton {
+        private final Part target;
+
+        PartButton(Part target) {
+            this.target = target;
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         }
 
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = Sketch.smooth(g);
-            g2.setFont(getFont());
+            int w = getWidth(), h = getHeight();
+            boolean on = target == part;
+            if (on) Sketch.marker(g2, 8, h - 36, w - 16, 24, target.ordinal() * 13L + 3);
+            Sketch.box(g2, 4, 4, w - 8, h - 8, 7400L + target.ordinal(), on ? 2.6f : 1.8f, on ? Sketch.RED_PENCIL : Sketch.INK);
+            BufferedImage img = art.image(target);
+            double s = Math.min((w - 24) / (double) img.getWidth(), (h - 56) / (double) img.getHeight());
+            int iw = (int) (img.getWidth() * s), ih = (int) (img.getHeight() * s);
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2.drawImage(img, (w - iw) / 2, 14, iw, ih, null);
+            g2.setFont(Sketch.hand(Font.BOLD, 16f));
+            g2.setColor(on ? Sketch.INK : Sketch.INK_SOFT);
             FontMetrics fm = g2.getFontMetrics();
-            int x = 4;
-            for (int i = 0; i < STEPS.length; i++) {
-                String s = (i + 1) + " " + STEPS[i].label;
-                int w = fm.stringWidth(s);
-                if (i == step) Sketch.marker(g2, x - 6, 8, w + 12, 18, i * 13L + 3);
-                g2.setColor(i == step ? Sketch.INK : i < step ? Sketch.BLUE_PENCIL : Sketch.INK_SOFT);
-                g2.drawString((i < step ? "√" : "") + s, x, 22);
-                x += w + 46;
-                if (i < STEPS.length - 1) {
-                    g2.setColor(Sketch.INK_SOFT);
-                    g2.drawString("→", x - 32, 22);
-                }
-            }
+            g2.drawString(target.label, (w - fm.stringWidth(target.label)) / 2, h - 18);
+            g2.dispose();
+        }
+    }
+
+    /** One colored pencil: a hatched dab of its color, circled while it is the one in hand. */
+    private final class Swatch extends JButton {
+        private final Color pencil;
+
+        Swatch(Color pencil) {
+            this.pencil = pencil;
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = Sketch.smooth(g);
+            int w = getWidth(), h = getHeight();
+            int r = Math.min(w, h) / 2 - 7;
+            g2.setColor(pencil);
+            g2.fillOval(w / 2 - r, h / 2 - r, r * 2, r * 2);
+            boolean on = pencil.equals(color) && tool != Tool.ERASER;
+            Sketch.circle(g2, w / 2.0, h / 2.0, r + (on ? 4 : 1), pencil.getRGB(), on ? 2.6f : 1.3f, on ? Sketch.RED_PENCIL : Sketch.INK);
+            g2.dispose();
+        }
+    }
+
+    /** One pencil size, shown at its real thickness. */
+    private final class SizeDot extends JButton {
+        private final float width;
+
+        SizeDot(float width) {
+            this.width = width;
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = Sketch.smooth(g);
+            int w = getWidth(), h = getHeight();
+            g2.setColor(color);
+            double d = width * 0.9;
+            g2.fill(new java.awt.geom.Ellipse2D.Double((w - d) / 2, (h - d) / 2, d, d));
+            boolean on = SIZES[size] == width && tool != Tool.ERASER;
+            Sketch.box(g2, 3, 3, w - 6, h - 6, (long) width + 7500, on ? 2.4f : 1.3f, on ? Sketch.RED_PENCIL : Sketch.INK_SOFT);
+            g2.dispose();
+        }
+    }
+
+    /** The hero as they will stand in battle, at about that size, updated with each stroke. */
+    private final class Preview extends JComponent {
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = Sketch.smooth(g);
+            Sketch.box(g2, 2, 2, getWidth() - 4, getHeight() - 4, 7601, 1.8f, Sketch.INK);
+            art.drawStill(g2, getWidth() / 2, getHeight() - 12, getHeight() - 56);
             g2.dispose();
         }
     }
@@ -276,15 +425,20 @@ public final class DrawCharacterDialog {
         private Point mouse;
 
         Canvas() {
-            setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
             MouseAdapter m = new MouseAdapter() {
                 @Override
                 public void mousePressed(MouseEvent e) {
                     if (!SwingUtilities.isLeftMouseButton(e)) return;
                     Point2D fig = toFigure(e.getPoint());
-                    lastRight = STEPS[step].paired() && fig.getX() > CharacterArt.FIG_W / 2.0;
+                    lastRight = part.paired() && fig.getX() > CharacterArt.FIG_W / 2.0;
                     snapshot();
-                    last = toPart(fig, lastRight);
+                    Point2D at = toPart(fig, lastRight);
+                    if (tool == Tool.FILL) {
+                        fill((int) at.getX(), (int) at.getY());
+                        drawingChanged();
+                        return;
+                    }
+                    last = at;
                     stroke(last, last);
                 }
 
@@ -319,7 +473,7 @@ public final class DrawCharacterDialog {
         }
 
         private void layoutFigure() {
-            scale = Math.min(getWidth() / (double) CharacterArt.FIG_W, getHeight() / (double) CharacterArt.FIG_H) * 0.96;
+            scale = Math.min(getWidth() / (double) CharacterArt.FIG_W, getHeight() / (double) CharacterArt.FIG_H) * 0.97;
             offX = (getWidth() - CharacterArt.FIG_W * scale) / 2;
             offY = (getHeight() - CharacterArt.FIG_H * scale) / 2;
         }
@@ -331,28 +485,26 @@ public final class DrawCharacterDialog {
 
         private Point2D toPart(Point2D fig, boolean right) {
             try {
-                return CharacterArt.toFigure(STEPS[step], right).inverseTransform(fig, null);
+                return CharacterArt.toFigure(part, right).inverseTransform(fig, null);
             } catch (NoninvertibleTransformException e) {
                 return fig;
             }
         }
 
         private void stroke(Point2D a, Point2D b) {
-            BufferedImage img = art.image(STEPS[step]);
-            Graphics2D g = img.createGraphics();
+            Graphics2D g = art.image(part).createGraphics();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-            if (eraser) {
+            if (tool == Tool.ERASER) {
                 g.setComposite(AlphaComposite.Clear);
-                g.setStroke(new BasicStroke(20f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.setStroke(new BasicStroke(ERASER_SIZE, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             } else {
-                g.setColor(LEAD);
+                g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), STROKE_ALPHA));
                 g.setStroke(new BasicStroke(SIZES[size], BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             }
             g.draw(new java.awt.geom.Line2D.Double(a, b));
             g.dispose();
-            art.changed();
-            repaint();
+            drawingChanged();
         }
 
         @Override
@@ -363,32 +515,33 @@ public final class DrawCharacterDialog {
             gf.translate(offX, offY);
             gf.scale(scale, scale);
 
-            // Dashed guides for every part; the current one in red pencil.
+            // Grey dashes mark where each part usually sits; red dashes the room this part has.
             float[] dash = {9f, 7f};
-            for (Part p : Part.values()) {
-                boolean cur = p == STEPS[step];
-                gf.setColor(cur ? new Color(190, 62, 52, 200) : new Color(118, 112, 106, 90));
-                gf.setStroke(new BasicStroke(cur ? 2.6f : 1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, dash, 0f));
+            gf.setColor(new Color(118, 112, 106, 80));
+            gf.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, dash, 0f));
+            for (Part p : PARTS) {
                 for (boolean right : p.paired() ? new boolean[]{false, true} : new boolean[]{false}) {
                     Point o = CharacterArt.origin(p, right);
-                    gf.drawRoundRect(o.x, o.y, p.w, p.h, 18, 18);
+                    int bx = right ? o.x + p.w - p.baseX - p.baseW : o.x + p.baseX;
+                    gf.drawRoundRect(bx, o.y + p.baseY, p.baseW, p.baseH, 18, 18);
                 }
             }
-            if (STEPS[step] == Part.HEAD && art.isEmpty(Part.HEAD)) {
-                gf.setColor(new Color(118, 112, 106, 120));
-                gf.setFont(Sketch.hand(Font.BOLD, 26f));
-                gf.drawString("여기에 머리!", 128, 118);
+            gf.setColor(new Color(190, 62, 52, 200));
+            gf.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, dash, 0f));
+            for (boolean right : part.paired() ? new boolean[]{false, true} : new boolean[]{false}) {
+                Point o = CharacterArt.origin(part, right);
+                gf.drawRoundRect(o.x, o.y, part.w, part.h, 18, 18);
             }
 
-            // The drawing so far: current part solid, done parts a little faded, later ones faint.
-            float[] alpha = new float[Part.values().length];
-            for (int i = 0; i < alpha.length; i++) alpha[i] = i == step ? 1f : i < step ? 0.55f : 0.3f;
+            // The drawing so far: the part in hand solid, the rest a little faded.
+            float[] alpha = new float[PARTS.length];
+            for (int i = 0; i < alpha.length; i++) alpha[i] = PARTS[i] == part ? 1f : 0.45f;
             art.paintFigure(gf, 0, 0, 0, 0, alpha);
             gf.dispose();
 
             // Brush outline under the mouse.
-            if (mouse != null) {
-                double r = (eraser ? 20f : SIZES[size]) * scale / 2 + 1;
+            if (mouse != null && tool != Tool.FILL) {
+                double r = (tool == Tool.ERASER ? ERASER_SIZE : SIZES[size]) * scale / 2 + 1;
                 g2.setColor(new Color(50, 48, 58, 140));
                 g2.setStroke(new BasicStroke(1.2f));
                 g2.draw(new java.awt.geom.Ellipse2D.Double(mouse.x - r, mouse.y - r, r * 2, r * 2));
