@@ -25,16 +25,18 @@ public class MapScreen extends JPanel {
         final Rectangle area;
         final Runnable onClick;
         final BooleanSupplier locked;
+        final BooleanSupplier shown;
 
-        Hotspot(String label, Rectangle area, Runnable onClick, BooleanSupplier locked) {
+        Hotspot(String label, Rectangle area, Runnable onClick, BooleanSupplier locked, BooleanSupplier shown) {
             this.label = label;
             this.area = area;
             this.onClick = onClick;
             this.locked = locked;
+            this.shown = shown;
         }
     }
 
-    private final Image art;
+    private Image art;
     private final List<Hotspot> hotspots = new ArrayList<>();
     private Hotspot hovered;
     private Point mouse;
@@ -90,7 +92,20 @@ public class MapScreen extends JPanel {
 
     /** Adds a clickable area that is crossed out with a pencil X while locked returns true (it still receives clicks). */
     public void addHotspot(String label, int x, int y, int w, int h, Runnable onClick, BooleanSupplier locked) {
-        hotspots.add(new Hotspot(label, new Rectangle(x, y, w, h), onClick, locked));
+        hotspots.add(new Hotspot(label, new Rectangle(x, y, w, h), onClick, locked, () -> true));
+    }
+
+    /** Adds a clickable area that only exists while shown returns true (e.g. during the invasion). */
+    public void addShownHotspot(String label, int x, int y, int w, int h, Runnable onClick, BooleanSupplier shown) {
+        hotspots.add(new Hotspot(label, new Rectangle(x, y, w, h), onClick, () -> false, shown));
+    }
+
+    /** Swaps the artwork (same size, so the hotspots still fit). A null picture keeps the current one. */
+    public void setArt(Image next) {
+        if (next == null || next == art) return;
+        art = next;
+        scaled = null;
+        repaint();
     }
 
     /** Shows a short message over the map that fades out on its own. */
@@ -129,7 +144,7 @@ public class MapScreen extends JPanel {
         double ix = (p.x - offsetX()) / s;
         double iy = (p.y - offsetY()) / s;
         for (Hotspot h : hotspots) {
-            if (h.area.contains(ix, iy)) return h;
+            if (h.shown.getAsBoolean() && h.area.contains(ix, iy)) return h;
         }
         return null;
     }
@@ -168,11 +183,12 @@ public class MapScreen extends JPanel {
         g2.drawImage(scaled, offsetX(), offsetY(), null);
 
         for (Hotspot h : hotspots) {
-            if (!h.locked.getAsBoolean()) continue;
+            if (!h.shown.getAsBoolean() || !h.locked.getAsBoolean()) continue;
             Rectangle r = toScreen(h.area);
             drawCrossOut(g2, r, s);
         }
 
+        if (hovered != null && !hovered.shown.getAsBoolean()) hovered = null;
         if (hovered != null) {
             Rectangle r = toScreen(hovered.area);
             RoundRectangle2D shape = new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 24, 24);

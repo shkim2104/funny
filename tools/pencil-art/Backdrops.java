@@ -372,4 +372,195 @@ final class Backdrops {
             p.curve(2.4, x, y, x + 8, y - 10, x + 18, y);
         }
     }
+
+    // ================= 최종장 : 침공당한 마을 =================
+
+    /** The deep night of the other world, the fill inside rifts and the cosmic god's body. */
+    static final Color NIGHT = new Color(40, 30, 68);
+
+    /** A shape filled with the other world: deep night, purple hatching, nebula smears and stars, then outlined. */
+    static void starfield(Pencil p, Shape s, int n, double size) {
+        p.g.setColor(NIGHT);
+        p.g.fill(s);
+        p.tint(s, Monsters.PURPLE, 1.0);
+        Shape old = p.g.getClip();
+        p.g.clip(s);
+        java.awt.geom.Rectangle2D b = s.getBounds2D();
+        for (int i = 0; i < 4; i++) {
+            double x = b.getX() + p.r.nextDouble() * b.getWidth(), y = b.getY() + p.r.nextDouble() * b.getHeight();
+            p.smudge(Pencil.ell(x, y, b.getWidth() * 0.3, b.getHeight() * 0.22), i % 2 == 0 ? Monsters.PURPLE : Monsters.ICE, 45);
+        }
+        for (int i = 0; i < n; i++) {
+            double x = b.getX() + p.r.nextDouble() * b.getWidth(), y = b.getY() + p.r.nextDouble() * b.getHeight();
+            double k = p.r.nextDouble();
+            if (k < 0.14) {
+                double l = size * (2.6 + k * 8);
+                Color c = i % 3 == 0 ? Monsters.YELLOW : i % 3 == 1 ? Monsters.ICE : Pencil.PAPER;
+                p.colorLine(1.6, c, x - l, y, x + l, y);
+                p.colorLine(1.6, c, x, y - l, x, y + l);
+            } else {
+                p.smudge(Pencil.ell(x, y, size * (0.5 + k), size * (0.5 + k)), Pencil.PAPER, 150 + (int) (k * 100));
+            }
+        }
+        p.g.setClip(old);
+        p.outline(s, 3.0);
+    }
+
+    /**
+     * A crack torn in the sky along the spine points: widest in the middle, jagged edges, the other world's
+     * stars showing through, a purple glow around it and hairline cracks running off its edges.
+     */
+    static void rift(Pencil p, double maxW, int stars, double... spine) {
+        int n = spine.length / 2;
+        java.util.List<double[]> pts = new java.util.ArrayList<>();
+        for (int i = 0; i < n - 1; i++) {
+            for (int k = 0; k < 3; k++) {
+                double t = k / 3.0;
+                pts.add(new double[]{spine[i * 2] + (spine[i * 2 + 2] - spine[i * 2]) * t,
+                        spine[i * 2 + 1] + (spine[i * 2 + 3] - spine[i * 2 + 1]) * t});
+            }
+        }
+        pts.add(new double[]{spine[n * 2 - 2], spine[n * 2 - 1]});
+        int m = pts.size();
+        double[] upper = new double[m * 2], lower = new double[m * 2];
+        for (int i = 0; i < m; i++) {
+            double[] a = pts.get(max(0, i - 1)), b = pts.get(min(m - 1, i + 1)), c = pts.get(i);
+            double dx = b[0] - a[0], dy = b[1] - a[1], len = hypot(dx, dy);
+            double nx = -dy / len, ny = dx / len;
+            double w = maxW * 0.5 * pow(sin(PI * i / (m - 1)), 0.7) * (i % 2 == 0 ? 1.0 : 0.55 + p.r.nextDouble() * 0.25);
+            upper[i * 2] = c[0] + nx * w;
+            upper[i * 2 + 1] = c[1] + ny * w;
+            lower[i * 2] = c[0] - nx * w * (0.7 + p.r.nextDouble() * 0.5);
+            lower[i * 2 + 1] = c[1] - ny * w * (0.7 + p.r.nextDouble() * 0.5);
+        }
+        double[] xy = new double[m * 4];
+        for (int i = 0; i < m; i++) {
+            xy[i * 2] = upper[i * 2];
+            xy[i * 2 + 1] = upper[i * 2 + 1];
+            xy[(2 * m - 1 - i) * 2] = lower[i * 2];
+            xy[(2 * m - 1 - i) * 2 + 1] = lower[i * 2 + 1];
+        }
+        Shape crack = Pencil.poly(xy);
+        p.smudge(Pencil.limb(maxW * 3.2, spine), Monsters.PURPLE, 34);
+        p.smudge(Pencil.limb(maxW * 1.8, spine), Monsters.PURPLE, 40);
+        starfield(p, crack, stars, 2.2 * p.scale);
+        for (int i = 2; i < m - 2; i += 2) {
+            boolean up = p.r.nextBoolean();
+            double[] e = up ? upper : lower;
+            double x = e[i * 2], y = e[i * 2 + 1], c = pts.get(i)[0], cy = pts.get(i)[1];
+            double ox = x - c, oy = y - cy, ol = max(1, hypot(ox, oy)), l = maxW * (0.4 + p.r.nextDouble() * 0.7);
+            double ux = ox / ol, uy = oy / ol;
+            p.colorLine(1.8, Monsters.PURPLE, x, y, x + ux * l * 0.5 + uy * l * 0.25, y + uy * l * 0.5 - ux * l * 0.25,
+                    x + ux * l, y + uy * l);
+        }
+    }
+
+    /** A falling star: a rock with a glowing tail streaming back toward (fromX, fromY). */
+    static void meteor(Pencil p, double x, double y, double fromX, double fromY, double size) {
+        double dx = x - fromX, dy = y - fromY, len = hypot(dx, dy), ux = dx / len, uy = dy / len;
+        p.smudge(Pencil.limb(size * 2.6, fromX + dx * 0.3, fromY + dy * 0.3, x, y), Monsters.PURPLE, 55);
+        p.colorLine(size * 0.55, Monsters.PURPLE, fromX + dx * 0.2, fromY + dy * 0.2, x - ux * size, y - uy * size);
+        p.colorLine(size * 0.22, Monsters.YELLOW, fromX + dx * 0.5, fromY + dy * 0.5, x - ux * size, y - uy * size);
+        p.smudge(Pencil.ell(x, y, size * 2, size * 2), Monsters.PURPLE, 60);
+        p.part(Pencil.rock(p.r, x, y, size, size * 1.15, 7), 0.6, Monsters.PURPLE, 0.8);
+        p.colorLine(2.4, Monsters.YELLOW, x - size * 0.3, y - size * 0.2, x + size * 0.25, y + size * 0.3);
+    }
+
+    /** Where a star came down: a heap of glowing rock with cracks running out over the ground and a sparkle on top. */
+    static void fallenStar(Pencil p, double x, double y, double r) {
+        p.smudge(Pencil.ell(x, y, r * 3, r * 1.5), Monsters.PURPLE, 60);
+        for (int k = 0; k < 3; k++) {
+            double a = PI * (0.15 + 0.35 * k) + p.r.nextDouble() * 0.3, l = r * (2.2 + p.r.nextDouble());
+            double mx = x + cos(a + 0.2) * l * 0.6, my = y + sin(a + 0.2) * l * 0.3 + r * 0.3;
+            p.colorLine(2, Monsters.PURPLE, x + cos(a) * r * 0.6, y + r * 0.3, mx, my, x + cos(a) * l, y + sin(a) * l * 0.5 + r * 0.3);
+        }
+        p.part(Pencil.rock(p.r, x - r * 0.9, y + r * 0.1, r * 0.6, r * 0.5, 6), 0.55);
+        p.part(Pencil.rock(p.r, x + r * 0.9, y + r * 0.2, r * 0.55, r * 0.45, 6), 0.55);
+        p.part(Pencil.rock(p.r, x, y - r * 0.3, r, r * 0.85, 7), 0.6, Monsters.PURPLE, 0.9);
+        p.colorLine(2, Monsters.YELLOW, x - r * 0.4, y - r * 0.5, x + r * 0.15, y - r * 0.1);
+        double sx = x + r * 0.6, sy = y - r * 1.4, s = r * 0.6;
+        p.colorLine(2, Monsters.YELLOW, sx - s, sy, sx + s, sy);
+        p.colorLine(2, Monsters.YELLOW, sx, sy - s, sx, sy + s);
+    }
+
+    /** A house with a bite torn out of one top corner: roof and wall broken off, beams sticking out, rubble below. */
+    static void brokenHouse(Pencil p, double x, double baseY, double w, double h, Color roof, boolean bittenRight) {
+        double top = baseY - h;
+        double bx = bittenRight ? x + w * 1.15 : x - w * 0.15, dir = bittenRight ? -1 : 1;
+        java.awt.geom.Area bite = new java.awt.geom.Area(Pencil.poly(bx, top - h * 0.8, bx + dir * w * 0.62, top - h * 0.8,
+                bx + dir * w * 0.5, top - h * 0.3, bx + dir * w * 0.58, top + h * 0.05, bx + dir * w * 0.36, top + h * 0.2,
+                bx + dir * w * 0.42, top + h * 0.42, bx + dir * w * 0.2, top + h * 0.5, bx, top + h * 0.6));
+        java.awt.geom.Area wall = new java.awt.geom.Area(Pencil.poly(x, baseY, x + w, baseY, x + w, top, x, top));
+        wall.subtract(bite);
+        java.awt.geom.Area attic = new java.awt.geom.Area(Pencil.poly(x - w * 0.1, top + 4, x + w / 2, top - h * 0.6, x + w * 1.1, top + 4));
+        attic.subtract(bite);
+        // Beams poking out of the break.
+        for (int i = 0; i < 3; i++) {
+            double by = top - h * 0.1 + i * h * 0.16, ex = bx + dir * w * (0.38 + i * 0.04);
+            p.part(Pencil.limb(9, ex + dir * w * 0.12, by, ex - dir * w * 0.06, by - 14 + i * 6), 0.6, Monsters.BROWN, 0.7);
+        }
+        p.part(wall, 0.16, Monsters.BROWN, 0.35);
+        p.part(attic, 0.4, roof, 0.8);
+        double wx = bittenRight ? x + w * 0.14 : x + w * 0.62;
+        p.part(Pencil.poly(wx, top + h * 0.28, wx + w * 0.22, top + h * 0.28, wx + w * 0.22, top + h * 0.52, wx, top + h * 0.52), 0.85);
+        p.ink(wx + w * 0.11, top + h * 0.28, wx + w * 0.11, top + h * 0.52, 1.8);
+        double dx = x + w * 0.4;
+        p.part(Pencil.poly(dx, baseY, dx, baseY - h * 0.4, dx + w * 0.2, baseY - h * 0.4, dx + w * 0.2, baseY), 0.65, Monsters.BROWN, 0.6);
+        p.ink(x + w * 0.5, top + h * 0.5, x + w * 0.56, top + h * 0.66, 2);
+        p.ink(x + w * 0.56, top + h * 0.66, x + w * 0.5, top + h * 0.8, 2);
+        for (int i = 0; i < 5; i++) {
+            double rx = x + (bittenRight ? w * 0.8 : -w * 0.15) + p.r.nextDouble() * w * 0.4, s = w * (0.05 + p.r.nextDouble() * 0.05);
+            p.part(Pencil.rock(p.r, rx, baseY + 6, s * 1.4, s, 7), 0.45);
+        }
+    }
+
+    static void invadedTown(Pencil p) {
+        // A sky gone dark, stars where the daylight was.
+        p.part(Pencil.poly(-20, -20, W + 20, -20, W + 20, HORIZON + 10, -20, HORIZON + 10), 0.5, Monsters.PURPLE, 0.55);
+        for (int i = 0; i < 70; i++) {
+            double x = p.r.nextDouble() * W, y = p.r.nextDouble() * (HORIZON - 120);
+            if (i % 7 == 0) {
+                p.colorLine(1.8, Monsters.YELLOW, x - 9, y, x + 9, y);
+                p.colorLine(1.8, Monsters.YELLOW, x, y - 9, x, y + 9);
+            } else {
+                p.smudge(Pencil.ell(x, y, 2.6, 2.6), Pencil.PAPER, 220);
+            }
+        }
+        rift(p, 120, 90, -40, 170, 180, 90, 420, 180, 640, 60, 860, 170, 1060, 100, 1260, 200, 1460, 110, W + 40, 190);
+        meteor(p, 330, 350, 470, 180, 18);
+        meteor(p, 1010, 320, 900, 170, 15);
+        meteor(p, 1300, 400, 1380, 170, 20);
+        meteor(p, 680, 420, 640, 130, 12);
+        // The far rooftops, two of them burning, then the broken houses at both sides of the plaza.
+        for (double fx : new double[]{540, 1100}) p.smudge(Pencil.ell(fx, HORIZON - 110, 130, 80), Monsters.ORANGE, 45);
+        for (int i = 0; i < 8; i++) {
+            double x = 330 + i * 140, hgt = 70 + (i % 3) * 22;
+            p.part(Pencil.poly(x, HORIZON + 4, x + 110, HORIZON + 4, x + 110, HORIZON - hgt, x + 55, HORIZON - hgt - 50 + (i % 2) * 26,
+                    x + (i % 2 == 0 ? 20 : 70), HORIZON - hgt - 14, x, HORIZON - hgt), 0.62);
+        }
+        for (double[] f : new double[][]{{525, HORIZON - 104}, {560, HORIZON - 96}, {1090, HORIZON - 120}, {1124, HORIZON - 104}}) {
+            p.part(Pencil.flame(f[0], f[1], 34, 60 + (f[0] % 3) * 10, 6), 0.03, Monsters.ORANGE, 1.0);
+            p.part(Pencil.flame(f[0], f[1] - 2, 16, 30, 3), 0.0, Monsters.YELLOW, 1.0);
+        }
+        p.smudge(Pencil.ell(836, HORIZON - 40, 420, 60), Monsters.PURPLE, 30);
+        brokenHouse(p, 30, HORIZON + 40, 250, 210, Monsters.RED, true);
+        brokenHouse(p, 1400, HORIZON + 34, 230, 190, Monsters.ORANGE, false);
+        // The plaza: cobbles, a toppled fountain at the back, glowing cracks and fallen stars.
+        floor(p, 0.14, 8);
+        for (int ring = 1; ring <= 3; ring++) p.outline(Pencil.ell(W / 2.0, 800, 260 * ring, 60 * ring), 1.4);
+        p.part(Pencil.ell(780, HORIZON + 30, 120, 26), 0.35);
+        p.part(Pencil.ell(780, HORIZON + 26, 96, 16), 0.1, Monsters.ICE, 0.6);
+        p.part(Pencil.poly(744, HORIZON + 20, 756, HORIZON - 70, 772, HORIZON - 40, 790, HORIZON - 92, 800, HORIZON + 20), 0.3);
+        p.part(Pencil.limb(26, 840, HORIZON + 46, 920, HORIZON + 30), 0.3);
+        p.colorLine(4, Monsters.PURPLE, 560, 700, 640, 740, 610, 800, 700, 860, 680, 940);
+        p.colorLine(3.4, Monsters.PURPLE, 1000, 640, 1060, 700, 1040, 760, 1120, 810);
+        p.colorLine(3, Monsters.PURPLE, 200, 820, 290, 800, 330, 850, 420, 830);
+        for (double[] c : new double[][]{{640, 740, 28}, {1060, 700, 22}, {180, 690, 20}, {1540, 860, 26}}) fallenStar(p, c[0], c[1], c[2]);
+        pebbles(p, 8, 0.45);
+        // A lamp post bent over, and the town sign knocked to the ground.
+        p.part(Pencil.limb(12, 470, HORIZON + 120, 476, HORIZON - 40, 530, HORIZON - 90), 0.7);
+        p.part(Pencil.poly(518, HORIZON - 96, 548, HORIZON - 84, 538, HORIZON - 60, 512, HORIZON - 70), 0.08, Monsters.YELLOW, 0.4);
+        p.part(Pencil.poly(820, 856, 960, 846, 966, 888, 826, 896), 0.1, Monsters.BROWN, 0.5);
+        p.text("우리 마을", 842, 886, 28, new Color(52, 86, 170), -4);
+    }
 }

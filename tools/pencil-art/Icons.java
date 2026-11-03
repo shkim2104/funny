@@ -9,7 +9,8 @@ import static java.lang.Math.*;
 /**
  * Pencil icons on a 256x256 transparent canvas: weapons and armor (images/items/*.png, file names match
  * ItemCatalog's icon ids), potions, the augment category icons (images/augments/*.png) and the
- * forging materials (images/materials/*.png).
+ * forging materials (images/materials/*.png), the final story's quest items (images/story_items/*.png) and
+ * its dialogue portraits (images/story/*.png).
  * Weapons are drawn upright and turned 45 degrees, tip to the top-right, like inventory icons.
  */
 final class Icons {
@@ -402,7 +403,188 @@ final class Icons {
         for (double[] c : crumbs) solid(p, Pencil.limb(19, c), pink, 0.03, 1.8);
     }
 
+    // ================= 최종장 재료 (이계 약화 물약 퀘스트) =================
+
+    /** 별빛 이슬: a fat drop of dew with a little star caught inside it. */
+    private static void starlightDew(Pencil p) {
+        p.smudge(Pencil.ell(C, 150, 104, 100), ICE, 35);
+        p.part(Pencil.blob(C, 22, C + 38, 96, C + 70, 156, C + 48, 216, C, 232, C - 48, 216, C - 70, 156, C - 38, 96), 0.05, ICE, 0.9);
+        Maps.star(p, C, 172, 30, YELLOW);
+        p.curve(2.6, C - 46, 160, C - 40, 128, C - 22, 100);
+        glint(p, 56, 60, 20, YELLOW);
+        glint(p, 208, 96, 16, YELLOW);
+        glint(p, 206, 214, 12, ICE);
+    }
+
+    /** 운석 조각: a charred rock still glowing in its cracks, its tail of light behind it. */
+    private static void meteorShard(Pencil p) {
+        Color rock = new Color(80, 68, 78);
+        p.smudge(Pencil.limb(64, 50, 50, 120, 120), PURPLE, 45);
+        p.colorLine(6, PURPLE, 34, 44, 96, 104);
+        p.colorLine(4, YELLOW, 54, 32, 112, 92);
+        p.colorLine(4, PURPLE, 30, 78, 82, 128);
+        p.smudge(Pencil.ell(150, 156, 96, 90), ORANGE, 35);
+        solid(p, Pencil.poly(70, 150, 104, 92, 160, 70, 214, 110, 226, 170, 184, 224, 112, 230, 64, 198), rock, 0.45, 3.0);
+        solid(p, Pencil.poly(104, 92, 160, 70, 150, 120, 112, 128), new Color(130, 116, 128), 0.15, 2.0);
+        p.colorLine(4, ORANGE, 112, 128, 140, 160, 128, 204);
+        p.colorLine(3.4, ORANGE, 150, 120, 184, 150, 214, 156);
+        p.colorLine(3, YELLOW, 140, 160, 176, 190);
+        for (double[] s : new double[][]{{94, 178}, {196, 196}, {176, 104}}) p.smudge(Pencil.ell(s[0], s[1], 3.4, 3.4), Pencil.PAPER, 230);
+    }
+
+    /** 별자리 석판 조각: a broken-off corner of a stone tablet with a constellation carved and gilded into it. */
+    private static void constellationSlab(Pencil p) {
+        Color stone = new Color(92, 98, 116);   // dark slate, so the gold lines stand out
+        p.smudge(Pencil.ell(C, 224, 104, 18), Pencil.LEAD, 45);
+        solid(p, Pencil.poly(36, 66, 150, 40, 196, 58, 174, 98, 212, 128, 190, 164, 224, 204, 58, 226, 30, 150), stone, 0.3, 3.0);
+        p.outlineOpen(Pencil.spline(52, 84, 142, 62, 164, 70), 1.8);
+        p.outlineOpen(Pencil.spline(48, 102, 56, 206, 186, 196), 1.8);
+        double[][] stars = {{76, 180}, {100, 130}, {138, 150}, {148, 102}, {170, 186}, {120, 196}};
+        p.smudge(Pencil.ell(122, 150, 70, 60), GOLD, 40);
+        for (int i = 0; i + 1 < stars.length; i++) p.colorLine(2.4, GOLD, stars[i][0], stars[i][1], stars[i + 1][0], stars[i + 1][1]);
+        for (double[] s : stars) p.dot(s[0], s[1], 6, YELLOW);
+        p.ink(196, 58, 170, 72, 2);
+        p.ink(212, 128, 186, 136, 2);
+        glint(p, 220, 48, 16, YELLOW);
+    }
+
+    /** 어둠의 핵: a black heart of shadow with a violet swirl in it, wisps curling off it. */
+    private static void darkCore(Pencil p) {
+        p.smudge(Pencil.ell(C, C, 120, 120), PURPLE, 55);
+        for (int i = 0; i < 7; i++) {
+            double a = PI * 2 * i / 7 + 0.3, b = a + 0.35;
+            p.colorLine(4, PURPLE, C + cos(a) * 66, C + sin(a) * 66, C + cos(a + 0.18) * 92, C + sin(a + 0.18) * 92,
+                    C + cos(b) * 114, C + sin(b) * 114);
+        }
+        solid(p, Pencil.ell(C, C, 74, 74), new Color(30, 24, 44), 0.5, 3.2);
+        p.colorLine(4, PURPLE, C + 4, C, C + 18, C - 14, C + 2, C - 34, C - 30, C - 22, C - 36, C + 12, C - 6, C + 40,
+                C + 34, C + 30, C + 52, C - 6);
+        p.dot(C + 4, C, 8, PURPLE);
+        p.curve(2.4, C - 52, C - 22, C - 40, C - 46, C - 16, C - 58);
+    }
+
+    /** One six-sided ice crystal standing on (bx, by), leaning by tilt degrees. */
+    private static void crystal(Pencil p, double bx, double by, double w, double h, double tilt) {
+        AffineTransform r = AffineTransform.getRotateInstance(toRadians(tilt), bx, by);
+        p.part(r.createTransformedShape(Pencil.poly(bx - w, by, bx - w, by - h + w * 1.2, bx, by - h, bx + w, by - h + w * 1.2, bx + w, by)),
+                0.06, ICE, 1.0);
+        Shape facet = r.createTransformedShape(Pencil.poly(bx, by - h, bx, by));
+        p.outlineOpen(facet, 1.8);
+    }
+
+    /** 영원빙 결정: a cluster of ice crystals that never melts, on a frosted stone. */
+    private static void eternalIce(Pencil p) {
+        p.smudge(Pencil.ell(C, 130, 110, 110), ICE, 40);
+        crystal(p, 92, 214, 22, 120, -24);
+        crystal(p, 170, 214, 22, 130, 22);
+        crystal(p, C, 214, 32, 196, 0);
+        p.part(Pencil.rock(p.r, C, 220, 100, 26, 9), 0.35, ICE, 0.3);
+        glint(p, 48, 66, 18, ICE);
+        glint(p, 214, 60, 14, ICE);
+        glint(p, 170, 30, 10, Pencil.PAPER);
+    }
+
+    /** 태양의 불씨: a glowing coal of the sun with a small flame on it and rays all around. */
+    private static void sunEmber(Pencil p) {
+        p.smudge(Pencil.ell(C, 150, 116, 112), ORANGE, 45);
+        for (int i = 0; i < 12; i++) {
+            double a = PI * 2 * i / 12;
+            p.colorLine(3.2, YELLOW, C + cos(a) * 84, 160 + sin(a) * 80, C + cos(a) * 112, 160 + sin(a) * 106);
+        }
+        p.part(Pencil.flame(C, 180, 86, 146, -6), 0.03, ORANGE, 1.0);
+        p.part(Pencil.flame(C, 176, 46, 88, -2), 0.0, YELLOW, 1.0);
+        solid(p, Pencil.rock(p.r, C, 196, 76, 48, 9), new Color(150, 46, 36), 0.35, 3.0);
+        p.colorLine(3.6, YELLOW, C - 50, 194, C - 20, 206, C + 6, 192, C + 44, 208);
+        p.colorLine(3, ORANGE, C - 14, 222, C + 18, 226);
+    }
+
+    /** 타락한 날개깃: a long dark feather with a golden quill, ragged where it fell. */
+    private static void fallenFeather(Pencil p) {
+        AffineTransform tilt = AffineTransform.getRotateInstance(toRadians(35), C, C);
+        p.smudge(tilt.createTransformedShape(Pencil.ell(C, C, 66, 116)), PURPLE, 40);
+        Area vane = new Area(Pencil.blob(C, 20, C + 40, 70, C + 48, 140, C + 28, 196, C + 4, 210, C - 32, 190, C - 46, 120, C - 30, 60));
+        for (double[] n : new double[][]{{C + 46, 120, 9}, {C - 44, 150, 8}, {C + 36, 170, 7}, {C - 40, 90, 6}}) {
+            vane.subtract(new Area(Pencil.ell(n[0], n[1], n[2] * 1.6, n[2] * 0.6)));
+        }
+        p.part(tilt.createTransformedShape(vane), 0.78, PURPLE, 0.5);
+        for (int i = 0; i < 6; i++) {
+            double y = 56 + i * 24;
+            double[] a = tp2(tilt, C, y + 18), b = tp2(tilt, C + 38 - abs(i - 2.5) * 5, y);
+            double[] c = tp2(tilt, C - 38 + abs(i - 2.5) * 5, y);
+            p.ink(a[0], a[1], b[0], b[1], 1.6);
+            p.ink(a[0], a[1], c[0], c[1], 1.6);
+        }
+        p.part(tilt.createTransformedShape(Pencil.limb(8, C, 236, C, 30)), 0.1, GOLD, 0.95);
+        glint(p, 60, 200, 14, PURPLE);
+        glint(p, 206, 46, 12, GOLD);
+    }
+
+    private static double[] tp2(AffineTransform t, double x, double y) {
+        double[] pt = {x, y};
+        t.transform(pt, 0, pt, 0, 1);
+        return pt;
+    }
+
+    /** 이계 약화 물약: the finished brew, a round flask of violet night with a star swimming in it. */
+    private static void weakeningPotion(Pencil p) {
+        p.smudge(Pencil.ell(C, 150, 112, 104), PURPLE, 40);
+        potion(p, PURPLE, 1.0, true);
+        for (double[] s : new double[][]{{C - 40, 196}, {C + 42, 184}, {C + 20, 216}, {C - 18, 150}}) {
+            p.smudge(Pencil.ell(s[0], s[1], 3.4, 3.4), Pencil.PAPER, 235);
+        }
+        p.part(Pencil.limb(10, C - 18, 62, C + 30, 74, C + 40, 100), 0.1, GOLD, 0.9);   // ribbon on the neck
+        glint(p, 44, 70, 18, GOLD);
+        glint(p, 216, 110, 14, ICE);
+    }
+
+    // ================= dialogue portraits (images/story/*.png) =================
+
+    /** "???": a hooded stranger, head and shoulders, the face lost in the hood's shadow but for a faint question mark. */
+    private static void mysteryPortrait(Pencil p) {
+        Color cloth = new Color(76, 54, 108), hood = new Color(92, 66, 128);
+        solid(p, Pencil.blob(-10, 270, 6, 226, 50, 196, 100, 184, 156, 184, 206, 196, 250, 226, 266, 270), cloth, 0.45, 3.0);
+        solid(p, Pencil.blob(C + 26, 14, C + 66, 70, C + 80, 146, C + 58, 198, C, 210, C - 58, 198, C - 80, 146, C - 66, 76, C - 20, 34),
+                hood, 0.4, 3.0);
+        p.outlineOpen(Pencil.spline(C + 26, 14, C + 20, 50, C + 36, 90), 2);
+        Shape face = Pencil.ell(C, 140, 48, 56);
+        solid(p, face, new Color(22, 18, 30), 0.6, 3.0);
+        p.text("?", C - 15, 162, 58, new Color(150, 132, 196), 4);
+        p.ink(C - 60, 196, C - 30, 236, 2);
+        p.ink(C + 60, 196, C + 34, 238, 2);
+        p.dot(C, 214, 11, GOLD);
+    }
+
+    /** 이계의 존재, close up: the six-eyed starry face under its golden ring. */
+    private static void cosmicPortrait(Pencil p) {
+        p.smudge(Pencil.ell(C, 140, 126, 126), PURPLE, 45);
+        Area ring = new Area(Pencil.ell(C, 132, 124, 124));
+        ring.subtract(new Area(Pencil.ell(C, 132, 106, 106)));
+        p.part(ring, 0.1, GOLD, 0.9);
+        p.part(Pencil.blob(10, 266, 40, 226, C, 236, 216, 226, 246, 266), 0.15, GOLD, 0.9);
+        LateMonsters.cosmicHead(p, C, 140, 90);
+    }
+
     // ================= catalogs =================
+
+    static Map<String, Monsters.Drawing> storyItems() {
+        Map<String, Monsters.Drawing> m = new LinkedHashMap<>();
+        m.put("starlight_dew", Icons::starlightDew);
+        m.put("meteor_shard", Icons::meteorShard);
+        m.put("constellation_slab", Icons::constellationSlab);
+        m.put("dark_core", Icons::darkCore);
+        m.put("eternal_ice", Icons::eternalIce);
+        m.put("sun_ember", Icons::sunEmber);
+        m.put("fallen_feather", Icons::fallenFeather);
+        m.put("weakening_potion", Icons::weakeningPotion);
+        return m;
+    }
+
+    static Map<String, Monsters.Drawing> portraits() {
+        Map<String, Monsters.Drawing> m = new LinkedHashMap<>();
+        m.put("npc_mystery", Icons::mysteryPortrait);
+        m.put("boss_face", Icons::cosmicPortrait);
+        return m;
+    }
 
     static Map<String, Monsters.Drawing> materials() {
         Map<String, Monsters.Drawing> m = new LinkedHashMap<>();

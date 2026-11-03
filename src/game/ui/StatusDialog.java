@@ -6,6 +6,8 @@ import game.model.Job;
 import game.model.Material;
 import game.model.Player;
 import game.model.Skill;
+import game.model.Story;
+import game.model.StoryMaterial;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -59,6 +61,10 @@ public class StatusDialog {
         stats.add(stat("star", "스탯 포인트", player.getStatPoints() + "", player.getStatPoints() > 0 ? "마을에서 분배" : " "));
         stats.add(stat("coin", "골드", player.getGold() + "G", " "));
         add(body, stats);
+        if (player.hasCosmicPassive()) {
+            add(body, note("<font color='" + Sketch.hex(new Color(106, 44, 154)) + "'><b>" + Story.PASSIVE_NAME
+                    + "</b></font> 모든 능력치 +5% (위 수치에 들어 있어요)", Sketch.INK));
+        }
 
         // ---------- forging materials ----------
         add(body, section("강화 재화"));
@@ -66,6 +72,21 @@ public class StatusDialog {
         materials.setOpaque(false);
         for (Material m : Material.values()) materials.add(material(m, player.getMaterial(m)));
         add(body, materials);
+
+        // ---------- 이계의 단서 (from the final story on) ----------
+        if (player.getStoryStage() >= Story.FIRST_REQUEST) {
+            add(body, section("이계의 단서"));
+            JPanel clues = new JPanel(new GridLayout(0, 2, 8, 4));
+            clues.setOpaque(false);
+            for (StoryMaterial m : StoryMaterial.values()) {
+                JPanel cell = new JPanel(new BorderLayout(6, 0));
+                cell.setOpaque(false);
+                cell.add(new JLabel(ItemArt.storyMaterial(m, 30)), BorderLayout.WEST);
+                cell.add(Sketch.label(m.getLabel() + "  " + player.getStoryMaterial(m) + "개", Font.BOLD, 13f, Sketch.INK), BorderLayout.CENTER);
+                clues.add(cell);
+            }
+            add(body, clues);
+        }
 
         // ---------- gear ----------
         add(body, section("장비"));
@@ -75,6 +96,10 @@ public class StatusDialog {
         // ---------- skills ----------
         add(body, section("스킬"));
         List<Skill> skills = player.getSkills();
+        if (player.hasCosmicPassive()) {
+            add(body, note("<b>" + Story.PASSIVE_NAME + "</b> <font color='" + Sketch.hex(Sketch.INK_SOFT) + "'>패시브<br>"
+                    + "이계의 존재를 쓰러뜨린 증표. HP, MP, 공격력, 방어력, 행운, 공격속도 +5% (최소 +1)</font>", Sketch.INK));
+        }
         if (skills.isEmpty()) {
             add(body, note(player.getJob() == Job.BEGINNER ? "Lv.10에 마을 전직소에서 전직하면 배워요." : "없음", Sketch.INK_SOFT));
         } else {

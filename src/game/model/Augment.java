@@ -112,6 +112,11 @@ public final class Augment {
         add(p, "shield", "거인의 숨결", Bonus.of().shield(0.20).regen(0.02));
     }
 
+    /** ???의 별지기의 가호: the final fight's one help in place of augments. Not in the augment pool. */
+    public static Augment blessing() {
+        return new Augment("별지기의 가호", Tier.PRISM, "star", Bonus.of().shield(0.15).dmgReduction(0.12).atkPct(0.15).revive(0.35));
+    }
+
     public static List<Augment> all() {
         return Collections.unmodifiableList(ALL);
     }

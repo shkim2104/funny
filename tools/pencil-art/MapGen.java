@@ -3,7 +3,8 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 
 /**
- * Draws the pencil town map and world map (into the game's images folder) and the title scene.
+ * Draws the pencil town map (and its invaded version for the final story) and world map (into the game's
+ * images folder) and the title scene.
  * The title scene goes to the preview folder only, unless "--title" is passed, so it can be
  * looked at before it replaces town_bg.png.
  *
@@ -18,6 +19,8 @@ public class MapGen {
         preview.mkdirs();
 
         write(Maps.TOWN_W, Maps.TOWN_H, 101, Maps::town, new File(images, "town.png"), new File(preview, "map_town.png"));
+        // Same seed as town.png, so the town under the invasion is stroke for stroke the same.
+        write(Maps.TOWN_W, Maps.TOWN_H, 101, Maps::townInvaded, new File(images, "town_invaded.png"), new File(preview, "map_town_invaded.png"));
         write(Maps.WORLD_W, Maps.WORLD_H, 202, Maps::world, new File(images, "dungeonentrence.png"), new File(preview, "map_world.png"));
         write(Maps.MULTI_W, Maps.MULTI_H, 404, Maps::multiverse, new File(images, "multiverse.png"), new File(preview, "map_multiverse.png"));
         new File(images, "colosseum").mkdirs();

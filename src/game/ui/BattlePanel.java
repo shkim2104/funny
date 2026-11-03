@@ -33,6 +33,8 @@ public class BattlePanel extends JPanel {
     private RunState run;
     private Bonus bonus = Bonus.NONE;
     private boolean bossFight;
+    /** The final fight: a boss fight whose one help (the blessing) is not weakened by 위압. */
+    private boolean finale;
     private int shieldHp;
     private FightStatus status = new FightStatus();
     private boolean firstHitDone;
@@ -274,12 +276,19 @@ public class BattlePanel extends JPanel {
     /** Whether the next fight is the boss (for boss-damage effects). */
     public void setBossFight(boolean bossFight) {
         this.bossFight = bossFight;
+        this.finale = false;
+    }
+
+    /** The fight against 이계의 존재: like a boss fight, with the blessing at full strength. */
+    public void setFinale() {
+        this.bossFight = true;
+        this.finale = true;
     }
 
     /** Re-reads the effects (augments may have been picked since) and raises the fight-start barrier. */
     private void beginFight() {
         Bonus augments = run != null ? run.total() : Bonus.NONE;
-        if (bossFight) {
+        if (bossFight && !finale) {
             augments = augments.scaled(World.BOSS_AUGMENT_SHARE);
             if (run != null && !run.getAugments().isEmpty()) appendLog("보스의 위압에 증강 효과가 약해진다!");
         }
@@ -794,6 +803,8 @@ public class BattlePanel extends JPanel {
     private void monsterStrike(Runnable onDone) {
         stage.animateAttack(false, () -> {
             MonsterSkill skill = monster.rollSkill(rnd);
+            String note = monster.takeNote();
+            if (note != null) appendLog(note);
             if (skill != null) appendLog(monster.getName() + "의 " + skill.getName() + "!");
             if (skill != null && !skill.attacks()) {
                 useSupportSkill(skill);
@@ -806,9 +817,16 @@ public class BattlePanel extends JPanel {
             }
             int hits = skill == null ? 1 : skill.hits();
             int total = 0;
-            for (int i = 0; i < hits && player.isAlive(); i++) total += landMonsterHit(skill == null ? 1 : skill.damageMul());
+            for (int i = 0; i < hits && player.isAlive(); i++) {
+                if (skill != null && skill.getFx() != null) stage.playSkillFx(skill.getFx(), skill.getFxColor(), i, true);
+                total += landMonsterHit(skill == null ? 1 : skill.damageMul(), skill == null ? monster.getName() + "의 공격!" : skill.getName() + "!");
+            }
             if (skill != null && player.isAlive()) {
                 status.apply(skill);
+                if (skill.getKind() == MonsterSkill.Kind.GRAVITY) {
+                    int taken = player.drainMp((int) Math.round(player.getMaxMp() * skill.getExtra()));
+                    appendLog("중력에 붙잡혔다! MP를 " + taken + " 빼앗기고 다음 턴에 움직일 수 없다!");
+                }
                 if (skill.getKind() == MonsterSkill.Kind.DRAIN) {
                     int healed = (int) Math.round(total * skill.getPower());
                     monster.heal(healed);
@@ -826,7 +844,7 @@ public class BattlePanel extends JPanel {
     }
 
     /** One monster hit on the player, after shield and thorns. Returns the damage before the shield. */
-    private int landMonsterHit(double damageMul) {
+    private int landMonsterHit(double damageMul, String what) {
         int def = (int) Math.round(player.getDef() * (1 + bonus.defPct()) * status.defenseMul());
         int dmg = Math.max(1, (int) Math.round(computeDamage(monster.getAtk(), def) * damageMul * (1 - bonus.dmgReduction())));
         int absorbed = Math.min(shieldHp, dmg);
@@ -834,7 +852,7 @@ public class BattlePanel extends JPanel {
         int taken = dmg - absorbed;
         player.takeDamage(taken);
         stage.showDamage(taken, false, false);
-        logDetail(monster.getName() + "의 공격! " + player.getName() + "이(가) " + taken + "의 피해를 입었다!"
+        logDetail(what + " " + player.getName() + "이(가) " + taken + "의 피해를 입었다!"
                 + (absorbed > 0 ? " (보호막이 " + absorbed + " 막음)" : ""));
         int reflected = (int) Math.round(dmg * bonus.thorns());
         if (reflected > 0) {
@@ -856,6 +874,19 @@ public class BattlePanel extends JPanel {
                 monster.enrage(skill.getPower());
                 appendLog(monster.getName() + "의 공격력이 크게 올랐다!");
                 break;
+            case CHARGE:
+                stage.playSkillFx(game.model.Skill.Fx.MAGIC, 0xFFE6A0, 0, false);
+                appendLog("!!! 별빛이 한곳으로 모인다... 다음 턴에 초신성이 터진다! 대비하라! !!!");
+                break;
+            case HORIZON: {
+                monster.guard();
+                int healed = (int) Math.round(monster.getMaxHp() * skill.getExtra());
+                monster.heal(healed);
+                String wiped = shieldHp > 0 ? " 보호막이 지평선 너머로 사라졌다!" : "";
+                shieldHp = 0;
+                appendLog(monster.getName() + "이(가) 빛을 삼키는 장막을 둘렀다. HP를 " + healed + " 회복하고 다음 공격을 받아 낸다." + wiped);
+                break;
+            }
             default:
                 int healed = (int) Math.round(monster.getMaxHp() * skill.getPower());
                 monster.heal(healed);

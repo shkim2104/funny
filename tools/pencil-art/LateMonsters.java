@@ -486,4 +486,66 @@ final class LateMonsters {
         p.part(Pencil.poly(hx - hr * 0.95, hy - hr * 0.6, hx - hr * 0.75, hy - hr * 1.5, hx - hr * 0.4, hy - hr * 0.9,
                 hx, hy - hr * 1.75, hx + hr * 0.4, hy - hr * 0.9, hx + hr * 0.75, hy - hr * 1.5, hx + hr * 0.95, hy - hr * 0.6), 0.15, GOLD, 1.0);
     }
+
+    // ================= 최종장 : 이계의 존재 =================
+
+    /** An almond eye: white, a colored iris, a dark pupil. */
+    static void cosmicEye(Pencil p, double x, double y, double rx, double ry, Color iris) {
+        Shape e = Pencil.blob(x - rx, y, x - rx * 0.4, y - ry, x + rx * 0.4, y - ry, x + rx, y, x + rx * 0.4, y + ry, x - rx * 0.4, y + ry);
+        p.g.setColor(Pencil.PAPER);
+        p.g.fill(e);
+        p.outline(e, 2.2);
+        p.dot(x, y, ry * 0.75, iris);
+        p.g.setColor(Pencil.LEAD);
+        p.g.fill(Pencil.ell(x, y, ry * 0.3, ry * 0.55));
+    }
+
+    /** A star-filled head with six eyes (three across, two above, one on the brow), for the boss and its portrait. */
+    static void cosmicHead(Pencil p, double hx, double hy, double hr) {
+        for (int i = 0; i < 7; i++) {
+            double a = toRadians(-150 + i * 20);
+            p.colorLine(3, YELLOW, hx + cos(a) * hr * 1.15, hy + sin(a) * hr * 1.2, hx + cos(a) * hr * 1.7, hy + sin(a) * hr * 1.75);
+        }
+        Backdrops.starfield(p, Pencil.ell(hx, hy, hr, hr * 1.15), 14, hr * 0.045);
+        cosmicEye(p, hx - hr * 0.52, hy + hr * 0.14, hr * 0.27, hr * 0.18, PURPLE);
+        cosmicEye(p, hx, hy + hr * 0.2, hr * 0.32, hr * 0.22, YELLOW);
+        cosmicEye(p, hx + hr * 0.52, hy + hr * 0.14, hr * 0.27, hr * 0.18, PURPLE);
+        cosmicEye(p, hx - hr * 0.3, hy - hr * 0.32, hr * 0.2, hr * 0.13, ICE);
+        cosmicEye(p, hx + hr * 0.3, hy - hr * 0.32, hr * 0.2, hr * 0.13, ICE);
+        cosmicEye(p, hx, hy - hr * 0.72, hr * 0.12, hr * 0.2, RED);
+    }
+
+    /**
+     * 이계의 존재: a robed god floating over the ground (no legs, a shadow far below the hem), its body a
+     * window onto the other world's night, a golden ring behind its head and rocks drifting around it.
+     */
+    static void cosmicGod(Pencil p) {
+        p.smudge(Pencil.ell(350, 670, 130, 14), Pencil.LEAD, 70);
+        java.awt.geom.Area ring = new java.awt.geom.Area(Pencil.ell(350, 172, 150, 150));
+        ring.subtract(new java.awt.geom.Area(Pencil.ell(350, 172, 124, 124)));
+        p.part(ring, 0.1, GOLD, 0.9);
+        for (int i = 0; i < 12; i++) {
+            double a = PI * 2 * i / 12;
+            p.ink(350 + cos(a) * 128, 172 + sin(a) * 128, 350 + cos(a) * 146, 172 + sin(a) * 146, 2);
+        }
+        for (double[] r : new double[][]{{110, 230, 30}, {600, 440, 26}}) p.part(Pencil.rock(p.r, r[0], r[1], r[2], r[2] * 0.85, 7), 0.6, PURPLE, 0.7);
+        // The left sleeve hangs open, the right one lifts a star.
+        Backdrops.starfield(p, Pencil.blob(300, 290, 230, 320, 150, 400, 96, 500, 140, 520, 196, 440, 270, 390), 30, 4);
+        Shape robe = Pencil.blob(300, 270, 400, 270, 448, 380, 500, 520, 540, 610, 480, 590, 440, 640, 400, 596, 350, 652,
+                300, 596, 260, 640, 220, 590, 160, 610, 200, 520, 252, 380);
+        Backdrops.starfield(p, robe, 160, 4);
+        double[][] stars = {{290, 420}, {330, 470}, {390, 450}, {420, 530}, {360, 560}};
+        for (int i = 0; i + 1 < stars.length; i++) {
+            p.colorLine(1.6, Pencil.PAPER, stars[i][0], stars[i][1], stars[i + 1][0], stars[i + 1][1]);
+        }
+        for (double[] s : stars) p.dot(s[0], s[1], 5, YELLOW);
+        Backdrops.starfield(p, Pencil.blob(400, 290, 470, 300, 540, 250, 572, 200, 546, 184, 500, 230, 430, 250), 30, 4);
+        p.part(Pencil.ell(116, 506, 22, 20), 0.05, PURPLE, 0.35);
+        p.part(Pencil.ell(560, 188, 20, 22), 0.05, PURPLE, 0.35);
+        p.smudge(Pencil.ell(574, 130, 54, 54), YELLOW, 70);
+        Maps.star(p, 574, 130, 34, YELLOW);
+        p.part(Pencil.blob(282, 276, 350, 300, 418, 276, 404, 300, 350, 326, 296, 300), 0.15, GOLD, 0.9);   // collar
+        cosmicHead(p, 350, 196, 76);
+        for (double[] r : new double[][]{{150, 600, 22}, {560, 640, 18}, {610, 300, 16}}) p.part(Pencil.rock(p.r, r[0], r[1], r[2], r[2] * 0.85, 7), 0.6, PURPLE, 0.7);
+    }
 }

@@ -3,6 +3,7 @@ package game.ui;
 import game.model.GearPiece;
 import game.model.Item;
 import game.model.Material;
+import game.model.StoryMaterial;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -64,6 +65,16 @@ public final class ItemArt {
 
     public static ImageIcon material(Material material, int size) {
         return scaled(MATERIALS + material.getIcon() + ".png", size);
+    }
+
+    /** An 이계의 단서 (images/story_items/{icon}.png). */
+    public static ImageIcon storyMaterial(StoryMaterial m, int size) {
+        return scaled("images/story_items/" + m.getIcon() + ".png", size);
+    }
+
+    /** The finished weakening potion. */
+    public static ImageIcon weakeningPotion(int size) {
+        return scaled("images/story_items/weakening_potion.png", size);
     }
 
     private static ImageIcon scaled(String path, int size) {

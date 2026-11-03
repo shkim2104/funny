@@ -7,7 +7,8 @@ import java.util.Map;
 
 /**
  * Generates the pencil-on-notebook dungeon art into the game's image folder:
- * images/dungeonN/bg.png plus one PNG per monster (file names match BattleStage's addSprite list).
+ * images/dungeonN/bg.png plus one PNG per monster (file names match BattleStage's addSprite list), the
+ * final battle in images/finale/, and the icons and story portraits.
  *
  * Usage (from simsimhaeseo_mandeum/):
  *   javac -encoding UTF-8 -d tools/pencil-art/build tools/pencil-art/*.java
@@ -109,6 +110,28 @@ public class ArtGen {
         writeIcons(new File(root, "items"), Icons.items(), 501, sheets == null ? null : new File(sheets, "items_sheet.png"));
         writeIcons(new File(root, "augments"), Icons.augments(), 777, sheets == null ? null : new File(sheets, "augments_sheet.png"));
         writeIcons(new File(root, "materials"), Icons.materials(), 909, sheets == null ? null : new File(sheets, "materials_sheet.png"));
+        writeFinale(new File(root, "finale"), sheets);
+        writeIcons(new File(root, "story_items"), Icons.storyItems(), 1111, sheets == null ? null : new File(sheets, "story_items_sheet.png"));
+        writeIcons(new File(root, "story"), Icons.portraits(), 1212, sheets == null ? null : new File(sheets, "story_sheet.png"));
+    }
+
+    /** The final battle: the invaded town plaza and 이계의 존재, drawn like a dungeon's backdrop and boss. */
+    private static void writeFinale(File dir, File sheets) throws Exception {
+        dir.mkdirs();
+        BufferedImage bg = Backdrops.paper(8 * 7919L);
+        Pencil bp = new Pencil(bg, 8 * 31L, 1.5);
+        Backdrops.invadedTown(bp);
+        bp.dispose();
+        Backdrops.rule(bg);
+        ImageIO.write(bg, "png", new File(dir, "bg.png"));
+
+        BufferedImage boss = new BufferedImage(Monsters.SIZE, Monsters.SIZE, BufferedImage.TYPE_INT_ARGB);
+        Pencil p = new Pencil(boss, 800L * 977L, 1.8);
+        LateMonsters.cosmicGod(p);
+        p.dispose();
+        ImageIO.write(boss, "png", new File(dir, "boss_cosmic.png"));
+        if (sheets != null) writeSheet(bg, new BufferedImage[]{boss}, new File(sheets, "finale_sheet.png"));
+        System.out.println("finale: bg + boss");
     }
 
     /** One 256px transparent PNG per icon; optionally a grid sheet of them on paper. */

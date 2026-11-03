@@ -12,6 +12,8 @@ import game.model.Player;
 import game.model.Quest;
 import game.model.RunState;
 import game.model.Skill;
+import game.model.Story;
+import game.model.StoryMaterial;
 import game.model.World;
 import game.save.SaveManager;
 import game.save.Settings;
@@ -35,6 +37,7 @@ public class GameFrame extends JFrame {
     private final JPanel cards = new JPanel(cardLayout);
     private final BattlePanel battlePanel = new BattlePanel();
     private final PvpPanel pvpPanel = new PvpPanel();
+    private final EndingPanel endingPanel = new EndingPanel(() -> showTown(false));
     private JButton multiverseBackButton;
     private final PageTurner pageTurner = new PageTurner(this);
 
@@ -49,6 +52,11 @@ public class GameFrame extends JFrame {
             {450, 20, 450, 240},    // 7 천공의 성채
     };
     private static final String NOT_READY = "아직 개발중인 컨텐츠입니다.";
+    /** On town.png / town_invaded.png: where ??? stands in the plaza, and the rift in the sky. */
+    private static final Rectangle MYSTERY_AREA = new Rectangle(570, 495, 100, 125), RIFT_AREA = new Rectangle(470, 0, 700, 150);
+    private Image townArt, invadedTownArt;
+    /** Story to play once the town is on screen (the invasion's first scene, a word after losing). */
+    private Story.Scene pendingTownScene;
 
     private JLabel townInfoLabel;
     private JButton[] townButtons;
@@ -92,6 +100,7 @@ public class GameFrame extends JFrame {
         cards.add(buildMultiversePanel(), "MULTIVERSE");
         cards.add(pvpPanel, "PVP");
         cards.add(battlePanel, "BATTLE");
+        cards.add(endingPanel, "ENDING");
         setContentPane(cards);
         setGlassPane(pageTurner);
         pageTurner.setVisible(false);
@@ -328,7 +337,16 @@ public class GameFrame extends JFrame {
     /** Town: click buildings on town.png; character management lives in the side menu. */
     private JPanel buildTownPanel() {
         // The job hall (전직소) is drawn into the pencil town art itself; JobHallArt.AREA still marks its hotspot.
-        townMap = new MapScreen(loadImage("images/town.png"));
+        townArt = loadImage("images/town.png");
+        invadedTownArt = loadImage("images/town_invaded.png");
+        townMap = new MapScreen(townArt);
+        // The final story: ??? and the rift appear while 이계의 존재 is invading; a trace of the rift stays after.
+        townMap.addShownHotspot("???", MYSTERY_AREA.x, MYSTERY_AREA.y, MYSTERY_AREA.width, MYSTERY_AREA.height, this::talkToMystery,
+                () -> player != null && Story.invaded(player.getStoryStage()));
+        townMap.addShownHotspot("하늘의 균열", RIFT_AREA.x, RIFT_AREA.y, RIFT_AREA.width, RIFT_AREA.height, this::enterRift,
+                () -> player != null && Story.invaded(player.getStoryStage()));
+        townMap.addShownHotspot("균열의 흔적", RIFT_AREA.x, RIFT_AREA.y, RIFT_AREA.width, RIFT_AREA.height, this::enterRift,
+                () -> player != null && player.getStoryStage() >= Story.ENDED);
         townMap.addHotspot("대장간", 130, 200, 430, 350, this::openBlacksmith);
         townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
         townMap.addHotspot("???", 100, 505, 165, 195, this::openMultiverse);
@@ -510,7 +528,17 @@ public class GameFrame extends JFrame {
                 + "<br>골드 " + player.getGold() + "G"
                 + "<br>흑연 " + player.getMaterial(Material.GRAPHITE) + " · 심 " + player.getMaterial(Material.HARD_LEAD)
                 + " · 가루 " + player.getMaterial(Material.ERASER_DUST)
-                + statPointsNote + "</html>");
+                + statPointsNote + storyNote() + "</html>");
+    }
+
+    /** Under the town info: what the final story wants next. */
+    private String storyNote() {
+        int stage = player.getStoryStage();
+        if (stage >= Story.FIRST_REQUEST && stage <= Story.LAST_REQUEST) {
+            return "<br><br><font color='#b48ae0'>이계의 침공! 광장의 ???를 찾아가세요. (" + stage + "/3단계)</font>";
+        }
+        if (stage == Story.POTION_MADE) return "<br><br><font color='#b48ae0'>약이 완성됐다. 하늘의 균열로!</font>";
+        return "";
     }
 
     // Town windows open on a fresh notebook page and turn back to the town when closed.
@@ -716,6 +744,7 @@ public class GameFrame extends JFrame {
         player.addMaterial(Material.GRAPHITE, graphite);
         StringBuilder msg = new StringBuilder("EXP " + expGain + ", 골드 " + goldGain + "G"
                 + (graphite > 0 ? ", " + Material.GRAPHITE.getLabel() + " " + graphite + "개" : "") + " 획득!");
+        rollStoryMaterial(msg);
         if (player.getLevel() > beforeLevel) {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
             msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! (스탯 포인트 +")
@@ -768,9 +797,124 @@ public class GameFrame extends JFrame {
             finalMsg.append("\n다음 던전이 개방되었습니다. (").append(dungeons.get(currentDungeonIndex + 1).getName()).append(")");
         } else if (currentDungeonIndex == dungeons.size() - 1) {
             finalMsg.append("\n*** 축하합니다! 모든 던전을 클리어했습니다! ***");
+            if (player.getStoryStage() == Story.NOT_STARTED) {
+                // The final story begins: the town is invaded and ??? is waiting there.
+                player.setStoryStage(Story.FIRST_REQUEST);
+                autoSave();
+                finalMsg.append("\n\n").append(Story.CRACK);
+                finishRun(finalMsg.toString(), "마을로 돌아가기", () -> {
+                    pendingTownScene = Story.intro();
+                    showTown(false);
+                });
+                return;
+            }
         }
 
         endDungeonRun(finalMsg.toString());
+    }
+
+    /** While ??? has a request open, kills in a dungeon may give that dungeon's 이계의 단서. */
+    private void rollStoryMaterial(StringBuilder msg) {
+        int stage = player.getStoryStage();
+        if (stage < Story.FIRST_REQUEST || stage > Story.LAST_REQUEST) return;
+        StoryMaterial m = StoryMaterial.of(currentDungeonIndex);
+        int count = bossStage ? StoryMaterial.BOSS_COUNT : StoryMaterial.rollKill(rnd);
+        if (m == null || count <= 0) return;
+        player.addStoryMaterial(m, count);
+        msg.append("\n[이계의 단서] ").append(m.getLabel()).append(" ").append(count).append("개 획득! (")
+                .append(player.getStoryMaterial(m)).append("개)");
+    }
+
+    // ---------- the final story ----------
+
+    private void playScene(Story.Scene scene) {
+        StoryDialog.show(this, scene, player, CharacterArt.load(currentSaveId));
+    }
+
+    /** ???: the open request (and handing it in), or, once the potion is made, the way into the rift. */
+    private void talkToMystery() {
+        int stage = player.getStoryStage();
+        if (stage == Story.POTION_MADE) {
+            enterRift();
+            return;
+        }
+        if (stage < Story.FIRST_REQUEST || stage > Story.LAST_REQUEST) return;
+        // Until the first clue is found the whole story is told again, in case it was missed.
+        boolean fresh = stage == Story.FIRST_REQUEST && Story.request(stage).keySet().stream().allMatch(m -> player.getStoryMaterial(m) == 0);
+        playScene(fresh ? Story.intro() : Story.requestTalk(stage));
+        if (!RiftQuestDialog.show(this, player)) return;
+        autoSave();
+        playScene(Story.handedIn(stage));
+        refreshTown();
+        townMap.toast(stage < Story.LAST_REQUEST ? "???의 다음 부탁이 생겼다! (" + (stage + 1) + "/3단계)" : "이계 약화 물약이 완성됐다!");
+    }
+
+    /** The rift: barred until the potion is made, then the final fight (again, after the ending). */
+    private void enterRift() {
+        int stage = player.getStoryStage();
+        if (stage < Story.POTION_MADE) {
+            playScene(Story.notReady());
+            return;
+        }
+        if (StoryDialog.show(this, Story.beforeFinale(), player, CharacterArt.load(currentSaveId)) != 0) return;
+        startFinale();
+    }
+
+    private void startFinale() {
+        boolean first = player.getStoryStage() < Story.ENDED;
+        playScene(Story.finaleStart(first));
+        run = new RunState(dungeons.size() - 1);
+        run.take(Augment.blessing());
+        battlePanel.setRun(run);
+        battlePanel.setFinale();
+        bossStage = true;
+        Monster boss = World.finalBoss(true);
+        Music.play("boss");
+        pageTurner.turn(() -> {
+            cardLayout.show(cards, "BATTLE");
+            currentCard = "BATTLE";
+            battlePanel.setDungeon(BattleStage.FINALE);
+            battlePanel.setStageText("최종전");
+            battlePanel.startBattle(player, boss, result -> onFinaleFinished(result, first));
+        }, true);
+    }
+
+    private void onFinaleFinished(BattlePanel.Result result, boolean first) {
+        if (result == BattlePanel.Result.FLEE) {
+            finishRun("균열에서 물러났다. 이계의 존재는 아직 하늘 너머에 있다.", "마을로", () -> showTown(false));
+            return;
+        }
+        if (result == BattlePanel.Result.LOSE) {
+            int penalty = player.getGold() / 4;
+            player.spendGold(penalty);
+            player.reviveAtTown();
+            finishRun("별빛에 삼켜져 정신을 잃었다...\n골드 " + penalty + "G를 잃었다.", "마을로", () -> {
+                pendingTownScene = Story.defeat();
+                showTown(false);
+            });
+            return;
+        }
+        int exp = first ? World.FINAL_EXP : World.REPEAT_EXP, gold = first ? World.FINAL_GOLD : World.REPEAT_GOLD;
+        player.gainExp(exp);
+        player.earnGold(gold);
+        player.addMaterial(Material.GRAPHITE, first ? 60 : 20);
+        player.addMaterial(Material.HARD_LEAD, first ? 20 : 6);
+        player.addMaterial(Material.ERASER_DUST, first ? 3 : 1);
+        if (first) player.setStoryStage(Story.ENDED);
+        autoSave();
+        String text = "=== 이계의 존재를 쓰러뜨렸다! ===\nEXP " + exp + ", 골드 " + gold + "G, 흑연 조각 " + (first ? 60 : 20) + "개, 단단한 심 "
+                + (first ? 20 : 6) + "개, 지우개 가루 " + (first ? 3 : 1) + "개 획득!"
+                + (first ? "\n패시브 '" + Story.PASSIVE_NAME + "'을(를) 얻었다! 모든 능력치 +5%" : "");
+        finishRun(text, "이야기 계속", () -> {
+            playScene(Story.victory(first));
+            if (!first) {
+                showTown(false);
+                return;
+            }
+            Music.play("title");
+            showCard("ENDING", true);
+            endingPanel.play(player.getName());
+        });
     }
 
     /** Gives this dungeon boss's materials and returns them as one line, e.g. "흑연 조각 5개, 단단한 심 1개". */
@@ -815,11 +959,16 @@ public class GameFrame extends JFrame {
 
     /** Every way out of a dungeon (clear, retreat, defeat) ends here: MP is fully restored on the way out. */
     private void endDungeonRun(String outcome) {
+        finishRun(outcome, "던전 지도로", this::returnToDungeonMap);
+    }
+
+    /** As endDungeonRun, with the button that leaves named and wired by the caller. */
+    private void finishRun(String outcome, String leaveLabel, Runnable leave) {
         player.restoreMp(player.getMaxMp());
         String fade = run != null && !run.getAugments().isEmpty() ? "\n증강 효과가 모두 사라졌다." : "";
         run = null;
         battlePanel.setRun(null);
-        battlePanel.endRun(outcome + "\n던전을 나서며 MP가 모두 회복되었다." + fade, "던전 지도로", this::returnToDungeonMap);
+        battlePanel.endRun(outcome + "\n전투를 마치며 MP가 모두 회복되었다." + fade, leaveLabel, leave);
     }
 
     /** A floor without an augment: one random find, shown in the log so 자동 전투 keeps going. */
@@ -846,12 +995,21 @@ public class GameFrame extends JFrame {
     }
 
     private void showTown(boolean forward) {
-        Music.play("town");
+        Music.play(player != null && Story.invaded(player.getStoryStage()) ? "boss" : "town");
         List<String> notes = townArrival();
         refreshTown();
+        if (player != null) townMap.setArt(Story.invaded(player.getStoryStage()) && invadedTownArt != null ? invadedTownArt : townArt);
         showCard("TOWN", forward);
         Theme.focusFirst(townButtons);
         if (!notes.isEmpty()) townMap.toast(String.join("  ·  ", notes));
+        Story.Scene scene = pendingTownScene;
+        pendingTownScene = null;
+        if (scene != null) {
+            // After the page has turned onto the town.
+            Timer t = new Timer(750, e -> playScene(scene));
+            t.setRepeats(false);
+            t.start();
+        }
     }
 
     /** 새 장비 자동 장착: wears the piece if it beats the current one, and says so in the run's message. */

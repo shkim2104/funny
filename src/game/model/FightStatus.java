@@ -22,6 +22,7 @@ public final class FightStatus {
                 defenseCut = skill.getPower();
                 break;
             case STUN:
+            case GRAVITY:
                 if (stunShield == 0) {
                     stunned = true;
                     stunShield = 3;

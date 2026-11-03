@@ -9,6 +9,14 @@ import java.util.Random;
 import java.util.Set;
 
 public class Monster {
+    /** Chooses every move for a monster that fights by its own rules (the final boss). Never returns null. */
+    public interface Brain {
+        MonsterSkill next(Monster self);
+
+        /** A brain with no memory, for a new fight. */
+        Brain fresh();
+    }
+
     private final String name;
     private final int maxHp;
     private int hp;
@@ -22,6 +30,9 @@ public class Monster {
     private final Set<MonsterSkill> triggered = new HashSet<>();
     private double attackMul = 1;
     private boolean guarding;
+    private Brain brain;
+    /** Something the monster did by itself this turn (e.g. awakening), to be shown once. */
+    private String note;
 
     public Monster(String name, int maxHp, int atk, int def, int spd, int expReward, int goldReward) {
         this.name = name;
@@ -37,7 +48,25 @@ public class Monster {
     public Monster copy() {
         Monster m = new Monster(name, maxHp, atk, def, spd, expReward, goldReward);
         m.skills.addAll(skills);
+        if (brain != null) m.brain = brain.fresh();
         return m;
+    }
+
+    /** Gives the monster a brain that picks all of its moves (its skills list is then just for show). */
+    public Monster brain(Brain b) {
+        brain = b;
+        return this;
+    }
+
+    public boolean hasBrain() { return brain != null; }
+
+    public void note(String text) { note = text; }
+
+    /** The note left this turn, once; null if none. */
+    public String takeNote() {
+        String n = note;
+        note = null;
+        return n;
     }
 
     /** A fresh copy with HP, ATK and DEF multiplied; speed and rewards stay. */
@@ -45,6 +74,7 @@ public class Monster {
         Monster m = new Monster(name, (int) Math.round(maxHp * mul), (int) Math.round(atk * mul), (int) Math.round(def * mul),
                 spd, expReward, goldReward);
         m.skills.addAll(skills);
+        if (brain != null) m.brain = brain.fresh();
         return m;
     }
 
@@ -58,6 +88,7 @@ public class Monster {
 
     /** What it does this turn: a low-HP skill not used yet, else one by chance, else null for a plain attack. */
     public MonsterSkill rollSkill(Random rnd) {
+        if (brain != null) return brain.next(this);
         for (MonsterSkill s : skills) {
             if (s.isTriggered() && !triggered.contains(s) && hp * 100 <= maxHp * s.getChance()) {
                 triggered.add(s);

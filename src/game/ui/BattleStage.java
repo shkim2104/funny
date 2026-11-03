@@ -46,9 +46,12 @@ public class BattleStage extends JComponent {
     /** Backdrop per dungeon index, in World.buildDungeons() order. */
     private static final String[] BACKDROP_PATHS = {
             "images/dungeon1/bg.png", "images/dungeon2/bg.png", "images/dungeon3/bg.png", "images/dungeon4/bg.png",
-            "images/dungeon5/bg.png", "images/dungeon6/bg.png", "images/dungeon7/bg.png", "images/colosseum/bg.png"};
+            "images/dungeon5/bg.png", "images/dungeon6/bg.png", "images/dungeon7/bg.png", "images/colosseum/bg.png",
+            "images/finale/bg.png"};
     /** setDungeon() index of the colosseum, which comes after the dungeons. */
     public static final int ARENA = 7;
+    /** setDungeon() index of the invaded town, where 이계의 존재 is fought. */
+    public static final int FINALE = 8;
     private static final BufferedImage[] BACKDROPS = new BufferedImage[BACKDROP_PATHS.length];
     private static final float BACKDROP_FOCUS_Y = 0.62f;     // which band of a tall backdrop survives the crop (0 = top)
     private static final double MONSTER_GROUND_ON_BACKDROP = 0.63;   // monster's feet, as a fraction of stage height
@@ -133,6 +136,8 @@ public class BattleStage extends JComponent {
         addSprite("뇌전 골렘", "images/dungeon7/thunder_golem.png", 1.11f, false);
         addSprite("타락 천사", "images/dungeon7/fallen_angel.png", 1.13f, false);
         addSprite("타천사왕", "images/dungeon7/boss_fallen_king.png", 1.2f, false);
+
+        addSprite(game.model.World.FINAL_BOSS, "images/finale/boss_cosmic.png", 1.3f, false);
     }
 
     private static void addSprite(String name, String path, float heightFrac, boolean flip) {

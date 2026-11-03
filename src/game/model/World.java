@@ -40,6 +40,28 @@ public class World {
                 (int) Math.round(def * DEF_MUL[d]), spd, (int) Math.round(exp * EXP_MUL[d]), gold);
     }
 
+    // ---------- the final boss ----------
+    /** 이계의 존재 as the hero meets it, after the weakening potion. */
+    /** HP, ATK, DEF, SPD and 초신성's power (an array so the balance tools can try other numbers). */
+    private static final double[] FINAL = {12000, 540, 40, 24, 2.4};
+    /** Without the potion it would be this much stronger (only for the balance tools: the game never lets it be fought). */
+    static final double UNWEAKENED_HP = 1 / 0.6, UNWEAKENED_ATK = 1 / 0.7, UNWEAKENED_NOVA = 3.2;
+    public static final String FINAL_BOSS = "이계의 존재";
+    /** Rewards: the first defeat, then each one after. */
+    public static final int FINAL_EXP = 3000, FINAL_GOLD = 5000, REPEAT_EXP = 800, REPEAT_GOLD = 1200;
+
+    public static Monster finalBoss(boolean weakened) {
+        double hp = weakened ? 1 : UNWEAKENED_HP, atk = weakened ? 1 : UNWEAKENED_ATK;
+        MonsterSkill shower = MonsterSkill.shower("유성우", 3, 0.55).fx(Skill.Fx.MAGIC, 0xB070FF);
+        MonsterSkill gravity = MonsterSkill.gravity("블랙홀", 0.9, 0.3).fx(Skill.Fx.SMASH, 0x4A2470);
+        MonsterSkill charge = MonsterSkill.charge("초신성 — 빛을 모은다");
+        MonsterSkill nova = MonsterSkill.nova("초신성", weakened ? FINAL[4] : UNWEAKENED_NOVA).fx(Skill.Fx.LIGHTNING, 0xFFE6A0);
+        MonsterSkill horizon = MonsterSkill.horizon("사건의 지평선", 0.08);
+        return new Monster(FINAL_BOSS, (int) Math.round(FINAL[0] * hp), (int) Math.round(FINAL[1] * atk), (int) FINAL[2], (int) FINAL[3], 0, 0)
+                .skills(shower, gravity, nova, horizon)
+                .brain(new CosmicBrain(shower, gravity, charge, nova, horizon));
+    }
+
     public static List<Dungeon> buildDungeons() {
         List<Dungeon> list = new ArrayList<>();
 

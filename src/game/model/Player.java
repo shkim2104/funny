@@ -52,6 +52,9 @@ public class Player {
     private final List<GearPiece> gear = new ArrayList<>();
     private final List<Job> jobPath = new ArrayList<>();
     private final int[] materials = new int[Material.values().length];
+    /** Final story progress (see Story), and the 이계의 단서 held for it. */
+    private int storyStage;
+    private final int[] storyMaterials = new int[StoryMaterial.values().length];
 
     public Player(String name) {
         this.name = name;
@@ -100,14 +103,45 @@ public class Player {
     public int getLevel() { return level; }
     public int getExp() { return exp; }
     public int getExpToNext() { return expToNext; }
-    public int getMaxHp() { return maxHp; }
+    public int getMaxHp() { return passive(maxHp); }
     public int getHp() { return hp; }
-    public int getMaxMp() { return maxMp; }
+    public int getMaxMp() { return passive(maxMp); }
     public int getMp() { return mp; }
     public int getBaseAtk() { return baseAtk; }
     public int getBaseDef() { return baseDef; }
-    public int getLuck() { return luck; }
-    public int getSpd() { return baseSpd; }
+    public int getLuck() { return passive(luck); }
+    public int getSpd() { return passive(baseSpd); }
+
+    // Without the passive: what the save file holds, so saving never compounds the +5%.
+    public int getRawMaxHp() { return maxHp; }
+    public int getRawMaxMp() { return maxMp; }
+    public int getRawLuck() { return luck; }
+    public int getRawSpd() { return baseSpd; }
+
+    /** 이계를 넘어선 자: earned by defeating 이계의 존재 once. */
+    public boolean hasCosmicPassive() { return storyStage >= Story.ENDED; }
+
+    private int passive(int value) {
+        return hasCosmicPassive() ? Story.withPassive(value) : value;
+    }
+
+    public int getStoryStage() { return storyStage; }
+    public void setStoryStage(int stage) { storyStage = stage; }
+    public int getStoryMaterial(StoryMaterial m) { return storyMaterials[m.ordinal()]; }
+    public void addStoryMaterial(StoryMaterial m, int amount) { storyMaterials[m.ordinal()] += amount; }
+
+    public boolean spendStoryMaterial(StoryMaterial m, int amount) {
+        if (storyMaterials[m.ordinal()] < amount) return false;
+        storyMaterials[m.ordinal()] -= amount;
+        return true;
+    }
+
+    /** Takes up to `amount` MP (black hole); returns how much was taken. */
+    public int drainMp(int amount) {
+        int taken = Math.min(mp, Math.max(0, amount));
+        mp -= taken;
+        return taken;
+    }
     public int getStatPoints() { return statPoints; }
     public int getGold() { return gold; }
     public int getUnlockedDungeon() { return unlockedDungeon; }
@@ -211,7 +245,7 @@ public class Player {
      * off for mages. (It was half while a point gave +2 ATK.)
      */
     public int getMagicAtk() {
-        return getAtk() + maxMp / 4;
+        return getAtk() + getMaxMp() / 4;
     }
 
     public boolean useMp(int amount) {
@@ -221,11 +255,11 @@ public class Player {
     }
 
     public int getAtk() {
-        return baseAtk + (weapon != null ? weapon.getValue() : 0);
+        return passive(baseAtk + (weapon != null ? weapon.getValue() : 0));
     }
 
     public int getDef() {
-        return baseDef + (armor != null ? armor.getValue() : 0);
+        return passive(baseDef + (armor != null ? armor.getValue() : 0));
     }
 
     // ---------- gear pieces ----------
@@ -348,14 +382,14 @@ public class Player {
 
     /** Percent chance (0~100) to land a critical hit, driven by luck. */
     public int getCritChance() {
-        return Math.min(50, 5 + luck * 2);
+        return Math.min(50, 5 + getLuck() * 2);
     }
 
     public boolean isAlive() { return hp > 0; }
     public void takeDamage(int dmg) { hp = Math.max(0, hp - dmg); }
-    public void heal(int amount) { hp = Math.min(maxHp, hp + amount); }
-    public void restoreMp(int amount) { mp = Math.min(maxMp, mp + amount); }
-    public void reviveAtTown() { hp = Math.max(1, maxHp / 3); mp = maxMp / 2; }
+    public void heal(int amount) { hp = Math.min(getMaxHp(), hp + amount); }
+    public void restoreMp(int amount) { mp = Math.min(getMaxMp(), mp + amount); }
+    public void reviveAtTown() { hp = Math.max(1, getMaxHp() / 3); mp = getMaxMp() / 2; }
 
     public void earnGold(int amount) { gold += amount; }
     public void spendGold(int amount) { gold = Math.max(0, gold - amount); }
@@ -433,8 +467,8 @@ public class Player {
 
     private void levelUp() {
         level++;
-        hp = maxHp;
-        mp = maxMp;
+        hp = getMaxHp();
+        mp = getMaxMp();
         statPoints += POINTS_PER_LEVEL;
         expToNext = expRequiredFor(level);
         System.out.println("\n*** 레벨 업! " + name + "이(가) Lv." + level

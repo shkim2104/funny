@@ -4,6 +4,7 @@ import game.model.Job;
 import game.model.Material;
 import game.model.Player;
 import game.model.Quest;
+import game.model.StoryMaterial;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -159,13 +160,13 @@ public class SaveManager {
         pw.println(p.getLevel());
         pw.println(p.getExp());
         pw.println(p.getExpToNext());
-        pw.println(p.getMaxHp());
+        pw.println(p.getRawMaxHp());
         pw.println(p.getHp());
-        pw.println(p.getMaxMp());
+        pw.println(p.getRawMaxMp());
         pw.println(p.getMp());
         pw.println(p.getBaseAtk());
         pw.println(p.getBaseDef());
-        pw.println(p.getLuck());
+        pw.println(p.getRawLuck());
         pw.println(p.getStatPoints());
         pw.println(p.getGold());
         pw.println(p.getUnlockedDungeon());
@@ -174,7 +175,7 @@ public class SaveManager {
         List<String> inv = p.getConsumables();
         pw.println(inv.size());
         for (String item : inv) pw.println(item);
-        pw.println(p.getSpd());
+        pw.println(p.getRawSpd());
         // Job path as comma-separated enum names in tier order, e.g. "SWORDSMAN,PAGE" (empty = beginner).
         StringBuilder path = new StringBuilder();
         for (Job j : p.getJobPath()) {
@@ -191,6 +192,14 @@ public class SaveManager {
         }
         pw.println(materials);
         pw.println(p.encodeGear());
+        // Final story: the stage, then the 이계의 단서 counts in StoryMaterial's order.
+        pw.println(p.getStoryStage());
+        StringBuilder clues = new StringBuilder();
+        for (StoryMaterial m : StoryMaterial.values()) {
+            if (clues.length() > 0) clues.append(',');
+            clues.append(p.getStoryMaterial(m));
+        }
+        pw.println(clues);
     }
 
     private static Player read(File file) {
@@ -291,6 +300,16 @@ public class SaveManager {
         // weapons and armor, listed in the inventory by name, into +0 pieces.
         String gearLine = br.readLine();
         if (gearLine != null) player.decodeGear(gearLine);
+
+        // Saves from before the final story have no lines here and start before it.
+        String stageLine = br.readLine();
+        if (stageLine != null && !stageLine.trim().isEmpty()) player.setStoryStage(Integer.parseInt(stageLine.trim()));
+        String clueLine = br.readLine();
+        if (clueLine != null && !clueLine.trim().isEmpty()) {
+            String[] counts = clueLine.trim().split(",");
+            StoryMaterial[] all = StoryMaterial.values();
+            for (int i = 0; i < all.length && i < counts.length; i++) player.addStoryMaterial(all[i], Integer.parseInt(counts[i].trim()));
+        }
         return player;
     }
 }

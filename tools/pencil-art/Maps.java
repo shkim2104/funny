@@ -81,7 +81,7 @@ final class Maps {
         }
     }
 
-    private static void star(Pencil p, double x, double y, double r, Color c) {
+    static void star(Pencil p, double x, double y, double r, Color c) {
         double[] xy = new double[20];
         for (int i = 0; i < 10; i++) {
             double a = -PI / 2 + i * PI / 5, rr = i % 2 == 0 ? r : r * 0.42;
@@ -233,6 +233,52 @@ final class Maps {
         p.part(Pencil.ell(175, 648, 19, 29), 0.08, ICE, 0.9);
         p.curve(2.2, 175, 648, 184, 642, 180, 630, 166, 632, 160, 650, 172, 668, 190, 662);
         label(p, "???", 150, 534, 26, -2, false);
+    }
+
+    // ================= 최종장: the town after the sky cracked =================
+
+    /**
+     * The same town, drawn stroke for stroke, then darkened: a rift of stars torn across the top of the
+     * page, falling stars, smoking rubble, and the hooded helper "???" waiting at the top of the plaza
+     * (within 585,500 85x110, clear of every hotspot).
+     */
+    static void townInvaded(Pencil p) {
+        town(p);
+        Graphics2D g = p.g;
+        g.setPaint(new GradientPaint(0, 0, Pencil.alpha(Backdrops.NIGHT, 120), 0, TOWN_H, Pencil.alpha(Backdrops.NIGHT, 45)));
+        g.fillRect(0, 0, TOWN_W, TOWN_H);
+        p.hatch(new java.awt.Rectangle(0, 0, TOWN_W, 300), 0.3, -38, Pencil.alpha(PURPLE, 200));
+
+        Backdrops.rift(p, 130, 90, 440, -40, 510, 40, 600, 30, 690, 110, 790, 70, 890, 100, 990, 50, 1090, 120, 1240, 90);
+        Backdrops.meteor(p, 500, 300, 590, 90, 16);
+        Backdrops.meteor(p, 1000, 370, 990, 150, 15);
+        Backdrops.meteor(p, 330, 470, 520, 120, 13);
+        Backdrops.meteor(p, 770, 270, 760, 140, 11);
+        // Where the stars came down: heaps of glowing rock on the roads and the grass.
+        for (double[] c : new double[][]{{380, 590, 22}, {905, 545, 20}, {1020, 605, 17}, {300, 690, 16}, {780, 1180, 20}, {40, 470, 15}}) {
+            Backdrops.fallenStar(p, c[0], c[1], c[2]);
+        }
+        p.text("하늘이 갈라졌다...!", 36, 176, 24, RED, -3);
+        mysteryHelper(p, 620, 604);
+    }
+
+    /** The hooded helper "???": a small purple cloak with a face lost in shadow and a question mark over it. */
+    private static void mysteryHelper(Pencil p, double x, double feet) {
+        p.smudge(Pencil.ell(x, feet, 30, 7), Pencil.LEAD, 70);
+        Shape cloak = Pencil.blob(x - 14, feet - 64, x, feet - 80, x + 14, feet - 64, x + 22, feet - 30, x + 26, feet, x, feet + 3,
+                x - 26, feet, x - 22, feet - 30);
+        p.g.setColor(new Color(76, 54, 108));   // solid: hatching alone is too sparse on a figure this small
+        p.g.fill(cloak);
+        p.shade(cloak, 0.4);
+        p.outline(cloak, 3.0);
+        Shape face = Pencil.ell(x, feet - 58, 9, 10);
+        p.g.setColor(new Color(22, 18, 30));
+        p.g.fill(face);
+        p.outline(face, 2.0);
+        p.dot(x - 3.5, feet - 59, 1.6, ICE);
+        p.dot(x + 3.5, feet - 59, 1.6, ICE);
+        p.ink(x - 4, feet - 44, x - 6, feet - 4, 1.4);
+        p.text("?", x + 22, feet - 74, 26, PURPLE, 8);
     }
 
     // ================= the road between worlds =================
