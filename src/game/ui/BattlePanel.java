@@ -33,9 +33,14 @@ public class BattlePanel extends JPanel {
     private RunState run;
     private Bonus bonus = Bonus.NONE;
     private boolean bossFight;
+    /** The 중간 보스 on stage 10 (see setMidBossFight). */
+    private boolean midBoss;
     /** The final fight: a boss fight whose one help (the blessing) is not weakened by 위압. */
     private boolean finale;
     private int shieldHp;
+    /** Potions and ethers drunk in this stage's fight; at most HEALS_PER_STAGE (자동 포션 included). */
+    private int healsUsed;
+    public static final int HEALS_PER_STAGE = 2;
     private FightStatus status = new FightStatus();
     private boolean firstHitDone;
 
@@ -229,7 +234,7 @@ public class BattlePanel extends JPanel {
         return panel;
     }
 
-    /** Shows where the run has got to, e.g. "12 / 30 스테이지". */
+    /** Shows where the run has got to, e.g. "12 / 20 스테이지". */
     public void setStageText(String text) {
         stageLabel.setText(text);
     }
@@ -249,6 +254,9 @@ public class BattlePanel extends JPanel {
         this.player = player;
         this.monster = monster;
         this.onFinish = onFinish;
+        resetHeals();
+        stage.setHeldWeapon(player.getWeapon() != null && player.getWeapon().getItem().isCrafted()
+                ? GearArt.drawing(player.getWeapon().getItemName()) : null);
         log.setText("");
         actionCards.show(actionArea, "ACTIONS");
         actionArea.revalidate();
@@ -277,6 +285,13 @@ public class BattlePanel extends JPanel {
     public void setBossFight(boolean bossFight) {
         this.bossFight = bossFight;
         this.finale = false;
+        this.midBoss = false;
+    }
+
+    /** The 중간 보스: boss-damage effects count, but no 위압 and 자동 전투 keeps going (it is not meant to be hard). */
+    public void setMidBossFight() {
+        setBossFight(false);
+        this.midBoss = true;
     }
 
     /** The fight against 이계의 존재: like a boss fight, with the blessing at full strength. */
@@ -306,6 +321,7 @@ public class BattlePanel extends JPanel {
     public void nextBattle(Monster monster, Consumer<Result> onFinish) {
         this.monster = monster;
         this.onFinish = onFinish;
+        resetHeals();
         playerTurn();
         stage.setMonsterName(monster.getName());
         stage.startIdle();
@@ -396,8 +412,9 @@ public class BattlePanel extends JPanel {
         }
     }
 
-    /** The potion 자동 포션 would drink now, or null (off, HP high enough, or none in the bag). */
+    /** The potion 자동 포션 would drink now, or null (off, HP high enough, none in the bag, or no uses left). */
     private String autoPotion() {
+        if (healsLeft() <= 0) return null;
         int pct = Settings.getAutoPotionPercent();
         if (pct <= 0 || player.getHp() * 100 > player.getMaxHp() * pct) return null;
         boolean high = player.getInventory().contains("하이 포션"), small = player.getInventory().contains("포션");
@@ -690,7 +707,7 @@ public class BattlePanel extends JPanel {
             mul *= 1 + bonus.firstStrike();
             firstHitDone = true;
         }
-        if (bossFight) mul *= 1 + bonus.bossDmg();
+        if (bossFight || midBoss) mul *= 1 + bonus.bossDmg();
         if (monster.getHp() <= monster.getMaxHp() * 0.3) mul *= 1 + bonus.execute();
         if (player.getHp() <= player.getMaxHp() * 0.3) mul *= 1 + bonus.lowHpDmg();
         boolean crit = forceCrit || rnd.nextInt(100) < player.getCritChance() + bonus.critChance();
@@ -768,7 +785,12 @@ public class BattlePanel extends JPanel {
             onDone.run();
         };
 
-        if (skill.isAttack()) {
+        if (skill.isAttack() && skill.getMotion() != null && !Settings.isReducedEffects() && BattleStage.hasMotion(skill.getMotion())) {
+            // The skill's close-up: each hit lands when the motion strikes, not on a lunge.
+            stage.playMotion(skill.getMotion(), i -> {
+                if (i < skill.getHits() && monster.isAlive()) landSkillHit(skill, skill.getHits(), i);
+            }, afterHits);
+        } else if (skill.isAttack()) {
             skillHits(skill, skill.getHits(), 0, afterHits);
         } else {
             // Pure support skill: a short pause so the turn doesn't feel instant.
@@ -782,22 +804,27 @@ public class BattlePanel extends JPanel {
     private void skillHits(Skill skill, int hits, int index, Runnable onDone) {
         stage.animateAttack(true, () -> {
             stage.playSkillFx(skill.getFx(), skill.getFxColor(), index);
-            int def = skill.isIgnoreDefense() ? 0 : monster.getDef();
-            int[] hit = playerHit(skill.powerFor(player), def, true, skill.isAlwaysCrit());
-            int finalDmg = hit[0];
-            boolean crit = hit[1] == 1;
-            int hpBefore = monster.getHp();
-            monster.takeDamage(finalDmg);
-            stage.showDamage(finalDmg, true, crit);
-            logDetail((hits > 1 ? (index + 1) + "타! " : "") + (crit ? "치명타! " : "")
-                    + monster.getName() + "에게 " + finalDmg + "의 피해!");
-            // Drain from the damage that actually landed, so overkill on the last hit doesn't over-heal.
-            drainFrom(Math.min(finalDmg, hpBefore), skill.getDrainRatio() + bonus.lifesteal());
-            refreshStatus();
+            landSkillHit(skill, hits, index);
         }, () -> {
             if (index + 1 < hits && monster.isAlive()) skillHits(skill, hits, index + 1, onDone);
             else onDone.run();
         });
+    }
+
+    /** One hit of a skill: damage, the number, the log line and any drain. */
+    private void landSkillHit(Skill skill, int hits, int index) {
+        int def = skill.isIgnoreDefense() ? 0 : monster.getDef();
+        int[] hit = playerHit(skill.powerFor(player), def, true, skill.isAlwaysCrit());
+        int finalDmg = hit[0];
+        boolean crit = hit[1] == 1;
+        int hpBefore = monster.getHp();
+        monster.takeDamage(finalDmg);
+        stage.showDamage(finalDmg, true, crit);
+        logDetail((hits > 1 ? (index + 1) + "타! " : "") + (crit ? "치명타! " : "")
+                + monster.getName() + "에게 " + finalDmg + "의 피해!");
+        // Drain from the damage that actually landed, so overkill on the last hit doesn't over-heal.
+        drainFrom(Math.min(finalDmg, hpBefore), skill.getDrainRatio() + bonus.lifesteal());
+        refreshStatus();
     }
 
     private void monsterStrike(Runnable onDone) {
@@ -812,7 +839,8 @@ public class BattlePanel extends JPanel {
                 return;
             }
             if (rnd.nextDouble() < bonus.dodge()) {
-                logDetail(monster.getName() + "의 공격! " + player.getName() + "은(는) 가볍게 피했다!");
+                // A skill already named itself on the line above; only a plain attack says 공격.
+                logDetail((skill == null ? monster.getName() + "의 공격! " : "") + player.getName() + "은(는) 가볍게 피했다!");
                 return;
             }
             int hits = skill == null ? 1 : skill.hits();
@@ -938,10 +966,11 @@ public class BattlePanel extends JPanel {
             CommandButton b = healBtns[i];
             b.setColor(hp ? HEAL_GREEN : MANA_BLUE);
             b.setSubtitle((hp ? "HP +" : "MP +") + item.getValue() + "  ·  " + count + "개");
-            b.setDimmed(count == 0);
-            b.setEnabled(count > 0);
+            b.setDimmed(count == 0 || healsLeft() <= 0);
+            b.setEnabled(count > 0 && healsLeft() > 0);
         }
-        prompt.setText("무엇으로 회복할까?");
+        prompt.setText(healsLeft() > 0 ? "무엇으로 회복할까? (이번 스테이지 " + healsLeft() + "번 남음)"
+                : "이번 스테이지에서는 더 회복할 수 없다. (스테이지마다 " + HEALS_PER_STAGE + "번)");
         attackMenuOpen = true;
         healMenuOpen = true;
         actionCards.show(actionArea, "HEAL_MENU");
@@ -975,7 +1004,24 @@ public class BattlePanel extends JPanel {
             appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 MP를 " + (player.getMp() - before) + " 회복했다!");
         }
         player.removeItem(itemName);
+        healsUsed++;
+        if (healsLeft() <= 0) appendLog("이번 스테이지의 회복 아이템을 모두 썼다. (스테이지마다 " + HEALS_PER_STAGE + "번)");
+        refreshHealCount();
         refreshStatus();
+    }
+
+    private int healsLeft() {
+        return HEALS_PER_STAGE - healsUsed;
+    }
+
+    private void resetHeals() {
+        healsUsed = 0;
+        refreshHealCount();
+    }
+
+    /** The 회복 button shows how many potions this stage still allows. */
+    private void refreshHealCount() {
+        itemBtn.setSubtitle(healsLeft() + " / " + HEALS_PER_STAGE + "번");
     }
 
     private void onFlee() {

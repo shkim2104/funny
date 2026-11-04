@@ -48,6 +48,12 @@ public class Item {
     public Item gacha() { this.gachaOnly = true; return this; }
     public boolean isGachaOnly() { return gachaOnly; }
 
+    /** Forged and drawn by the player (대장간 제작): its picture is their drawing, see CraftedGear. */
+    private boolean crafted;
+
+    public Item crafted() { this.crafted = true; return this; }
+    public boolean isCrafted() { return crafted; }
+
     public Item icon(String icon) { this.icon = icon; return this; }
     public Item bonus(Bonus bonus) { this.bonus = bonus; return this; }
 

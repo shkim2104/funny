@@ -23,11 +23,13 @@ public final class Enhancement {
     private static final int[] DESTROY_PCT = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 4, 5, 6, 8, 10, 15};
     private static final int[] GRAPHITE = {12, 20, 30, 40, 50, 65, 80, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 400, 500};
     private static final int[] HARD_LEAD = {0, 0, 0, 0, 0, 2, 4, 7, 10, 12, 17, 22, 27, 32, 40, 47, 55, 62, 75, 100};
-    private static final int[] GOLD = {100, 160, 240, 360, 500, 900, 1300, 1800, 2400, 3000, 4000, 5000, 6000, 7600, 9200, 11000, 13000, 16000, 22000, 30000};
+    private static final int[] GOLD = {300, 480, 720, 1080, 1500, 2700, 3900, 5400, 7200, 9000, 12000, 15000, 18000, 22800, 27600, 33000, 39000, 48000, 66000, 90000};
 
     /** 분해: graphite per grade, 일반 to 전설. Boss gear (신화) gives hard lead instead. */
     private static final int[] SCRAP_GRAPHITE = {1, 2, 4, 8, 15, 0};
     private static final int MYTHIC_SCRAP_LEAD = 1;
+    /** 분해: 색연필 심 per grade, 일반 to 신화. */
+    private static final int[] SCRAP_COLOR = {0, 1, 2, 4, 8, 15};
 
     private Enhancement() {}
 
@@ -108,11 +110,16 @@ public final class Enhancement {
         return piece.getItem().getGrade() == Item.Grade.MYTHIC ? MYTHIC_SCRAP_LEAD : 0;
     }
 
+    public static int scrapColorLead(GearPiece piece) {
+        return SCRAP_COLOR[piece.getItem().getGrade().ordinal()];
+    }
+
     /** 분해: turns a spare piece (not worn, not locked) into materials. Enhancement is not refunded. */
     public static boolean disassemble(Player player, GearPiece piece) {
         if (!player.isSpare(piece)) return false;
         player.addMaterial(Material.GRAPHITE, scrapGraphite(piece));
         player.addMaterial(Material.HARD_LEAD, scrapHardLead(piece));
+        player.addMaterial(Material.COLOR_LEAD, scrapColorLead(piece));
         player.removeGear(piece);
         return true;
     }

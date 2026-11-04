@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Character saves, MapleStory-style: every character is its own file in a "characters" folder, and the
@@ -203,11 +204,13 @@ public class SaveManager {
         pw.println(clues);
         // Tutorial: the step, and R once its reward was paid.
         pw.println(p.getTutorialStep() + (p.isTutorialRewarded() ? ",R" : ""));
+        // Forged gear (대장간 제작): what each drawn piece rolled. Its picture is a PNG beside the save.
+        pw.println(p.encodeCrafted());
     }
 
     private static Player read(File file) {
         try (BufferedReader br = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
-            return parse(br);
+            return parse(br, false);
         } catch (IOException | RuntimeException e) {
             System.out.println("불러오기에 실패했습니다: " + file.getName() + " (" + e.getMessage() + ")");
             return null;
@@ -223,16 +226,19 @@ public class SaveManager {
         return text.toString();
     }
 
-    /** The character from encode()'s text, or null if it can't be read. */
+    /**
+     * The character from encode()'s text, or null if it can't be read. It is someone else's (a duel
+     * opponent): their forged gear never replaces a different piece of ours with the same name.
+     */
     public static Player decode(String text) {
         try (BufferedReader br = new BufferedReader(new StringReader(text))) {
-            return parse(br);
+            return parse(br, true);
         } catch (IOException | RuntimeException e) {
             return null;
         }
     }
 
-    private static Player parse(BufferedReader br) throws IOException {
+    private static Player parse(BufferedReader br, boolean foreign) throws IOException {
         String name = br.readLine();
         int level = Integer.parseInt(br.readLine());
         int exp = Integer.parseInt(br.readLine());
@@ -300,9 +306,9 @@ public class SaveManager {
         }
 
         // Saves from before gear pieces have no line here: the constructor already turned their
-        // weapons and armor, listed in the inventory by name, into +0 pieces.
+        // weapons and armor, listed in the inventory by name, into +0 pieces. Read once the forged gear
+        // (further down) is known.
         String gearLine = br.readLine();
-        if (gearLine != null) player.decodeGear(gearLine);
 
         // Saves from before the final story have no lines here and start before it.
         String stageLine = br.readLine();
@@ -323,6 +329,21 @@ public class SaveManager {
             player.setTutorialStep(Integer.parseInt(parts[0].trim()));
             player.setTutorialRewarded(parts.length > 1 && parts[1].trim().equals("R"));
         }
+        // Saves from before 대장간 제작 have no line here.
+        Map<String, String> renames = player.decodeCrafted(br.readLine(), foreign);
+        if (gearLine != null) player.decodeGear(renamed(gearLine, renames));
         return player;
+    }
+
+    /** The gear line with renamed forged pieces under their new names. */
+    private static String renamed(String gearLine, Map<String, String> renames) {
+        if (renames.isEmpty() || gearLine.trim().isEmpty()) return gearLine;
+        List<String> parts = new ArrayList<>();
+        for (String part : gearLine.trim().split(";")) {
+            int bar = part.indexOf('|');
+            String name = bar < 0 ? part : part.substring(0, bar);
+            parts.add(renames.containsKey(name) ? renames.get(name) + part.substring(name.length()) : part);
+        }
+        return String.join(";", parts);
     }
 }

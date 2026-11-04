@@ -178,7 +178,7 @@ public final class Bonus {
         if (dmgReduction > 0) l.add("받는 피해 -" + p(dmgReduction));
         if (dmgReduction < 0) l.add("받는 피해 +" + p(-dmgReduction));
         pct(l, "스킬 피해", skillDmg);
-        if (critChance > 0) l.add("치명타 확률 +" + Math.round(critChance) + "%");
+        if (critChance > 0) l.add("치명타 확률 +" + num(critChance) + "%");
         pct(l, "치명타 피해", critDmg);
         if (ignoreDef > 0) l.add("적 방어력 " + p(ignoreDef) + " 무시");
         if (firstStrike > 0) l.add("전투 첫 공격 피해 +" + p(firstStrike));
@@ -213,6 +213,12 @@ public final class Bonus {
     }
 
     private static String p(double v) {
-        return Math.round(v * 100) + "%";
+        return num(v * 100) + "%";
+    }
+
+    /** A whole number when it is one, else one decimal: 3.2 stays 3.2, 12.0 shows as 12. */
+    private static String num(double v) {
+        double tenth = Math.round(v * 10) / 10.0;
+        return tenth == Math.rint(tenth) ? String.valueOf((long) tenth) : String.valueOf(tenth);
     }
 }

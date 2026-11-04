@@ -151,8 +151,7 @@ public final class TownDialogs {
 
         JPanel text = new JPanel(new GridLayout(0, 1, 0, 2));
         text.setOpaque(false);
-        String kind = q.getType() == Quest.Type.BOSS ? "보스 토벌" : "사냥";
-        text.add(Sketch.label("[" + kind + "] " + q.getTitle(), Font.BOLD, 15f, q.getType() == Quest.Type.BOSS ? Sketch.RED_PENCIL : Sketch.INK));
+        text.add(Sketch.label("[" + q.getKind() + "] " + q.getTitle(), Font.BOLD, 15f, q.getType() != Quest.Type.HUNT ? Sketch.RED_PENCIL : Sketch.INK));
         text.add(Sketch.label("장소: " + q.getPlace(dungeons), Font.PLAIN, 12f, Sketch.INK_SOFT));
         text.add(Sketch.label("보상: " + q.getRewardText(), Font.PLAIN, 12f, Sketch.INK_SOFT));
         Sketch.Bar bar = new Sketch.Bar(q.isDone() ? new Color(54, 134, 58) : Sketch.BLUE_PENCIL, 8300 + index);
@@ -165,10 +164,7 @@ public final class TownDialogs {
         JButton claim = new Sketch.Button(q.isDone() ? "보상 받기" : "진행 중", q.isDone());
         claim.setEnabled(q.isDone());
         claim.addActionListener(e -> {
-            player.earnGold(q.getGold());
-            player.gainExp(q.getExp());
-            if (q.getItem() != null) player.addItem(q.getItem());
-            player.addMaterial(Material.ERASER_DUST, q.getEraserDust());
+            q.payTo(player);
             player.replaceQuest(q, dungeons, rnd);
             note.setText("보상을 받았다!  " + q.getRewardText());
             refresh[0].run();

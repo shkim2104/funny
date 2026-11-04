@@ -65,6 +65,10 @@ public class StatusDialog {
             add(body, note("<font color='" + Sketch.hex(new Color(106, 44, 154)) + "'><b>" + Story.PASSIVE_NAME
                     + "</b></font> 모든 능력치 +5% (위 수치에 들어 있어요)", Sketch.INK));
         }
+        if (player.getTierBonus() > 0) {
+            add(body, note("<font color='" + Sketch.hex(Sketch.BLUE_PENCIL) + "'><b>전직 보너스 (" + player.getJobPath().size() + "차)</b></font> 모든 능력치 +"
+                    + Math.round(player.getTierBonus() * 100) + "% (위 수치에 들어 있어요)", Sketch.INK));
+        }
 
         // ---------- forging materials ----------
         add(body, section("강화 재화"));

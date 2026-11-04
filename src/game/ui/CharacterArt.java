@@ -57,6 +57,12 @@ public final class CharacterArt {
 
     private final BufferedImage[] parts = new BufferedImage[Part.values().length];
     private BufferedImage flat;
+    /** A forged weapon's drawing held in the front hand (GearArt layout), or null. Not saved with the hero. */
+    private BufferedImage held;
+    /** How far a held weapon leans forward at rest, and how much of the arm's swing it follows. */
+    private static final double HELD_TILT = 18, HELD_FOLLOW = 0.9;
+    /** From the shoulder joint to the hand, along a hanging arm. */
+    private static final int HAND_REACH = 198;
 
     private CharacterArt() {
         for (Part p : Part.values()) parts[p.ordinal()] = new BufferedImage(p.w, p.h, BufferedImage.TYPE_INT_ARGB);
@@ -137,8 +143,43 @@ public final class CharacterArt {
         place(g2, Part.BODY, alpha(alphaPerPart, Part.BODY));
         limb(g2, Part.ARM, false, armL, alpha(alphaPerPart, Part.ARM));
         limb(g2, Part.ARM, true, armR, alpha(alphaPerPart, Part.ARM));
+        if (held != null) paintHeld(g2, armR);
         place(g2, Part.HEAD, alpha(alphaPerPart, Part.HEAD));
         g2.dispose();
+    }
+
+    /** The forged weapon's drawing in hand, or null. */
+    public BufferedImage getHeld() {
+        return held;
+    }
+
+    /** Gives the hero a forged weapon to hold in battle (null puts it away). */
+    public void setHeld(BufferedImage drawing) {
+        if (drawing == held) return;
+        held = drawing;
+        changed();
+    }
+
+    /** Where the front hand is on the standing figure: a weapon's grip goes here. */
+    public static Point restingHand() {
+        Point o = origin(Part.ARM, true);
+        return new Point(o.x + Part.ARM.w / 2, o.y + 8 + HAND_REACH);
+    }
+
+    /**
+     * The held weapon at the front hand. The hand follows the arm's swing; the weapon leans forward and
+     * turns with the swing, so a lunge brings the blade down in front.
+     */
+    private void paintHeld(Graphics2D g, double armR) {
+        Point o = origin(Part.ARM, true);
+        double px = o.x + Part.ARM.w / 2.0, py = o.y + 8;
+        double a = Math.toRadians(-armR);
+        double hx = px - Math.sin(a) * HAND_REACH, hy = py + Math.cos(a) * HAND_REACH;
+        Graphics2D gw = (Graphics2D) g.create();
+        gw.translate(hx, hy);
+        gw.rotate(Math.toRadians(HELD_TILT + (armR - 6) * HELD_FOLLOW));
+        gw.drawImage(held, -GearArt.GRIP_X, -GearArt.GRIP_Y, null);
+        gw.dispose();
     }
 
     private static float alpha(float[] a, Part p) {
@@ -219,7 +260,7 @@ public final class CharacterArt {
 
         // Pose into a buffer, then lay it on a paper-colored halo so thin pencil lines stay readable
         // over the hatched backdrops (like a doodle cut out and stuck onto the page).
-        int pad = (int) Math.ceil(130 * s);
+        int pad = (int) Math.ceil((held != null ? 560 : 130) * s);
         int bw = (int) Math.ceil(FIG_W * s) + pad * 2, bh = (int) Math.ceil(FIG_H * s) + pad * 2;
         BufferedImage buf = new BufferedImage(bw, bh, BufferedImage.TYPE_INT_ARGB);
         Graphics2D gb = buf.createGraphics();

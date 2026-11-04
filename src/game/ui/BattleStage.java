@@ -99,42 +99,49 @@ public class BattleStage extends JComponent {
         addSprite("멧돼지", "images/dungeon1/boar.png", 0.86f, false);
         addSprite("들개", "images/dungeon1/dog.png", 0.86f, false);
         addSprite("너구리", "images/dungeon1/raccoon.png", 0.8f, false);
+        addSprite("성난 들소", "images/dungeon1/mid_bison.png", 1.0f, false);
         addSprite("초원의 우두머리 늑대", "images/dungeon1/boss_wolf.png", 1.12f, false);
 
         addSprite("박쥐", "images/dungeon2/bat.png", 0.74f, false);
         addSprite("고블린", "images/dungeon2/goblin.png", 0.89f, false);
         addSprite("동굴 거미", "images/dungeon2/cave_spider.png", 0.84f, false);
         addSprite("동굴 곰", "images/dungeon2/cave_bear.png", 0.94f, false);
+        addSprite("고블린 주술사", "images/dungeon2/mid_goblin_shaman.png", 1.02f, false);
         addSprite("동굴의 오크 대장", "images/dungeon2/boss_orc_chief.png", 1.14f, false);
 
         addSprite("해골 병사", "images/dungeon3/skeleton_soldier.png", 1f, false);
         addSprite("망령", "images/dungeon3/wraith.png", 0.97f, false);
         addSprite("좀비", "images/dungeon3/zombie.png", 0.97f, false);
         addSprite("폐허의 도적", "images/dungeon3/ruin_bandit.png", 0.97f, false);
+        addSprite("해골 기사", "images/dungeon3/mid_skeleton_knight.png", 1.06f, false);
         addSprite("폐허의 리치", "images/dungeon3/boss_lich.png", 1.14f, false);
 
         addSprite("어둠의 기사", "images/dungeon4/dark_knight.png", 1.08f, false);
         addSprite("타락한 마법사", "images/dungeon4/fallen_mage.png", 1.05f, false);
         addSprite("지옥견", "images/dungeon4/hellhound.png", 0.89f, false);
         addSprite("악마 궁수", "images/dungeon4/demon_archer.png", 1.03f, false);
+        addSprite("마왕의 근위대장", "images/dungeon4/mid_demon_captain.png", 1.1f, false);
         addSprite("마왕", "images/dungeon4/boss_demon_lord.png", 1.2f, false);
 
         addSprite("서리 늑대", "images/dungeon5/frost_wolf.png", 0.89f, false);
         addSprite("얼음 정령", "images/dungeon5/ice_spirit.png", 1f, false);
         addSprite("눈사람 골렘", "images/dungeon5/snow_golem.png", 1.08f, false);
         addSprite("빙하 박쥐", "images/dungeon5/glacier_bat.png", 0.74f, false);
+        addSprite("설인", "images/dungeon5/mid_yeti.png", 1.08f, false);
         addSprite("서리 여왕", "images/dungeon5/boss_frost_queen.png", 1.18f, false);
 
         addSprite("화염 도마뱀", "images/dungeon6/fire_salamander.png", 0.84f, false);
         addSprite("용암 골렘", "images/dungeon6/lava_golem.png", 1.11f, false);
         addSprite("불꽃 악령", "images/dungeon6/flame_wraith.png", 1.03f, false);
         addSprite("화산 오우거", "images/dungeon6/volcano_ogre.png", 1.13f, false);
+        addSprite("화염 와이번", "images/dungeon6/mid_fire_wyvern.png", 1.05f, false);
         addSprite("화염 군주", "images/dungeon6/boss_flame_lord.png", 1.2f, false);
 
         addSprite("폭풍 그리폰", "images/dungeon7/storm_griffin.png", 1f, false);
         addSprite("천공의 기사", "images/dungeon7/sky_knight.png", 1.08f, false);
         addSprite("뇌전 골렘", "images/dungeon7/thunder_golem.png", 1.11f, false);
         addSprite("타락 천사", "images/dungeon7/fallen_angel.png", 1.13f, false);
+        addSprite("폭풍의 수호자", "images/dungeon7/mid_storm_warden.png", 1.1f, false);
         addSprite("타천사왕", "images/dungeon7/boss_fallen_king.png", 1.2f, false);
 
         addSprite(game.model.World.FINAL_BOSS, "images/finale/boss_cosmic.png", 1.3f, false);
@@ -198,6 +205,16 @@ public class BattleStage extends JComponent {
     private boolean inImpact = false;
     /** Hit-stop requested by the hits of the current impact; the lunge freezes this long before returning. */
     private int pendingHitStopMs = 0;
+
+    /** A skill's close-up motion playing over the stage (SkillMotion), or null. */
+    private SkillMotion.Scene motion;
+    private long motionStart;
+    private double motionSpeed = 1;
+    private int motionNextHit;
+    private java.util.function.IntConsumer motionOnHit;
+    private Runnable motionOnDone;
+    private Timer motionTimer;
+    private final BufferedImage motionPage = new BufferedImage(SkillMotion.W, SkillMotion.H, BufferedImage.TYPE_INT_RGB);
 
     /** One hit's skill effect (see Skill.Fx). Randomness is rolled once so playback is stable. */
     private static final class SkillFx {
@@ -473,6 +490,77 @@ public class BattleStage extends JComponent {
         repaint();
     }
 
+    /** True if a motion exists for this key (SkillMotion), so the battle can use it instead of the lunge. */
+    public static boolean hasMotion(String key) {
+        return SkillMotion.scene(key) != null;
+    }
+
+    /**
+     * Plays a skill's close-up motion over the stage. onHit(i) fires as hit i lands (apply its damage
+     * there); onDone once the camera is back. The forged weapon the hero holds, if any, is the one swung.
+     */
+    public void playMotion(String key, java.util.function.IntConsumer onHit, Runnable onDone) {
+        SkillMotion.Scene scene = SkillMotion.scene(key);
+        if (scene == null) {
+            onDone.run();
+            return;
+        }
+        scene.heldDrawing = playerArt == null ? null : playerArt.getHeld();
+        motion = scene;
+        motionStart = System.nanoTime();
+        motionSpeed = Settings.battleSpeed();
+        motionNextHit = 0;
+        motionOnHit = onHit;
+        motionOnDone = onDone;
+        if (motionTimer != null) motionTimer.stop();
+        motionTimer = new Timer(15, e -> stepMotion());
+        motionTimer.start();
+    }
+
+    /** Lands the hits whose moment has come, and finishes the motion at its end. */
+    private void stepMotion() {
+        if (motion == null) return;
+        double ms = motionMs();
+        while (motionNextHit < motion.hits.length && ms >= motion.hits[motionNextHit]) {
+            int i = motionNextHit++;
+            monsterHitFlash = 1f;
+            inImpact = true;
+            try {
+                motionOnHit.accept(i);
+            } finally {
+                inImpact = false;
+            }
+        }
+        if (ms >= motion.end) {
+            motionTimer.stop();
+            motion = null;
+            repaint();
+            Runnable done = motionOnDone;
+            motionOnDone = null;
+            if (done != null) done.run();
+            return;
+        }
+        repaint();
+    }
+
+    private double motionMs() {
+        return (System.nanoTime() - motionStart) / 1e6 * motionSpeed;
+    }
+
+    /** The motion's page laid over the whole stage, cropped to fill it. */
+    private void paintMotion(Graphics2D g2, int w, int h) {
+        MonsterSprite sprite = monsterName == null ? null : MONSTER_SPRITES.get(monsterName);
+        Graphics2D gp = motionPage.createGraphics();
+        motion.render(gp, playerArt != null ? playerArt : CharacterArt.defaultDoodle(), backdrop,
+                sprite == null ? null : sprite.image, sprite != null && sprite.flip,
+                SkillMotion.MON_H * (sprite == null ? 1 : sprite.heightFrac), sprite == null ? 1 : sprite.footFrac, motionMs());
+        gp.dispose();
+        double s = Math.max(w / (double) SkillMotion.W, h / (double) SkillMotion.H);
+        int dw = (int) Math.ceil(SkillMotion.W * s), dh = (int) Math.ceil(SkillMotion.H * s);
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2.drawImage(motionPage, (w - dw) / 2, (h - dh) / 2, dw, dh, null);
+    }
+
     /** Animates a lunge attack. onImpact fires at the peak of the lunge (apply damage there); onDone fires after the return. */
     public void animateAttack(boolean playerAttacking, Runnable onImpact, Runnable onDone) {
         final int frames = 12;
@@ -545,6 +633,21 @@ public class BattleStage extends JComponent {
         monsterKnock = Math.max(0f, monsterKnock - dt / KNOCK_TIME);
         screenFlash = Math.max(0f, screenFlash - dt / SCREEN_FLASH_TIME);
         shakeClock += dt * 30f;
+
+        if (motion != null) {
+            // A skill's close-up covers the stage; damage numbers and the status boxes stay on top.
+            paintMotion(g2, w, h);
+            int playerX = Math.max(100, Math.round(w * 0.2f));
+            int monsterX = Math.max(playerX + 180, w - Math.max(95, Math.round(w * 0.2f)));
+            int monsterGroundY = (int) Math.round(h * (backdrop != null ? MONSTER_GROUND_ON_BACKDROP : 0.42));
+            drawDamageTexts(g2, playerX, h - 26, monsterX, monsterGroundY);
+            drawHeals(g2, playerX, h - 26);
+            g2.dispose();
+            Graphics2D gh = (Graphics2D) g.create();
+            hud.paint(gh, w, h);
+            gh.dispose();
+            return;
+        }
 
         if (backdrop != null) drawBackdrop(g2, w, h);
 
@@ -1524,6 +1627,11 @@ public class BattleStage extends JComponent {
     public void setOpponentArt(CharacterArt art) {
         this.opponentArt = art;
         repaint();
+    }
+
+    /** A forged weapon's drawing for the hero to hold (null when the weapon worn is not one). */
+    public void setHeldWeapon(java.awt.image.BufferedImage drawing) {
+        if (playerArt != null) playerArt.setHeld(drawing);
     }
 
     public void setPlayerArt(CharacterArt art) {

@@ -33,10 +33,6 @@ public final class DrawCharacterDialog {
 
     private enum Tool { PENCIL, FILL, ERASER }
 
-    private static final Color[] PENCILS = {
-            new Color(44, 42, 52), new Color(120, 116, 112), new Color(122, 78, 44), new Color(240, 196, 160),
-            new Color(214, 58, 50), new Color(238, 134, 40), new Color(244, 200, 50), new Color(66, 156, 76),
-            new Color(52, 120, 214), new Color(40, 56, 130), new Color(142, 78, 190), new Color(238, 130, 170)};
     private static final int STROKE_ALPHA = 235, FILL_ALPHA = 190;
     /** Fill stops at pixels at least this opaque, so a lightly shaded area can still be filled. */
     private static final int FILL_EDGE_ALPHA = 110;
@@ -50,7 +46,11 @@ public final class DrawCharacterDialog {
     private final Canvas canvas = new Canvas();
     private final Preview preview = new Preview();
     private final PartButton[] partBtns = new PartButton[PARTS.length];
-    private final Swatch[] swatches = new Swatch[PENCILS.length];
+    private final PencilPalette palette = new PencilPalette(c -> {
+        this.color = c;
+        if (this.tool == Tool.ERASER) this.tool = Tool.PENCIL;
+        refreshTools();
+    });
     private final SizeDot[] sizeDots = new SizeDot[SIZES.length];
     private final JButton pencilBtn = new Sketch.Button("연필", false);
     private final JButton fillBtn = new Sketch.Button("칠하기", false);
@@ -59,7 +59,7 @@ public final class DrawCharacterDialog {
     private final Deque<BufferedImage> undo = new ArrayDeque<>();   // one part's picture before each stroke
     private final Deque<Part> undoPart = new ArrayDeque<>();
     private Part part = Part.HEAD;
-    private Color color = PENCILS[0];
+    private Color color = PencilPalette.BOX[0];
     private int size = 1;
     private Tool tool = Tool.PENCIL;
     private boolean confirmed;
@@ -161,21 +161,7 @@ public final class DrawCharacterDialog {
         preview.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
         addFixed(tools, preview);
 
-        addTool(tools, Sketch.label("색연필", Font.BOLD, 14f, Sketch.INK));
-        JPanel palette = new JPanel(new GridLayout(3, 4, 5, 5));
-        palette.setOpaque(false);
-        for (int i = 0; i < PENCILS.length; i++) {
-            final Color c = PENCILS[i];
-            swatches[i] = new Swatch(c);
-            swatches[i].addActionListener(e -> {
-                color = c;
-                if (tool == Tool.ERASER) tool = Tool.PENCIL;
-                refreshTools();
-            });
-            palette.add(swatches[i]);
-        }
-        palette.setPreferredSize(new Dimension(196, 126));
-        palette.setMaximumSize(new Dimension(Integer.MAX_VALUE, 126));
+        addTool(tools, Sketch.label("색연필  (+ 로 색 추가)", Font.BOLD, 14f, Sketch.INK));
         addFixed(tools, palette);
 
         addTool(tools, Sketch.label("굵기", Font.BOLD, 14f, Sketch.INK));
@@ -245,6 +231,7 @@ public final class DrawCharacterDialog {
         pencilBtn.setText((tool == Tool.PENCIL ? "√ " : "") + "연필");
         fillBtn.setText((tool == Tool.FILL ? "√ " : "") + "칠하기");
         eraserBtn.setText((tool == Tool.ERASER ? "√ " : "") + "지우개");
+        palette.setInHand(tool != Tool.ERASER);
         canvas.setCursor(Cursor.getPredefinedCursor(tool == Tool.FILL ? Cursor.HAND_CURSOR : Cursor.CROSSHAIR_CURSOR));
         dialog.repaint();
     }
@@ -350,32 +337,6 @@ public final class DrawCharacterDialog {
             g2.setColor(on ? Sketch.INK : Sketch.INK_SOFT);
             FontMetrics fm = g2.getFontMetrics();
             g2.drawString(target.label, (w - fm.stringWidth(target.label)) / 2, h - 18);
-            g2.dispose();
-        }
-    }
-
-    /** One colored pencil: a hatched dab of its color, circled while it is the one in hand. */
-    private final class Swatch extends JButton {
-        private final Color pencil;
-
-        Swatch(Color pencil) {
-            this.pencil = pencil;
-            setContentAreaFilled(false);
-            setBorderPainted(false);
-            setFocusPainted(false);
-            setOpaque(false);
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = Sketch.smooth(g);
-            int w = getWidth(), h = getHeight();
-            int r = Math.min(w, h) / 2 - 7;
-            g2.setColor(pencil);
-            g2.fillOval(w / 2 - r, h / 2 - r, r * 2, r * 2);
-            boolean on = pencil.equals(color) && tool != Tool.ERASER;
-            Sketch.circle(g2, w / 2.0, h / 2.0, r + (on ? 4 : 1), pencil.getRGB(), on ? 2.6f : 1.3f, on ? Sketch.RED_PENCIL : Sketch.INK);
             g2.dispose();
         }
     }

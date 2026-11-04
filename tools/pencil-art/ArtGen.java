@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * Generates the pencil-on-notebook dungeon art into the game's image folder:
- * images/dungeonN/bg.png plus one PNG per monster (file names match BattleStage's addSprite list), the
+ * images/dungeonN/bg.png plus one PNG per monster (the 중간 보스 last, so the others keep their seeds) (file names match BattleStage's addSprite list), the
  * final battle in images/finale/, and the icons and story portraits.
  *
  * Usage (from simsimhaeseo_mandeum/):
@@ -40,43 +40,50 @@ public class ArtGen {
                         .add("boar", Monsters::boar)
                         .add("dog", Monsters::dog)
                         .add("raccoon", Monsters::raccoon)
-                        .add("boss_wolf", Monsters::alphaWolf),
+                        .add("boss_wolf", Monsters::alphaWolf)
+                        .add("mid_bison", MidBosses::angryBison),
                 new DungeonArt(2, Backdrops::cave)
                         .add("bat", p -> Monsters.bat(p, 0.55, null, Monsters.RED))
                         .add("goblin", Monsters::goblin)
                         .add("cave_spider", Monsters::caveSpider)
                         .add("cave_bear", Monsters::caveBear)
-                        .add("boss_orc_chief", Monsters::orcChief),
+                        .add("boss_orc_chief", Monsters::orcChief)
+                        .add("mid_goblin_shaman", MidBosses::goblinShaman),
                 new DungeonArt(3, Backdrops::ruins)
                         .add("skeleton_soldier", LateMonsters::skeletonSoldier)
                         .add("wraith", LateMonsters::wraith)
                         .add("zombie", LateMonsters::zombie)
                         .add("ruin_bandit", LateMonsters::ruinBandit)
-                        .add("boss_lich", LateMonsters::lich),
+                        .add("boss_lich", LateMonsters::lich)
+                        .add("mid_skeleton_knight", MidBosses::skeletonKnight),
                 new DungeonArt(4, Backdrops::castle)
                         .add("dark_knight", LateMonsters::darkKnight)
                         .add("fallen_mage", LateMonsters::fallenMage)
                         .add("hellhound", LateMonsters::hellhound)
                         .add("demon_archer", LateMonsters::demonArcher)
-                        .add("boss_demon_lord", LateMonsters::demonLord),
+                        .add("boss_demon_lord", LateMonsters::demonLord)
+                        .add("mid_demon_captain", MidBosses::demonCaptain),
                 new DungeonArt(5, Backdrops::iceCanyon)
                         .add("frost_wolf", LateMonsters::frostWolf)
                         .add("ice_spirit", LateMonsters::iceSpirit)
                         .add("snow_golem", LateMonsters::snowGolem)
                         .add("glacier_bat", p -> Monsters.bat(p, 0.2, Monsters.ICE, Monsters.ICE))
-                        .add("boss_frost_queen", LateMonsters::frostQueen),
+                        .add("boss_frost_queen", LateMonsters::frostQueen)
+                        .add("mid_yeti", MidBosses::yeti),
                 new DungeonArt(6, Backdrops::volcano)
                         .add("fire_salamander", LateMonsters::fireSalamander)
                         .add("lava_golem", LateMonsters::lavaGolem)
                         .add("flame_wraith", LateMonsters::flameWraith)
                         .add("volcano_ogre", LateMonsters::volcanoOgre)
-                        .add("boss_flame_lord", LateMonsters::flameLord),
+                        .add("boss_flame_lord", LateMonsters::flameLord)
+                        .add("mid_fire_wyvern", MidBosses::fireWyvern),
                 new DungeonArt(7, Backdrops::skyCastle)
                         .add("storm_griffin", LateMonsters::stormGriffin)
                         .add("sky_knight", LateMonsters::skyKnight)
                         .add("thunder_golem", LateMonsters::thunderGolem)
                         .add("fallen_angel", LateMonsters::fallenAngel)
-                        .add("boss_fallen_king", LateMonsters::fallenKing),
+                        .add("boss_fallen_king", LateMonsters::fallenKing)
+                        .add("mid_storm_warden", MidBosses::stormWarden),
         };
     }
 

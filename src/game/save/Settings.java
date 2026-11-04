@@ -157,4 +157,34 @@ public final class Settings {
     /** The name label that follows the mouse over buildings and regions. */
     public static boolean isBuildingLabels() { return bool("buildingLabels", true); }
     public static void setBuildingLabels(boolean on) { putBool("buildingLabels", on); }
+
+    // ---------- 그리기 ----------
+
+    /** Colored pencils the player mixed with 색 추가, as 0xRRGGBB, oldest first. */
+    public static java.util.List<Integer> getCustomColors() {
+        java.util.List<Integer> out = new java.util.ArrayList<>();
+        for (String s : PROPS.getProperty("customColors", "").split(",")) {
+            try {
+                if (!s.trim().isEmpty()) out.add(Integer.parseInt(s.trim(), 16));
+            } catch (NumberFormatException ignored) {
+                // a hand-edited settings file: skip what isn't a color
+            }
+        }
+        return out;
+    }
+
+    /** Adds a pencil to the end, keeping the last `max` (an existing one moves to the end). */
+    public static void addCustomColor(int rgb, int max) {
+        java.util.List<Integer> colors = getCustomColors();
+        colors.remove(Integer.valueOf(rgb & 0xFFFFFF));
+        colors.add(rgb & 0xFFFFFF);
+        while (colors.size() > max) colors.remove(0);
+        StringBuilder sb = new StringBuilder();
+        for (int c : colors) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(String.format("%06X", c));
+        }
+        PROPS.setProperty("customColors", sb.toString());
+        store();
+    }
 }

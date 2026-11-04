@@ -1,5 +1,7 @@
 package game.ui;
 
+import game.model.CraftedGear;
+import game.model.Crafting;
 import game.model.Enhancement;
 import game.model.GearPiece;
 import game.model.Item;
@@ -15,13 +17,23 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 
-/** The blacksmith, on a notebook page: enhance gear, scrap spare pieces, restore destroyed ones. */
+/**
+ * The blacksmith, on a notebook page: enhance gear, scrap spare pieces, restore destroyed ones, and forge
+ * gear the player draws (제작).
+ */
 public class BlacksmithDialog extends JDialog {
-    private enum Mode { ENHANCE, SCRAP, RESTORE }
+    private enum Mode { ENHANCE, SCRAP, RESTORE, CRAFT }
 
     private final Player player;
     private final Random rnd;
+    /** The character's save, for the drawings of forged gear (null: drawings are kept for this run only). */
+    private final String saveId;
     private Mode mode = Mode.ENHANCE;
+    private Item.Type craftType = Item.Type.WEAPON;
+    private final DefaultListModel<Item.Grade> gradeModel = new DefaultListModel<>();
+    private final JList<Item.Grade> gradeList = new JList<>(gradeModel);
+    private final JButton weaponTab = new Sketch.Button("√ 무기", false);
+    private final JButton armorTab = new Sketch.Button("방어구", false);
 
     private final JLabel goldLabel = new JLabel();
     private final JLabel[] materialLabels = new JLabel[Material.values().length];
@@ -43,9 +55,14 @@ public class BlacksmithDialog extends JDialog {
     private final JButton actionBtn = new Sketch.Button("강화하기", true);
 
     public BlacksmithDialog(JFrame owner, Player player, Random rnd) {
+        this(owner, player, rnd, null);
+    }
+
+    public BlacksmithDialog(JFrame owner, Player player, Random rnd, String saveId) {
         super(owner, "대장간", true);
         this.player = player;
         this.rnd = rnd;
+        this.saveId = saveId;
         setSize(860, 640);
         setMinimumSize(new Dimension(700, 560));
         setLocationRelativeTo(owner);
@@ -115,6 +132,7 @@ public class BlacksmithDialog extends JDialog {
         tabs.addTab("강화", Sketch.scroll(enhanceList));
         tabs.addTab("분해", buildScrapTab());
         tabs.addTab("복구", Sketch.scroll(restoreList));
+        tabs.addTab("제작", buildCraftTab());
         tabs.onChange(i -> {
             mode = Mode.values()[i];
             resultLabel.setText(" ");
@@ -138,6 +156,45 @@ public class BlacksmithDialog extends JDialog {
         tab.add(Sketch.scroll(scrapList), BorderLayout.CENTER);
         tab.add(buttons, BorderLayout.SOUTH);
         return tab;
+    }
+
+    /** 제작: weapon or armor on top, then the six grades with what each costs. */
+    private JComponent buildCraftTab() {
+        for (Item.Grade g : Item.Grade.values()) gradeModel.addElement(g);
+        gradeList.setCellRenderer(new GradeRow());
+        gradeList.setFixedCellHeight(56);
+        gradeList.setFixedCellWidth(1);
+        gradeList.setOpaque(false);
+        gradeList.addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) return;
+            resultLabel.setText(" ");
+            showDetail();
+        });
+        gradeList.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) act();
+            }
+        });
+        weaponTab.addActionListener(e -> setCraftType(Item.Type.WEAPON));
+        armorTab.addActionListener(e -> setCraftType(Item.Type.ARMOR));
+        JPanel kinds = new JPanel(new GridLayout(1, 2, 6, 0));
+        kinds.setOpaque(false);
+        kinds.add(weaponTab);
+        kinds.add(armorTab);
+        JPanel tab = new JPanel(new BorderLayout(0, 6));
+        tab.setOpaque(false);
+        tab.add(kinds, BorderLayout.NORTH);
+        tab.add(Sketch.scroll(gradeList), BorderLayout.CENTER);
+        return tab;
+    }
+
+    private void setCraftType(Item.Type type) {
+        craftType = type;
+        weaponTab.setText((type == Item.Type.WEAPON ? "√ " : "") + "무기");
+        armorTab.setText((type == Item.Type.ARMOR ? "√ " : "") + "방어구");
+        gradeList.repaint();
+        resultLabel.setText(" ");
+        showDetail();
     }
 
     /** Everything on the list but destroyed pieces, which can still be restored; those are picked by hand. */
@@ -193,6 +250,10 @@ public class BlacksmithDialog extends JDialog {
     }
 
     private void showDetail() {
+        if (mode == Mode.CRAFT) {
+            showCraft();
+            return;
+        }
         if (mode == Mode.SCRAP && scrapList.getSelectedValuesList().size() > 1) {
             showScrapBulk(scrapList.getSelectedValuesList());
             detailCards.show(detailHost, "PIECE");
@@ -215,6 +276,8 @@ public class BlacksmithDialog extends JDialog {
     }
 
     private String emptyHint() {
+        if (mode == Mode.CRAFT) return "만들 등급을 왼쪽에서 골라 주세요. 등급이 높을수록 " + Material.COLOR_LEAD.getLabel()
+                + "이 많이 들고, 능력치와 부가 능력이 좋아져요.";
         if (mode == Mode.ENHANCE) return "강화할 장비를 왼쪽에서 골라 주세요.";
         if (mode == Mode.SCRAP) return "장착하지 않고 잠그지 않은 장비를 재료로 바꿀 수 있어요.";
         if (!restoreModel.isEmpty()) return "복구할 장비를 왼쪽에서 골라 주세요.";
@@ -236,9 +299,39 @@ public class BlacksmithDialog extends JDialog {
         actionBtn.setEnabled(true);
     }
 
+    /** The chosen grade: the stat range, how many effects, and the cost against what the player has. */
+    private void showCraft() {
+        Item.Grade grade = gradeList.getSelectedValue();
+        if (grade == null) {
+            placeholder.setText("<html><div style='text-align:center;width:190px'>" + emptyHint() + "</div></html>");
+            detailCards.show(detailHost, "EMPTY");
+            return;
+        }
+        int g = grade.ordinal(), lead = Crafting.COLOR_COST[g], gold = Crafting.GOLD_COST[g];
+        int haveLead = player.getMaterial(Material.COLOR_LEAD);
+        String stat = craftType == Item.Type.WEAPON ? "공격력" : "방어력";
+        String red = Sketch.hex(Sketch.RED_PENCIL);
+        detailIcon.setIcon(ItemArt.material(Material.COLOR_LEAD, 72));
+        detailName.setText("[" + grade.getLabel() + "] " + (craftType == Item.Type.WEAPON ? "무기" : "방어구") + " 제작");
+        detailName.setForeground(Sketch.gradeInk(grade));
+        int effects = Crafting.EFFECT_COUNT[g];
+        detailInfo.setText(html(stat + " <b>" + Crafting.minValue(craftType, grade) + " ~ " + Crafting.maxValue(craftType, grade)
+                + "</b> 중에서 정해져요.<br>부가 능력 <b>" + effects + "개</b>"
+                + (effects > 0 ? " (종류와 수치 모두 랜덤)" : "") + "<br><br>필요한 재료<br>"
+                + (haveLead < lead ? "<font color='" + red + "'>" : "") + "✎ " + Material.COLOR_LEAD.getLabel() + " " + lead
+                + "개 (가진 것 " + haveLead + "개)" + (haveLead < lead ? "</font>" : "") + "<br>"
+                + (player.getGold() < gold ? "<font color='" + red + "'>" : "") + "✎ 골드 " + gold + "G"
+                + (player.getGold() < gold ? "</font>" : "")
+                + "<br><br>그린 그림이 장비 모습이 돼요. 무기는 전투에서 손에 그린 크기 그대로 들어요."));
+        actionBtn.setText("그리러 가기");
+        actionBtn.setEnabled(Crafting.canAfford(player, grade));
+        detailCards.show(detailHost, "PIECE");
+    }
+
     private void showScrap(GearPiece piece) {
-        int graphite = Enhancement.scrapGraphite(piece), lead = Enhancement.scrapHardLead(piece);
-        String gain = graphite > 0 ? Material.GRAPHITE.getLabel() + " " + graphite + "개" : Material.HARD_LEAD.getLabel() + " " + lead + "개";
+        int graphite = Enhancement.scrapGraphite(piece), lead = Enhancement.scrapHardLead(piece), color = Enhancement.scrapColorLead(piece);
+        String gain = (graphite > 0 ? Material.GRAPHITE.getLabel() + " " + graphite + "개" : Material.HARD_LEAD.getLabel() + " " + lead + "개")
+                + (color > 0 ? ", " + Material.COLOR_LEAD.getLabel() + " " + color + "개" : "");
         detailInfo.setText(html(piece.getStatDetail() + "<br><br>분해하면 <b>" + gain + "</b>을(를) 얻어요."
                 + (piece.getEnhance() > 0 ? "<br>강화에 쓴 재료는 돌아오지 않아요." : "")));
         actionBtn.setText("분해하기");
@@ -248,12 +341,14 @@ public class BlacksmithDialog extends JDialog {
     private void showScrapBulk(List<GearPiece> picked) {
         int graphite = picked.stream().mapToInt(Enhancement::scrapGraphite).sum();
         int lead = picked.stream().mapToInt(Enhancement::scrapHardLead).sum();
+        int color = picked.stream().mapToInt(Enhancement::scrapColorLead).sum();
         long enhanced = picked.stream().filter(p -> p.getEnhance() > 0).count();
         detailIcon.setIcon(null);
         detailName.setText(picked.size() + "개 선택");
         detailName.setForeground(Sketch.INK);
         detailInfo.setText(html("분해하면 <b>" + Material.GRAPHITE.getLabel() + " " + graphite + "개</b>"
-                + (lead > 0 ? ", <b>" + Material.HARD_LEAD.getLabel() + " " + lead + "개</b>" : "") + "를 얻어요."
+                + (lead > 0 ? ", <b>" + Material.HARD_LEAD.getLabel() + " " + lead + "개</b>" : "")
+                + (color > 0 ? ", <b>" + Material.COLOR_LEAD.getLabel() + " " + color + "개</b>" : "") + "를 얻어요."
                 + (enhanced > 0 ? "<br>강화한 장비 " + enhanced + "개가 포함되어 있어요." : "")));
         actionBtn.setText("모두 분해하기");
         actionBtn.setEnabled(true);
@@ -261,7 +356,9 @@ public class BlacksmithDialog extends JDialog {
 
     private void showRestore(GearPiece piece) {
         List<GearPiece> donors = Enhancement.restoreDonors(player, piece);
-        if (donors.isEmpty()) {
+        if (donors.isEmpty() && piece.getItem().isCrafted()) {
+            detailInfo.setText(html("직접 만든 장비는 세상에 하나뿐이라 복구할 수 없어요.<br>분해하면 재료로 바꿀 수 있어요."));
+        } else if (donors.isEmpty()) {
             detailInfo.setText(html("가방에 같은 장비가 있어야 복구할 수 있어요.<br>장착했거나 잠근 장비는 재료로 쓸 수 없어요."));
         } else {
             detailInfo.setText(html("복구하면 <b>+" + Enhancement.RESTORE_LEVEL + "</b>로 돌아와요.<br><br>재료로 사라지는 장비:<br><b>"
@@ -276,6 +373,10 @@ public class BlacksmithDialog extends JDialog {
     }
 
     private void act() {
+        if (mode == Mode.CRAFT) {
+            craft();
+            return;
+        }
         List<GearPiece> picked = scrapList.getSelectedValuesList();
         if (mode == Mode.SCRAP && picked.size() > 1) {
             scrapAll(picked);
@@ -327,6 +428,26 @@ public class BlacksmithDialog extends JDialog {
         if (!piece.isDestroyed()) result(piece.getDisplayName() + " 복구 완료!", new Color(54, 134, 58));
     }
 
+    /** Draw it, pay, roll it, keep the drawing, then show what came out. */
+    private void craft() {
+        Item.Grade grade = gradeList.getSelectedValue();
+        if (grade == null || !Crafting.canAfford(player, grade)) return;
+        CharacterArt hero = saveId != null ? CharacterArt.load(saveId) : CharacterArt.defaultDoodle();
+        DrawGearDialog.Result drawn = DrawGearDialog.draw(this, craftType, grade, hero);
+        if (drawn == null) return;
+        CraftedGear made = Crafting.craft(player, drawn.name, craftType, grade, rnd);
+        if (made == null) {
+            result("제작하지 못했어요. 이름이나 재료를 확인해 주세요.", Sketch.RED_PENCIL);
+            return;
+        }
+        GearArt.save(saveId, made.getName(), drawn.drawing);
+        Sfx.play(Sfx.Sound.COIN);
+        refresh();
+        showDetail();
+        CraftReveal.show(this, made);
+        result(made.getName() + " 제작 완료! 가방에 넣었어요.", new Color(54, 134, 58));
+    }
+
     private void result(String text, Color color) {
         resultLabel.setText(text);
         resultLabel.setForeground(color);
@@ -352,6 +473,21 @@ public class BlacksmithDialog extends JDialog {
         model.clear();
         for (GearPiece g : pieces) if (keep.test(g)) model.addElement(g);
         if (selected != null && model.contains(selected)) list.setSelectedValue(selected, false);
+    }
+
+    /** A grade to forge: its color, and the 색연필 심 and gold it takes. */
+    private final class GradeRow implements ListCellRenderer<Item.Grade> {
+        private final Sketch.Row row = new Sketch.Row();
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends Item.Grade> list, Item.Grade grade, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            Item sample = new Item(grade.getLabel(), craftType, 0, 0, grade);
+            String kind = craftType == Item.Type.WEAPON ? "무기" : "방어구";
+            int g = grade.ordinal();
+            return row.set(sample, grade.getLabel() + " " + kind, "심 " + Crafting.COLOR_COST[g] + " · " + Crafting.GOLD_COST[g] + "G",
+                    isSelected, index).icon(ItemArt.material(Material.COLOR_LEAD, 40));
+        }
     }
 
     private final class PieceRow implements ListCellRenderer<GearPiece> {

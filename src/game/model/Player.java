@@ -50,6 +50,8 @@ public class Player {
     /** Potions and ether, by name. Weapons and armor live in gear, one object per piece. */
     private final List<String> inventory = new ArrayList<>();
     private final List<GearPiece> gear = new ArrayList<>();
+    /** Gear this player forged and drew (대장간 제작), registered in ItemCatalog under their names. */
+    private final List<CraftedGear> crafted = new ArrayList<>();
     private final List<Job> jobPath = new ArrayList<>();
     private final int[] materials = new int[Material.values().length];
     /** Final story progress (see Story), and the 이계의 단서 held for it. */
@@ -124,8 +126,21 @@ public class Player {
     /** 이계를 넘어선 자: earned by defeating 이계의 존재 once. */
     public boolean hasCosmicPassive() { return storyStage >= Story.ENDED; }
 
+    /**
+     * 전직 보너스: every stat grows with each advancement (index = jobs taken; 1차 adds nothing), so the
+     * dungeons meant for the next tier stay hard until the player advances. Applied after the +5% passive.
+     */
+    public static final double[] TIER_BONUS = {0, 0, 0.05, 0.15, 0.35};
+
+    /** This character's 전직 보너스, e.g. 0.12 at 3차. */
+    public double getTierBonus() {
+        return TIER_BONUS[Math.min(jobPath.size(), TIER_BONUS.length - 1)];
+    }
+
     private int passive(int value) {
-        return hasCosmicPassive() ? Story.withPassive(value) : value;
+        int v = hasCosmicPassive() ? Story.withPassive(value) : value;
+        double t = getTierBonus();
+        return t > 0 ? (int) Math.round(v * (1 + t)) : v;
     }
 
     public int getTutorialStep() { return tutorialStep; }
@@ -339,12 +354,12 @@ public class Player {
 
     /**
      * 일반 장비 자동 판매: sells every plain [일반] weapon and armor in the bag at the shop's half price.
-     * Worn, locked, enhanced and destroyed pieces stay. Returns {pieces sold, gold earned}.
+     * Worn, locked, enhanced, destroyed and forged (drawn by the player) pieces stay. Returns {pieces sold, gold earned}.
      */
     public int[] sellCommonGear() {
         int count = 0, earned = 0;
         for (GearPiece g : new ArrayList<>(gear)) {
-            if (g.getItem().getGrade() != Item.Grade.COMMON || g.getEnhance() > 0 || g.isDestroyed()) continue;
+            if (g.getItem().getGrade() != Item.Grade.COMMON || g.getEnhance() > 0 || g.isDestroyed() || g.getItem().isCrafted()) continue;
             int price = sellGear(g);
             if (price > 0) {
                 count++;
@@ -361,6 +376,52 @@ public class Player {
             if (piece != null) b = b.plus(piece.getItem().getBonus());
         }
         return b;
+    }
+
+    // ---------- forged gear ----------
+
+    public List<CraftedGear> getCrafted() { return Collections.unmodifiableList(crafted); }
+
+    /** Keeps a forged piece's definition and makes its item known, replacing an older one of the same name. */
+    void addCrafted(CraftedGear c) {
+        crafted.removeIf(o -> o.getName().equals(c.getName()));
+        crafted.add(c);
+        ItemCatalog.registerCrafted(c.toItem());
+    }
+
+    /** The definitions still owned (sold or scrapped ones are dropped), joined by ';'. */
+    public String encodeCrafted() {
+        List<String> parts = new ArrayList<>();
+        for (CraftedGear c : crafted) {
+            boolean owned = false;
+            for (GearPiece g : gear) owned |= g.getItemName().equals(c.getName());
+            if (owned) parts.add(c.encode());
+        }
+        return String.join(";", parts);
+    }
+
+    /**
+     * Reads the forged gear of a save line and registers it. For someone else's character (a duel
+     * opponent), a piece named like a different one already known here gets a new name, so ours keeps
+     * its numbers; the returned map holds those renames (old name to new name) for the gear line.
+     */
+    public Map<String, String> decodeCrafted(String line, boolean foreign) {
+        Map<String, String> renames = new LinkedHashMap<>();
+        if (line == null || line.trim().isEmpty()) return renames;
+        for (String part : line.trim().split(";")) {
+            CraftedGear c = CraftedGear.decode(part);
+            if (c == null) continue;
+            Item known = ItemCatalog.get(c.getName());
+            if (foreign && known != null && !c.sameAs(known)) {
+                String base = c.getName();
+                int n = 2;
+                while (ItemCatalog.get(base + "*" + n) != null && !c.renamed(base + "*" + n).sameAs(ItemCatalog.get(base + "*" + n))) n++;
+                renames.put(base, base + "*" + n);
+                c = c.renamed(base + "*" + n);
+            }
+            addCrafted(c);
+        }
+        return renames;
     }
 
     // ---------- save format: name|level|flags per piece, joined by ';' (flags: W worn, L locked, D destroyed) ----------

@@ -31,7 +31,7 @@ public enum Job {
 
     // ── 전사: 오로지 공격력 (우직한 검사) ──
     SWORDSMAN("검사", "전사", 1, "공격력", "공격력 하나만 믿고 베어 넘기는 우직한 전사",
-            Skill.of("파워 스트라이크", 10, 6).atk(2.55).fx(Skill.Fx.SLASH, 0xFF7A3C)
+            Skill.of("파워 스트라이크", 10, 6).atk(2.55).fx(Skill.Fx.SLASH, 0xFF7A3C).motion("slash")
                     .desc("있는 힘껏 벤다 (공격력 255%)")),
     FIGHTER("파이터", "전사", 2, "공격력", "쉴 새 없이 몰아치는 검",
             Skill.of("브랜디쉬", 20, 12).atk(1.9).hits(2).fx(Skill.Fx.SLASH, 0x6FC3FF)
@@ -40,7 +40,7 @@ public enum Job {
             Skill.of("콤보 어택", 50, 20).atk(1.75).hits(3).fx(Skill.Fx.SLASH, 0xFFD24A)
                     .desc("세 번 몰아친다 (공격력 175% x3)")),
     HERO("히어로", "전사", 4, "공격력", "모든 것을 건 일격으로 전장을 끝낸다",
-            Skill.of("레이징 블로우", 70, 30).atk(4.3).alwaysCrit().fx(Skill.Fx.SLASH, 0xFF2E3E)
+            Skill.of("레이징 블로우", 70, 30).atk(4.3).alwaysCrit().fx(Skill.Fx.SLASH, 0xFF2E3E).motion("raging_blow")
                     .desc("반드시 치명타가 나는 필살의 일격 (공격력 430%)")),
 
     // ── 전사: 방어력 + 체력 (단단한 기사) ──
@@ -62,7 +62,7 @@ public enum Job {
     // ── 마법사: 마력 (불·독, 한 방이 가장 센 고화력) ──
     // MAGE keeps its enum name so saves that already advanced to "마법사" still load.
     MAGE("마법사", "마법사", 1, "마력", "MP를 마력으로 바꿔 강력한 한 방을 날리는 마법사",
-            Skill.of("에너지 볼트", 10, 8).magic(1.8).fx(Skill.Fx.MAGIC, 0x8A7CFF)
+            Skill.of("에너지 볼트", 10, 8).magic(1.8).fx(Skill.Fx.MAGIC, 0x8A7CFF).motion("fireball")
                     .desc("마력 탄환을 쏜다 (마력 180%)")),
     FP_WIZARD("위자드(불,독)", "마법사", 2, "마력", "불꽃을 다루기 시작한 위자드",
             Skill.of("파이어 애로우", 20, 16).magic(2.6).fx(Skill.Fx.MAGIC, 0xFF8A3A)
@@ -71,7 +71,7 @@ public enum Job {
             Skill.of("익스플로전", 50, 28).magic(3.6).fx(Skill.Fx.SMASH, 0xFF5A2A)
                     .desc("적을 중심으로 폭발을 일으킨다 (마력 360%)")),
     FP_ARCHMAGE("아크메이지(불,독)", "마법사", 4, "마력", "하늘에서 불덩이를 떨어뜨리는 대마법사",
-            Skill.of("메테오", 70, 42).magic(5.0).fx(Skill.Fx.SMASH, 0xE0283C)
+            Skill.of("메테오", 70, 42).magic(5.0).fx(Skill.Fx.SMASH, 0xE0283C).motion("meteor")
                     .desc("거대한 운석을 떨어뜨린다 (마력 500%)")),
 
     // ── 마법사: 마력 + 방어 무시 (썬·콜, 방어를 꿰뚫는 연타) ──
@@ -118,12 +118,12 @@ public enum Job {
             Skill.of("애로우 레인", 50, 20).atk(1.5).hits(4).fx(Skill.Fx.ARROW, 0xFFD24A)
                     .desc("화살비를 네 번 퍼붓는다 (공격력 150% x4)")),
     BOWMASTER("보우마스터", "궁수", 4, "공격력", "폭풍처럼 쏟아지는 화살의 대가",
-            Skill.of("폭풍의 시", 70, 30).atk(1.65).hits(5).fx(Skill.Fx.ARROW, 0x4AD8C8)
+            Skill.of("폭풍의 시", 70, 30).atk(1.65).hits(5).fx(Skill.Fx.ARROW, 0x4AD8C8).motion("storm_song")
                     .desc("화살을 폭풍처럼 다섯 번 쏟아낸다 (공격력 165% x5)")),
 
     // ── 궁수: 공격력 + 치명타 (석궁, 반드시 급소를 맞히는 저격) ──
     CROSSBOWMAN("석궁수", "궁수", 1, "공격력+치명타", "정확한 한 발로 급소를 노리는 궁수",
-            Skill.of("크리티컬 샷", 10, 6).atk(1.6).alwaysCrit().fx(Skill.Fx.ARROW, 0xFF9A3A)
+            Skill.of("크리티컬 샷", 10, 6).atk(1.6).alwaysCrit().fx(Skill.Fx.ARROW, 0xFF9A3A).motion("emerald_arrow")
                     .desc("반드시 치명타가 나는 사격 (공격력 160%)")),
     SHARPSHOOTER("사수", "궁수", 2, "공격력+치명타", "묵직한 쇠화살로 급소를 꿰뚫는 사수",
             Skill.of("아이언 애로우", 20, 12).atk(2.3).alwaysCrit().fx(Skill.Fx.ARROW, 0xC0C8D8)
@@ -158,7 +158,7 @@ public enum Job {
     // Luck ratio is always 2x the ATK ratio (see Skill.luk), so ATK and LUK points are worth the same.
     // THIEF keeps its enum name so saves that already advanced to "도적" still load.
     THIEF("도적", "도적", 1, "공격력+행운", "행운을 실어 표창을 던지는 도적",
-            Skill.of("럭키 세븐", 10, 6).atk(1.1).luk(2.2).hits(2).fx(Skill.Fx.SHURIKEN, 0xC8D0E0)
+            Skill.of("럭키 세븐", 10, 6).atk(1.1).luk(2.2).hits(2).fx(Skill.Fx.SHURIKEN, 0xC8D0E0).motion("silver_stars")
                     .desc("표창 두 개를 던진다 (공격력 110% + 행운 220%) x2")),
     ASSASSIN("어쌔신", "도적", 2, "공격력+행운", "표창을 세 개씩 날리는 암살자",
             Skill.of("트리플 스로우", 20, 12).atk(1.05).luk(2.1).hits(3).fx(Skill.Fx.SHURIKEN, 0x7AE0B0)
@@ -167,7 +167,7 @@ public enum Job {
             Skill.of("어벤져", 50, 20).atk(4.4).luk(8.8).fx(Skill.Fx.SHURIKEN, 0xB050FF)
                     .desc("거대한 표창을 던진다 (공격력 440% + 행운 880%)")),
     NIGHT_LORD("나이트로드", "도적", 4, "공격력+행운", "밤을 지배하는 표창의 군주",
-            Skill.of("쿼드러플 스로우", 70, 30).atk(1.55).luk(3.1).hits(4).fx(Skill.Fx.SHURIKEN, 0xFFD24A)
+            Skill.of("쿼드러플 스로우", 70, 30).atk(1.55).luk(3.1).hits(4).fx(Skill.Fx.SHURIKEN, 0xFFD24A).motion("night_stars")
                     .desc("표창 네 개를 던진다 (공격력 155% + 행운 310%) x4")),
 
     // ── 도적: 공격력 + 흡혈 (단검, 베는 만큼 HP를 빼앗는 근접형) ──
@@ -198,11 +198,15 @@ public enum Job {
             Skill.of("아수라", 70, 30).atk(1.25).hits(6).fx(Skill.Fx.SLASH, 0xFF4A6A)
                     .desc("아수라처럼 여섯 번 베어 낸다 (공격력 125% x6)")),
 
-    // ── 다른 직업군: 1차만 임시로 있음 (루트/차수는 설계 후 추가) ──
+    // ── 해적: 1차와 4차 (2·3차는 다른 직업군에서 골라 이어 간다) ──
     PIRATE("해적", "해적", 1, "", "주먹과 총을 오가는 거친 싸움꾼",
-            Skill.of("더블 파이어", 10, 6).atk(1.0).hits(2).fx(Skill.Fx.SHOT, 0xFFB040).desc("총을 두 번 쏜다 (100% x2)"),
+            Skill.of("더블 파이어", 10, 6).atk(1.0).hits(2).fx(Skill.Fx.SHOT, 0xFFB040).motion("twin_pistols").desc("총을 두 번 쏜다 (100% x2)"),
             Skill.of("서머솔트 킥", 15, 10).atk(2.0).fx(Skill.Fx.SMASH, 0x5AB0FF).desc("공중제비 발차기 (공격력 200%)"),
-            Skill.of("코크스크류 블로우", 20, 15).atk(3.2).hpCost(0.1).fx(Skill.Fx.SMASH, 0xFF8A3A).desc("HP 10%를 바쳐 회전 펀치 (320%)"));
+            Skill.of("코크스크류 블로우", 20, 15).atk(3.2).hpCost(0.1).fx(Skill.Fx.SMASH, 0xFF8A3A).desc("HP 10%를 바쳐 회전 펀치 (320%)")),
+    // Total 190% x4 = 760%, level with the other 4차 attacks (레이징 블로우 430% always crit, 아수라 125% x6).
+    CAPTAIN("캡틴", "해적", 4, "공격력", "해적선을 불러 바다를 지휘하는 선장",
+            Skill.of("브로드사이드", 70, 30).atk(1.9).hits(4).fx(Skill.Fx.SHOT, 0xFFB040).motion("broadside")
+                    .desc("해적선의 대포 세 발에 쌍권총 일제 사격 (공격력 190% x4)"));
 
     /** Level needed for each advancement tier (index = tier; 0 = beginner). */
     private static final int[] TIER_LEVELS = {1, 10, 20, 50, 70};

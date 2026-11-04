@@ -54,6 +54,8 @@ public class Skill {
     /** Fraction of max HP restored (after the hits, if the skill also attacks). */
     private double healRatio;
     private Fx fx = Fx.NONE;
+    /** A close-up motion the battle plays for this skill (SkillMotion's key), or null for the plain lunge. */
+    private String motion;
     /** Effect tint as 0xRRGGBB (kept as an int so the model doesn't depend on AWT). */
     private int fxColor = 0xFFFFFF;
 
@@ -101,6 +103,7 @@ public class Skill {
     public Skill heal(double ratio) { this.healRatio = ratio; return this; }
     public Skill desc(String description) { this.description = description; return this; }
     public Skill fx(Fx fx, int rgb) { this.fx = fx; this.fxColor = rgb; return this; }
+    public Skill motion(String key) { this.motion = key; return this; }
 
     public String getName() { return name; }
     public int getRequiredLevel() { return requiredLevel; }
@@ -115,6 +118,7 @@ public class Skill {
     public double getDrainRatio() { return drainRatio; }
     public Fx getFx() { return fx; }
     public int getFxColor() { return fxColor; }
+    public String getMotion() { return motion; }
 
     /** True if the skill deals damage (a pure heal has no damage ratios). */
     public boolean isAttack() {

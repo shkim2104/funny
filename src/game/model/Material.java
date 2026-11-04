@@ -12,10 +12,12 @@ public enum Material {
     /** From bosses, dungeon 2 on, for the late enhancement steps. */
     HARD_LEAD("단단한 심", "hard_lead"),
     /** Rare: one use stops an enhancement from destroying the piece. */
-    ERASER_DUST("지우개 가루", "eraser_dust");
+    ERASER_DUST("지우개 가루", "eraser_dust"),
+    /** Mostly from 중간 보스 (also bosses, kills and scrapped gear): forges gear the player draws (대장간 제작, see Crafting). */
+    COLOR_LEAD("색연필 심", "color_lead");
 
     private static final double KILL_DROP_PCT = 30, DROP_PCT_PER_LUCK = 0.2, MAX_KILL_DROP_PCT = 60;
-    private static final double BOSS_ERASER_CHANCE = 0.20;
+    private static final double BOSS_ERASER_CHANCE = 0.20, COLOR_KILL_CHANCE = 0.10;
 
     private final String label;
     private final String icon;
@@ -50,5 +52,23 @@ public enum Material {
 
     public static int rollBossEraser(Random rnd) {
         return rnd.nextDouble() < BOSS_ERASER_CHANCE ? 1 : 0;
+    }
+
+    /** 색연필 심 from one regular kill in dungeon d: 0 when nothing dropped. */
+    public static int rollKillColorLead(int d, Random rnd) {
+        return rnd.nextDouble() < COLOR_KILL_CHANCE ? 1 + d / 3 : 0;
+    }
+
+    public static int bossColorLead(int d) {
+        return 4 + 3 * d;
+    }
+
+    /** 중간 보스: the main source of 색연필 심, 6 in dungeon 1 up to 30 in dungeon 7. */
+    public static int midBossColorLead(int d) {
+        return 6 + 4 * d;
+    }
+
+    public static int midBossGraphite(int d) {
+        return 2 + d;
     }
 }

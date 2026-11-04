@@ -27,21 +27,21 @@ public class ItemCatalog {
     // with no effect, treasure-wheel gear = 1.25x with one mild effect, boss gear = 1.55x with a strong one.
     static {
         // ---------- shop: steps 1~5 ----------
-        register(new Item("낡은 검", Item.Type.WEAPON, 8, 50, Item.Grade.COMMON).icon("old_sword"));
-        register(new Item("강철 검", Item.Type.WEAPON, 16, 160, Item.Grade.UNCOMMON).icon("steel_sword"));
-        register(new Item("미스릴 검", Item.Type.WEAPON, 26, 380, Item.Grade.RARE).icon("mithril_sword"));
-        register(new Item("용의 검", Item.Type.WEAPON, 38, 750, Item.Grade.EPIC).icon("dragon_sword"));
-        register(new Item("전설의 성검", Item.Type.WEAPON, 52, 1400, Item.Grade.LEGENDARY).icon("holy_sword"));
+        register(new Item("낡은 검", Item.Type.WEAPON, 6, 50, Item.Grade.COMMON).icon("old_sword"));
+        register(new Item("강철 검", Item.Type.WEAPON, 13, 160, Item.Grade.UNCOMMON).icon("steel_sword"));
+        register(new Item("미스릴 검", Item.Type.WEAPON, 21, 380, Item.Grade.RARE).icon("mithril_sword"));
+        register(new Item("용의 검", Item.Type.WEAPON, 30, 750, Item.Grade.EPIC).icon("dragon_sword"));
+        register(new Item("전설의 성검", Item.Type.WEAPON, 42, 1400, Item.Grade.LEGENDARY).icon("holy_sword"));
 
-        register(new Item("가죽 갑옷", Item.Type.ARMOR, 6, 35, Item.Grade.COMMON).icon("leather_armor"));
-        register(new Item("철 갑옷", Item.Type.ARMOR, 13, 110, Item.Grade.UNCOMMON).icon("iron_armor"));
-        register(new Item("용린 갑옷", Item.Type.ARMOR, 21, 260, Item.Grade.RARE).icon("scale_armor"));
-        register(new Item("용의 갑옷", Item.Type.ARMOR, 30, 560, Item.Grade.EPIC).icon("dragon_armor"));
-        register(new Item("전설의 수호 갑옷", Item.Type.ARMOR, 42, 1150, Item.Grade.LEGENDARY).icon("guardian_armor"));
+        register(new Item("가죽 갑옷", Item.Type.ARMOR, 5, 35, Item.Grade.COMMON).icon("leather_armor"));
+        register(new Item("철 갑옷", Item.Type.ARMOR, 10, 110, Item.Grade.UNCOMMON).icon("iron_armor"));
+        register(new Item("용린 갑옷", Item.Type.ARMOR, 17, 260, Item.Grade.RARE).icon("scale_armor"));
+        register(new Item("용의 갑옷", Item.Type.ARMOR, 24, 560, Item.Grade.EPIC).icon("dragon_armor"));
+        register(new Item("전설의 수호 갑옷", Item.Type.ARMOR, 34, 1150, Item.Grade.LEGENDARY).icon("guardian_armor"));
 
-        register(new Item("포션", Item.Type.POTION, 30, 15, Item.Grade.COMMON).icon("potion"));
-        register(new Item("하이 포션", Item.Type.POTION, 80, 40, Item.Grade.COMMON).icon("high_potion"));
-        register(new Item("에테르", Item.Type.ETHER, 25, 35, Item.Grade.COMMON).icon("ether"));
+        register(new Item("포션", Item.Type.POTION, 30, 75, Item.Grade.COMMON).icon("potion"));
+        register(new Item("하이 포션", Item.Type.POTION, 80, 200, Item.Grade.COMMON).icon("high_potion"));
+        register(new Item("에테르", Item.Type.ETHER, 25, 175, Item.Grade.COMMON).icon("ether"));
 
         // ---------- treasure wheel only: 10 weapons + 10 armor, 고급 = step 2 ... 전설 = step 5 ----------
         gacha(weapon("날렵한 세검", 20, Item.Grade.UNCOMMON, "swift_rapier", Bonus.of().critChance(4)));
@@ -109,13 +109,22 @@ public class ItemCatalog {
         return new Item(name, Item.Type.ARMOR, def, def * 30, Item.Grade.MYTHIC).icon(icon).bonus(bonus);
     }
 
-    /** Treasure-wheel gear: 20G per point. */
+    /**
+     * Treasure-wheel gear: 20G per point of the stat as written. The stat and the effects are then cut to
+     * GACHA_STRENGTH (v2.3.0 balance), the price stays.
+     */
     private static Item weapon(String name, int atk, Item.Grade grade, String icon, Bonus bonus) {
-        return new Item(name, Item.Type.WEAPON, atk, atk * 20, grade).icon(icon).bonus(bonus).gacha();
+        return new Item(name, Item.Type.WEAPON, weaker(atk), atk * 20, grade).icon(icon).bonus(bonus.scaled(GACHA_STRENGTH)).gacha();
     }
 
     private static Item armor(String name, int def, Item.Grade grade, String icon, Bonus bonus) {
-        return new Item(name, Item.Type.ARMOR, def, def * 20, grade).icon(icon).bonus(bonus).gacha();
+        return new Item(name, Item.Type.ARMOR, weaker(def), def * 20, grade).icon(icon).bonus(bonus.scaled(GACHA_STRENGTH)).gacha();
+    }
+
+    private static final double GACHA_STRENGTH = 0.8;
+
+    private static int weaker(int stat) {
+        return (int) Math.round(stat * GACHA_STRENGTH);
     }
 
     private static void gacha(Item item) {
@@ -134,6 +143,11 @@ public class ItemCatalog {
         return ITEMS.get(name);
     }
 
+    /** A player's forged piece (CraftedGear), known by its name from now on; the same name is replaced. */
+    public static void registerCrafted(Item item) {
+        ITEMS.put(item.getName(), item);
+    }
+
     public static Collection<Item> all() {
         return ITEMS.values();
     }
@@ -141,7 +155,9 @@ public class ItemCatalog {
     /** What the shop sells: everything except boss-only and treasure-only gear. */
     public static List<Item> shopItems() {
         List<Item> result = new ArrayList<>();
-        for (Item item : ITEMS.values()) if (item.getGrade() != Item.Grade.MYTHIC && !item.isGachaOnly()) result.add(item);
+        for (Item item : ITEMS.values()) {
+            if (item.getGrade() != Item.Grade.MYTHIC && !item.isGachaOnly() && !item.isCrafted()) result.add(item);
+        }
         return result;
     }
 
@@ -149,7 +165,7 @@ public class ItemCatalog {
     public static List<Item> equipableOfGrade(Item.Grade grade) {
         List<Item> result = new ArrayList<>();
         for (Item item : ITEMS.values()) {
-            if (isGear(item) && item.getGrade() == grade && !item.isGachaOnly()) result.add(item);
+            if (isGear(item) && item.getGrade() == grade && !item.isGachaOnly() && !item.isCrafted()) result.add(item);
         }
         return result;
     }
@@ -157,7 +173,7 @@ public class ItemCatalog {
     /** What the treasure wheel can give at a grade: the shop gear plus the treasure-only pieces. */
     public static List<Item> treasurePool(Item.Grade grade) {
         List<Item> result = new ArrayList<>();
-        for (Item item : ITEMS.values()) if (isGear(item) && item.getGrade() == grade) result.add(item);
+        for (Item item : ITEMS.values()) if (isGear(item) && item.getGrade() == grade && !item.isCrafted()) result.add(item);
         return result;
     }
 

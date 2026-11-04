@@ -511,7 +511,8 @@ public final class Sketch {
                 .append("<font color='").append(hex(gradeInk(item.getGrade()))).append("'><b>[")
                 .append(item.getGrade().getLabel()).append("]</b></font> ").append(item.getTypeLabel())
                 .append(item.isGachaOnly() ? " <font color='" + hex(INK_SOFT) + "'>· 보물 뽑기 전용</font>" : "")
-                .append(item.getGrade() == Item.Grade.MYTHIC ? " <font color='" + hex(INK_SOFT) + "'>· 보스 전용</font>" : "")
+                .append(item.isCrafted() ? " <font color='" + hex(INK_SOFT) + "'>· 직접 제작</font>"
+                        : item.getGrade() == Item.Grade.MYTHIC ? " <font color='" + hex(INK_SOFT) + "'>· 보스 전용</font>" : "")
                 .append("<br><font color='").append(hex(BLUE_PENCIL)).append("'><b>").append(statText).append("</b></font>");
         for (String line : item.getBonus().lines()) {
             sb.append("<br><font color='").append(hex(RED_PENCIL)).append("'>✎ ").append(line).append("</font>");

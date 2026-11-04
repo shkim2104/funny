@@ -385,6 +385,24 @@ final class Icons {
         glint(p, 112, 26, 14, GOLD);
     }
 
+    /** 색연필 심: four sharpened colored leads fanned out, each with its own color, and sparkles. */
+    private static void colorLead(Pencil p) {
+        Color[] leads = {new Color(214, 58, 50), new Color(244, 200, 50), new Color(66, 156, 76), new Color(52, 120, 214)};
+        p.smudge(Pencil.ell(C, 224, 96, 18), Pencil.LEAD, 45);
+        for (int i = 0; i < leads.length; i++) {
+            AffineTransform fan = new AffineTransform();
+            fan.rotate(toRadians(-33 + i * 22), C, 226);
+            Color c = leads[i], wood = new Color(236, 212, 168);
+            solid(p, fan.createTransformedShape(Pencil.poly(C - 15, 120, C + 15, 120, C + 15, 226, C - 15, 226)), c, 0.25, 2.6);
+            solid(p, fan.createTransformedShape(Pencil.poly(C - 15, 120, C, 66, C + 15, 120)), wood, 0.08, 2.4);
+            solid(p, fan.createTransformedShape(Pencil.poly(C - 6, 88, C, 66, C + 6, 88)), c, 0.2, 1.8);
+            solid(p, fan.createTransformedShape(Pencil.poly(C - 9, 132, C - 3, 132, C - 3, 220, C - 9, 220)), Color.WHITE, 0.0, 1.0);
+        }
+        glint(p, 52, 64, 22, GOLD);
+        glint(p, 204, 52, 18, GOLD);
+        glint(p, 216, 150, 14, GOLD);
+    }
+
     /** 지우개 가루: a pile of pink rubbed-off crumbs under a small worn eraser in its paper sleeve. */
     private static void eraserDust(Pencil p) {
         Color pink = new Color(240, 148, 168), sleeve = new Color(150, 196, 232);
@@ -591,6 +609,7 @@ final class Icons {
         m.put("graphite_chip", Icons::graphiteChip);
         m.put("hard_lead", Icons::hardLead);
         m.put("eraser_dust", Icons::eraserDust);
+        m.put("color_lead", Icons::colorLead);
         return m;
     }
 

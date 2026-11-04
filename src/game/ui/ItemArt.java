@@ -29,29 +29,47 @@ public final class ItemArt {
     private static final String ERASED = "erased:";
     private static final String RUBBED = "rubbed:";
     private static final String PENCILED = "penciled:";
+    /** A forged piece's own drawing (GearArt), by item name. */
+    private static final String CRAFTED = "crafted:";
 
     private ItemArt() {}
 
     /** The item's icon at size x size, or null if it has none. */
     public static ImageIcon item(Item item, int size) {
-        return item == null || item.getIcon() == null ? null : scaled("images/items/" + item.getIcon() + ".png", size);
+        String path = path(item);
+        return path == null ? null : scaled(path, size);
     }
 
     /** A piece of gear's icon: its item's, or the rubbed-out version once it is destroyed. */
     public static ImageIcon piece(GearPiece piece, int size) {
         Item item = piece.getItem();
-        if (!piece.isDestroyed() || item.getIcon() == null) return item(item, size);
-        return scaled(ERASED + "images/items/" + item.getIcon() + ".png", size);
+        String path = path(item);
+        if (!piece.isDestroyed() || path == null) return item(item, size);
+        return scaled(ERASED + path, size);
     }
 
     /** The item in plain graphite, whole: what restoring draws. */
     public static ImageIcon penciled(Item item, int size) {
-        return scaled(PENCILED + "images/items/" + item.getIcon() + ".png", size);
+        return scaled(PENCILED + path(item), size);
     }
 
     /** The item in plain graphite with the eraser's strokes taken out, and nothing lying on top. */
     public static ImageIcon rubbed(Item item, int size) {
-        return scaled(RUBBED + "images/items/" + item.getIcon() + ".png", size);
+        return scaled(RUBBED + path(item), size);
+    }
+
+    /** Where an item's picture comes from: its pencil icon, or a forged piece's drawing. */
+    private static String path(Item item) {
+        if (item == null) return null;
+        if (item.isCrafted()) return CRAFTED + item.getName();
+        return item.getIcon() == null ? null : "images/items/" + item.getIcon() + ".png";
+    }
+
+    /** Drops cached icons of a forged piece, so a new drawing under that name shows. */
+    static void forgetCrafted(String itemName) {
+        String path = CRAFTED + itemName;
+        SOURCES.keySet().removeIf(k -> k.endsWith(path));
+        SCALED.keySet().removeIf(k -> k.contains(path + "@"));
     }
 
     /** A non-item picture from the same folder (treasure chests, quest scroll, inn bed). */
@@ -180,6 +198,14 @@ public final class ItemArt {
             return rubbed(original, load(original));
         }
         if (path.startsWith(PENCILED)) return penciled(load(path.substring(PENCILED.length())));
+        if (path.startsWith(CRAFTED)) {
+            String name = path.substring(CRAFTED.length());
+            BufferedImage drawn = GearArt.icon(name);
+            if (drawn != null) return drawn;
+            // No drawing here (a duel opponent's piece): a plain pencil doodle of the kind.
+            Item item = game.model.ItemCatalog.get(name);
+            return load(item != null && item.getType() == Item.Type.ARMOR ? "images/items/leather_armor.png" : "images/items/old_sword.png");
+        }
         try (InputStream in = ItemArt.class.getResourceAsStream(path)) {
             if (in != null) return ImageIO.read(in);
         } catch (Exception ignored) {

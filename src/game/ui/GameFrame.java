@@ -216,6 +216,7 @@ public class GameFrame extends JFrame {
         player = loaded;
         currentSaveId = id;
         battlePanel.setPlayerArt(CharacterArt.load(id));
+        GearArt.loadAll(id, loaded);
         boolean firstVisit = loaded.getTutorialStep() == Tutorial.NOT_STARTED;
         if (firstVisit) {
             // A brand-new character: the 촌장 shows them around.
@@ -561,7 +562,7 @@ public class GameFrame extends JFrame {
                 + "<br>HP " + player.getHp() + "/" + player.getMaxHp()
                 + "<br>골드 " + player.getGold() + "G"
                 + "<br>흑연 " + player.getMaterial(Material.GRAPHITE) + " · 심 " + player.getMaterial(Material.HARD_LEAD)
-                + " · 가루 " + player.getMaterial(Material.ERASER_DUST)
+                + " · 가루 " + player.getMaterial(Material.ERASER_DUST) + " · 색연필 " + player.getMaterial(Material.COLOR_LEAD)
                 + statPointsNote + storyNote() + "</html>");
         refreshTutorial();
     }
@@ -720,6 +721,7 @@ public class GameFrame extends JFrame {
                 learned.append(s.getName());
             }
             Dialogs.message(this, "전직 완료", player.getName() + "은(는) " + chosen.getDisplayName() + "이(가) 되었다!"
+                    + (player.getTierBonus() > 0 ? "\n전직 보너스: 모든 능력치 +" + Math.round(player.getTierBonus() * 100) + "%" : "")
                     + (learned.length() > 0 ? "\n\n사용 가능한 스킬: " + learned : ""));
         });
     }
@@ -749,7 +751,9 @@ public class GameFrame extends JFrame {
 
     private void openBlacksmith() {
         pageTurner.turnToBlankPage(() -> {
-            new BlacksmithDialog(this, player, rnd).setVisible(true);
+            new BlacksmithDialog(this, player, rnd, currentSaveId).setVisible(true);
+            // Forged gear's drawing is already on disk: save the piece with it.
+            if (!player.getCrafted().isEmpty()) autoSave();
             refreshTown();
         });
     }
@@ -838,15 +842,18 @@ public class GameFrame extends JFrame {
 
     private void startNextFight() {
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
-        Monster monster = bossStage ? dungeon.spawnBoss() : dungeon.randomMonster(currentFloor, rnd);
+        boolean mid = !bossStage && dungeon.isMidFloor(currentFloor);
+        Monster monster = bossStage ? dungeon.spawnBoss() : mid ? dungeon.spawnMidBoss() : dungeon.randomMonster(currentFloor, rnd);
         showStage(dungeon);
-        if (bossStage) Music.play("boss");
+        if (bossStage || mid) Music.play("boss");
         battlePanel.setBossFight(bossStage);
+        if (mid) battlePanel.setMidBossFight();
         battlePanel.nextBattle(monster, result -> onFightFinished(result, monster));
     }
 
     private void showStage(Dungeon dungeon) {
-        battlePanel.setStageText(bossStage ? "보스전" : currentFloor + " / " + dungeon.getFloors() + " 스테이지");
+        battlePanel.setStageText(bossStage ? "보스전" : currentFloor + " / " + dungeon.getFloors() + " 스테이지"
+                + (dungeon.isMidFloor(currentFloor) ? " · 중간 보스" : ""));
     }
 
     private void onFightFinished(BattlePanel.Result result, Monster monster) {
@@ -871,10 +878,16 @@ public class GameFrame extends JFrame {
         int expGain = run.exp(monster.getExpReward()), goldGain = run.gold(monster.getGoldReward());
         player.gainExp(expGain);
         player.earnGold(goldGain);
-        int graphite = bossStage ? 0 : Material.rollKillGraphite(currentDungeonIndex, player.getLuck(), rnd);
+        // The 중간 보스 pays a fixed share of 색연필 심 (its main source) and graphite instead of a kill's roll.
+        boolean midFight = !bossStage && dungeon.isMidFloor(currentFloor);
+        int graphite = bossStage ? 0 : midFight ? Material.midBossGraphite(currentDungeonIndex)
+                : Material.rollKillGraphite(currentDungeonIndex, player.getLuck(), rnd);
+        int color = bossStage ? 0 : midFight ? Material.midBossColorLead(currentDungeonIndex) : Material.rollKillColorLead(currentDungeonIndex, rnd);
         player.addMaterial(Material.GRAPHITE, graphite);
-        StringBuilder msg = new StringBuilder("EXP " + expGain + ", 골드 " + goldGain + "G"
-                + (graphite > 0 ? ", " + Material.GRAPHITE.getLabel() + " " + graphite + "개" : "") + " 획득!");
+        player.addMaterial(Material.COLOR_LEAD, color);
+        StringBuilder msg = new StringBuilder((midFight ? "중간 보스 " + monster.getName() + " 처치! " : "") + "EXP " + expGain + ", 골드 " + goldGain + "G"
+                + (graphite > 0 ? ", " + Material.GRAPHITE.getLabel() + " " + graphite + "개" : "")
+                + (color > 0 ? ", " + Material.COLOR_LEAD.getLabel() + " " + color + "개" : "") + " 획득!");
         rollStoryMaterial(msg);
         if (player.getLevel() > beforeLevel) {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
@@ -890,10 +903,13 @@ public class GameFrame extends JFrame {
                 battlePanel.logResult(msg + "\n>>> 보스 등장! <<<");
                 bossStage = true;
             } else {
-                battlePanel.logResult(msg.toString());
                 currentFloor++;
+                if (dungeon.isMidFloor(currentFloor)) msg.append("\n>>> 중간 보스 등장! <<<");
+                battlePanel.logResult(msg.toString());
             }
-            if (RunState.isAugmentFloor(clearedFloor)) offerAugment();
+            if (midFight) Music.play("dungeon" + (currentDungeonIndex + 1), "dungeon1");
+            // The 중간 보스 always leaves an augment behind, on top of the ones every third stage.
+            if (midFight || RunState.isAugmentFloor(clearedFloor)) offerAugment();
             else giveFloorReward(dungeon);
             startNextFight();
             return;
@@ -1031,10 +1047,11 @@ public class GameFrame extends JFrame {
         player.addMaterial(Material.GRAPHITE, first ? 60 : 20);
         player.addMaterial(Material.HARD_LEAD, first ? 20 : 6);
         player.addMaterial(Material.ERASER_DUST, first ? 3 : 1);
+        player.addMaterial(Material.COLOR_LEAD, first ? 60 : 20);
         if (first) player.setStoryStage(Story.ENDED);
         autoSave();
         String text = "=== 이계의 존재를 쓰러뜨렸다! ===\nEXP " + exp + ", 골드 " + gold + "G, 흑연 조각 " + (first ? 60 : 20) + "개, 단단한 심 "
-                + (first ? 20 : 6) + "개, 지우개 가루 " + (first ? 3 : 1) + "개 획득!"
+                + (first ? 20 : 6) + "개, 지우개 가루 " + (first ? 3 : 1) + "개, 색연필 심 " + (first ? 60 : 20) + "개 획득!"
                 + (first ? "\n패시브 '" + Story.PASSIVE_NAME + "'을(를) 얻었다! 모든 능력치 +5%" : "");
         finishRun(text, "이야기 계속", () -> {
             playScene(Story.victory(first));
@@ -1050,8 +1067,9 @@ public class GameFrame extends JFrame {
 
     /** Gives this dungeon boss's materials and returns them as one line, e.g. "흑연 조각 5개, 단단한 심 1개". */
     private String rollBossMaterials() {
-        int[] counts = {Material.bossGraphite(currentDungeonIndex), Material.bossHardLead(currentDungeonIndex), Material.rollBossEraser(rnd)};
-        Material[] kinds = {Material.GRAPHITE, Material.HARD_LEAD, Material.ERASER_DUST};
+        int[] counts = {Material.bossGraphite(currentDungeonIndex), Material.bossHardLead(currentDungeonIndex), Material.rollBossEraser(rnd),
+                Material.bossColorLead(currentDungeonIndex)};
+        Material[] kinds = {Material.GRAPHITE, Material.HARD_LEAD, Material.ERASER_DUST, Material.COLOR_LEAD};
         List<String> parts = new ArrayList<>();
         for (int i = 0; i < kinds.length; i++) {
             if (counts[i] <= 0) continue;
