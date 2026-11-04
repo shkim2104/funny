@@ -206,6 +206,8 @@ public class SaveManager {
         pw.println(p.getTutorialStep() + (p.isTutorialRewarded() ? ",R" : ""));
         // Forged gear (대장간 제작): what each drawn piece rolled. Its picture is a PNG beside the save.
         pw.println(p.encodeCrafted());
+        // 가방: which cell each piece and potion stack sits in.
+        pw.println(p.encodeBag());
     }
 
     private static Player read(File file) {
@@ -332,6 +334,8 @@ public class SaveManager {
         // Saves from before 대장간 제작 have no line here.
         Map<String, String> renames = player.decodeCrafted(br.readLine(), foreign);
         if (gearLine != null) player.decodeGear(renamed(gearLine, renames));
+        // Saves from before the bag have no line here: everything is laid out afresh.
+        player.decodeBag(br.readLine());
         return player;
     }
 

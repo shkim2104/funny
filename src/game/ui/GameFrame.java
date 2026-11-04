@@ -17,6 +17,7 @@ import game.model.Story;
 import game.model.StoryMaterial;
 import game.model.Tutorial;
 import game.model.World;
+import game.save.KeyBindings;
 import game.save.SaveManager;
 import game.save.Settings;
 
@@ -78,6 +79,8 @@ public class GameFrame extends JFrame {
 
     private JLabel townInfoLabel;
     private JButton[] townButtons;
+    /** 퀘스트 (J): shows a red "!" while something finished waits. */
+    private JButton questButton;
     /** 개발자 모드: only shown for a character named DevMode.NAME. */
     private JButton devButton;
     private JButton[] titleButtons;
@@ -124,9 +127,7 @@ public class GameFrame extends JFrame {
         setContentPane(cards);
         setGlassPane(pageTurner);
         pageTurner.setVisible(false);
-        bindFullscreenToggle();
-        bindHotkeys();
-        bindDevKey();
+        bindKeys();
 
         showTitle();
         if (Settings.isStartFullscreen()) toggleFullscreen();
@@ -134,55 +135,87 @@ public class GameFrame extends JFrame {
     }
 
     /**
-     * 단축키 (when the setting is on): 1~4 skills and Tab (보유 증강) in battle, I 장비 / S 스탯 분배 in town,
-     * Esc 설정 in town and on the maps. Keys only act on the screen they belong to.
+     * 단축키 and ESC, through one dispatcher for the whole game (keys from KeyBindings, changeable in 설정):
+     * in any open window the 창 닫기 key closes it; in the game window each key does its action on the
+     * screen it belongs to. Handled keys never also press a focused button.
      */
-    private void bindHotkeys() {
-        JRootPane root = getRootPane();
-        InputMap im = root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
-        ActionMap am = root.getActionMap();
-        for (int i = 0; i < 4; i++) {
-            final int slot = i;
-            hotkey(im, am, String.valueOf(i + 1), "BATTLE", () -> battlePanel.hotkeySkill(slot));
-        }
-        hotkey(im, am, "TAB", "BATTLE", () -> {
-            if (Settings.isAugmentListKey()) battlePanel.showRunInfo();
-        });
-        hotkey(im, am, "I", "TOWN", this::openEquip);
-        hotkey(im, am, "S", "TOWN", this::openStatAlloc);
-        hotkey(im, am, "ESCAPE", "TOWN", this::openSettings);
-        hotkey(im, am, "ESCAPE", "DUNGEON_MAP", this::openSettings);
-        // Tab normally moves focus; let the window see it instead.
+    private void bindKeys() {
+        // Tab normally moves focus; let the game see it instead.
         setFocusTraversalKeysEnabled(false);
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(this::onKey);
     }
 
-    private final java.util.Map<String, java.util.Map<String, Runnable>> hotkeys = new java.util.HashMap<>();
-
-    private void hotkey(InputMap im, ActionMap am, String key, String screen, Runnable action) {
-        hotkeys.computeIfAbsent(key, k -> new java.util.HashMap<>()).put(screen, action);
-        im.put(KeyStroke.getKeyStroke(key), "hotkey-" + key);
-        am.put("hotkey-" + key, new AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                // Tab (보유 증강) has its own setting; the rest follow 단축키.
-                if (!key.equals("TAB") && !Settings.isHotkeys()) return;
-                Runnable r = hotkeys.get(key).get(currentCard);
-                if (r != null && player != null) r.run();
-            }
-        });
+    /** One key press; true if it was used (then nothing else sees it). */
+    boolean onKey(java.awt.event.KeyEvent e) {
+        if (e.getID() != java.awt.event.KeyEvent.KEY_PRESSED || KeyBindings.capturing) return false;
+        Component src = e.getComponent();
+        Window w = src instanceof Window ? (Window) src : src == null ? null : SwingUtilities.getWindowAncestor(src);
+        if (w instanceof JDialog) {
+            JDialog d = (JDialog) w;
+            if (!KeyBindings.matches(KeyBindings.Action.CLOSE, e) || Boolean.TRUE.equals(d.getRootPane().getClientProperty("noEscClose"))) return false;
+            // As if its X was pressed: each window's own closing rule applies (a pick that must be made stays).
+            d.dispatchEvent(new java.awt.event.WindowEvent(d, java.awt.event.WindowEvent.WINDOW_CLOSING));
+            return true;
+        }
+        if (w != this) return false;
+        for (KeyBindings.Action a : KeyBindings.Action.values()) {
+            if (!KeyBindings.matches(a, e)) continue;
+            Runnable r = keyAction(a);
+            if (r == null) continue;
+            e.consume();
+            r.run();
+            return true;
+        }
+        return false;
     }
 
-    /** Binds F11 to toggle maximized mode, a common convenience shortcut. */
-    private void bindFullscreenToggle() {
-        JRootPane root = getRootPane();
-        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-                .put(KeyStroke.getKeyStroke("F11"), "toggleFullscreen");
-        root.getActionMap().put("toggleFullscreen", new AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                toggleFullscreen();
-            }
-        });
+    /** What an action does on the screen showing now, or null if nothing (wrong screen, keys off, mid page turn). */
+    private Runnable keyAction(KeyBindings.Action a) {
+        boolean town = "TOWN".equals(currentCard) && player != null;
+        boolean maps = town || ("DUNGEON_MAP".equals(currentCard) || "MULTIVERSE".equals(currentCard)) && player != null;
+        boolean battle = "BATTLE".equals(currentCard) && player != null;
+        switch (a) {
+            case FULLSCREEN: return this::toggleFullscreen;
+            case DEV: return DevMode.isDev(player) ? this::openDev : null;
+            case QUESTS: return (maps || battle) && !pageTurner.isVisible() ? this::openQuests : null;
+            case AUGMENTS: return battle && Settings.isAugmentListKey() ? battlePanel::showRunInfo : null;
+            default: break;
+        }
+        if (!Settings.isHotkeys() || pageTurner.isVisible()) return null;
+        switch (a) {
+            case SETTINGS: return maps ? this::openSettings : null;
+            case STATUS: return town ? this::showStatus : null;
+            case INVENTORY: return town ? this::openEquip : null;
+            case STATS: return town ? this::openStatAlloc : null;
+            case DUNGEON_MAP: return town ? () -> visit(Tutorial.Place.GATE) : null;
+            case SAVE: return town ? () -> {
+                SaveManager.save(player, currentSaveId);
+                townMap.toast("게임을 저장했습니다.");
+            } : null;
+            case ATTACK: return battle ? battlePanel::hotkeyAttack : null;
+            case BASIC: return battle ? battlePanel::hotkeyBasic : null;
+            case SKILL1: return battle ? () -> battlePanel.hotkeySkill(0) : null;
+            case SKILL2: return battle ? () -> battlePanel.hotkeySkill(1) : null;
+            case SKILL3: return battle ? () -> battlePanel.hotkeySkill(2) : null;
+            case SKILL4: return battle ? () -> battlePanel.hotkeySkill(3) : null;
+            case HEAL: return battle ? battlePanel::hotkeyHeal : null;
+            case AUTO: return battle ? battlePanel::toggleAuto : null;
+            case FLEE: return battle ? battlePanel::hotkeyFlee : null;
+            default: return null;
+        }
+    }
+
+    /** Menu buttons that show their key, so the keys can be found without the settings page. */
+    private final java.util.Map<JButton, KeyBindings.Action> keyHints = new java.util.LinkedHashMap<>();
+
+    private void refreshKeyHints() {
+        boolean ready = player != null && QuestJournalDialog.anyReady(player);
+        for (java.util.Map.Entry<JButton, KeyBindings.Action> e : keyHints.entrySet()) {
+            String base = (String) e.getKey().getClientProperty("baseText");
+            String bang = e.getKey() == questButton && ready ? "&nbsp;<font color='" + Sketch.hex(Sketch.RED_PENCIL) + "'><b>!</b></font>" : "";
+            e.getKey().setText("<html>" + base + bang + "&nbsp;&nbsp;<font color='" + Sketch.hex(Sketch.INK_SOFT) + "'>"
+                    + KeyBindings.label(e.getValue()) + "</font></html>");
+        }
     }
 
     // Maximizes via setExtendedState rather than a dispose()+setUndecorated() borderless toggle:
@@ -288,6 +321,8 @@ public class GameFrame extends JFrame {
 
     private void openSettings() {
         SettingsDialog.show(this);
+        // Keys may have been changed there.
+        refreshKeyHints();
     }
 
     /** The player names and draws their hero, then a new player is rolled; null if they cancelled. */
@@ -369,13 +404,16 @@ public class GameFrame extends JFrame {
         townArt = loadImage("images/town.png");
         invadedTownArt = loadImage("images/town_invaded.png");
         townMap = new MapScreen(townArt);
-        // The final story: ??? and the rift appear while 이계의 존재 is invading; a trace of the rift stays after.
+        // The final story: ??? and the rift appear only while 이계의 존재 is invading; after the ending the sky is clear.
         townMap.addShownHotspot("???", MYSTERY_AREA.x, MYSTERY_AREA.y, MYSTERY_AREA.width, MYSTERY_AREA.height, this::talkToMystery,
                 () -> player != null && Story.invaded(player.getStoryStage()));
         townMap.addShownHotspot("하늘의 균열", RIFT_AREA.x, RIFT_AREA.y, RIFT_AREA.width, RIFT_AREA.height, this::enterRift,
                 () -> player != null && Story.invaded(player.getStoryStage()));
-        townMap.addShownHotspot("균열의 흔적", RIFT_AREA.x, RIFT_AREA.y, RIFT_AREA.width, RIFT_AREA.height, this::enterRift,
-                () -> player != null && player.getStoryStage() >= Story.ENDED);
+        // "!" where something finished waits: a done request at the quest board, ??? ready for the clues, the rift once the potion is made.
+        townMap.addBadge(new Rectangle(108, 718, 202, 165), () -> player != null && player.getQuests().stream().anyMatch(Quest::isDone));
+        townMap.addBadge(MYSTERY_AREA, () -> player != null && player.getStoryStage() >= Story.FIRST_REQUEST
+                && player.getStoryStage() <= Story.LAST_REQUEST && Story.canHandIn(player, player.getStoryStage()));
+        townMap.addBadge(RIFT_AREA, () -> player != null && player.getStoryStage() == Story.POTION_MADE);
         // Every building goes through visit(), so the tutorial can point at one and hold back the rest.
         place(Tutorial.Place.SMITH, new Rectangle(130, 200, 430, 350), this::openBlacksmith);
         place(Tutorial.Place.MUSEUM, new Rectangle(680, 160, 395, 360), () -> townMap.toast(NOT_READY));
@@ -397,19 +435,20 @@ public class GameFrame extends JFrame {
         townInfoLabel = Theme.body("");
         tutorialSkipButton = menuButton("튜토리얼 건너뛰기", this::skipTutorial);
         tutorialSkipButton.setVisible(false);
-        devButton = menuButton("개발자", this::openDev);
+        devButton = menuButton("개발자", this::openDev, KeyBindings.Action.DEV);
         devButton.setVisible(false);
         townButtons = new JButton[] {
                 tutorialSkipButton,
                 devButton,
-                menuButton("상태 보기", this::showStatus),
-                menuButton("장비 변경", this::openEquip),
-                menuButton("스탯 분배", this::openStatAlloc),
+                questButton = menuButton("퀘스트", this::openQuests, KeyBindings.Action.QUESTS),
+                menuButton("상태 보기", this::showStatus, KeyBindings.Action.STATUS),
+                menuButton("인벤토리", this::openEquip, KeyBindings.Action.INVENTORY),
+                menuButton("스탯 분배", this::openStatAlloc, KeyBindings.Action.STATS),
                 menuButton("저장하기", () -> {
                     SaveManager.save(player, currentSaveId);
                     townMap.toast("게임을 저장했습니다.");
-                }),
-                menuButton("설정", this::openSettings),
+                }, KeyBindings.Action.SAVE),
+                menuButton("설정", this::openSettings, KeyBindings.Action.SETTINGS),
                 menuButton("타이틀로", this::backToTitle)
         };
         return mapWithSideMenu(townMap, "마을", townInfoLabel, "건물을 클릭해 이동하세요", townButtons);
@@ -443,23 +482,36 @@ public class GameFrame extends JFrame {
 
     /** Map on the left, a slim menu column on the right (title, optional info, hint, buttons). */
     private JPanel mapWithSideMenu(MapScreen map, String title, JLabel info, String hint, JButton... buttons) {
-        JPanel side = new JPanel();
-        side.setBackground(Theme.PANEL);
+        // The same notebook page as the map: its ruled lines run straight on, at the map art's height and gap,
+        // with only a faint pencil fold between the map and the menu.
+        long seed = title.hashCode();
+        JPanel side = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = Sketch.smooth(g);
+                MapScreen.paintPage(g2, 0, getWidth(), getHeight(), map.ruleStart(), map.ruleGap(), map.ruleWidth());
+                Sketch.line(g2, 1, 6, 1, getHeight() - 6, seed, 1.4f, new Color(118, 112, 106, 90));
+                g2.dispose();
+            }
+        };
+        side.setOpaque(true);
         side.setLayout(new BoxLayout(side, BoxLayout.Y_AXIS));
-        side.setBorder(new EmptyBorder(24, 20, 24, 20));
+        side.setBorder(new EmptyBorder(22, 26, 22, 16));
 
-        JLabel titleLabel = Theme.title(title);
+        JLabel titleLabel = Sketch.title(title);
         titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         side.add(titleLabel);
         side.add(Box.createVerticalStrut(12));
         if (info != null) {
+            info.setFont(Sketch.hand(Font.BOLD, 14f));
+            info.setForeground(Sketch.INK);
             info.setAlignmentX(Component.LEFT_ALIGNMENT);
             side.add(info);
             side.add(Box.createVerticalStrut(12));
         }
         JLabel hintLabel = new JLabel(hint);
-        hintLabel.setFont(Theme.SMALL_FONT);
-        hintLabel.setForeground(Theme.TEXT_DIM);
+        hintLabel.setFont(Sketch.hand(Font.PLAIN, 12f));
+        hintLabel.setForeground(Sketch.INK_SOFT);
         hintLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         side.add(hintLabel);
         side.add(Box.createVerticalStrut(20));
@@ -472,10 +524,11 @@ public class GameFrame extends JFrame {
         }
         side.add(Box.createVerticalGlue());
         Theme.arrowNav(buttons);
-        side.setPreferredSize(new Dimension(220, 0));
+        side.setPreferredSize(new Dimension(240, 0));
+        refreshKeyHints();
 
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(Theme.BG);
+        panel.setBackground(Sketch.PAPER);
         panel.add(map, BorderLayout.CENTER);
         panel.add(side, BorderLayout.EAST);
         return panel;
@@ -556,14 +609,23 @@ public class GameFrame extends JFrame {
     }
 
     private JButton menuButton(String text, Runnable action) {
-        JButton btn = Theme.button(text);
+        JButton btn = new Sketch.Button(text, false);
+        btn.setFont(Sketch.hand(Font.BOLD, 16f));
+        btn.setHorizontalAlignment(SwingConstants.LEFT);
+        btn.putClientProperty("baseText", text);
         btn.addActionListener(e -> action.run());
+        return btn;
+    }
+
+    private JButton menuButton(String text, Runnable action, KeyBindings.Action key) {
+        JButton btn = menuButton(text, action);
+        keyHints.put(btn, key);
         return btn;
     }
 
     private void refreshTown() {
         String statPointsNote = player.getStatPoints() > 0
-                ? "<br><font color='#c7a86a'>스탯 포인트 " + player.getStatPoints() + "</font>"
+                ? "<br><font color='" + Sketch.hex(Sketch.RED_PENCIL) + "'>스탯 포인트 " + player.getStatPoints() + "</font>"
                 : "";
         townInfoLabel.setText("<html>Lv." + player.getLevel() + " " + player.getJob().getDisplayName() + " " + player.getName()
                 + "<br>HP " + player.getHp() + "/" + player.getMaxHp()
@@ -572,6 +634,7 @@ public class GameFrame extends JFrame {
                 + " · 가루 " + player.getMaterial(Material.ERASER_DUST) + " · 색연필 " + player.getMaterial(Material.COLOR_LEAD)
                 + statPointsNote + storyNote() + "</html>");
         devButton.setVisible(DevMode.isDev(player));
+        refreshKeyHints();
         refreshTutorial();
     }
 
@@ -598,15 +661,11 @@ public class GameFrame extends JFrame {
         });
     }
 
-    private void bindDevKey() {
-        JRootPane root = getRootPane();
-        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("F12"), "devMode");
-        root.getActionMap().put("devMode", new AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                openDev();
-            }
-        });
+    /** 개발자 모드 기본 증강: the developer character starts every run holding the augments ticked in the dev window. */
+    private void giveDevAugments(RunState run) {
+        if (!DevMode.isDev(player)) return;
+        java.util.Set<String> wanted = Settings.getDevAugments();
+        for (Augment a : Augment.all()) if (wanted.contains(a.getName()) && !run.getAugments().contains(a)) run.take(a);
     }
 
     /**
@@ -621,6 +680,7 @@ public class GameFrame extends JFrame {
         boolean mid = !boss && dungeon.isMidFloor(currentFloor);
         Music.play(boss || mid ? "boss" : "dungeon" + (dungeonIndex + 1), "dungeon1");
         run = new RunState(dungeonIndex);
+        giveDevAugments(run);
         battlePanel.setRun(run);
         battlePanel.setBossFight(boss);
         if (mid) battlePanel.setMidBossFight();
@@ -723,9 +783,9 @@ public class GameFrame extends JFrame {
     private String storyNote() {
         int stage = player.getStoryStage();
         if (stage >= Story.FIRST_REQUEST && stage <= Story.LAST_REQUEST) {
-            return "<br><br><font color='#b48ae0'>이계의 침공! 광장의 ???를 찾아가세요. (" + stage + "/3단계)</font>";
+            return "<br><br><font color='#6a2c9a'>이계의 침공! 광장의 ???를 찾아가세요. (" + stage + "/3단계)</font>";
         }
-        if (stage == Story.POTION_MADE) return "<br><br><font color='#b48ae0'>약이 완성됐다. 하늘의 균열로!</font>";
+        if (stage == Story.POTION_MADE) return "<br><br><font color='#6a2c9a'>약이 완성됐다. 하늘의 균열로!</font>";
         return "";
     }
 
@@ -746,41 +806,11 @@ public class GameFrame extends JFrame {
      * 1차 전사 → 2차 궁수 → 3차 마법사 are allowed; toasts explain when nothing can be picked yet.
      */
     private void openAdvancement() {
-        int tier = player.getNextTier();
-        if (tier == 0) {
-            townMap.toast("모든 전직을 마쳤습니다. (" + player.getJob().getDisplayName() + ")");
-            return;
-        }
-        if (player.getLevel() < Job.levelForTier(tier)) {
-            townMap.toast(tier + "차 전직은 Lv." + Job.levelForTier(tier) + "부터 할 수 있습니다. (현재 Lv." + player.getLevel() + ")");
-            return;
-        }
-        List<Job> available = player.getAvailableAdvancements();
-        if (available.isEmpty()) {
-            townMap.toast(tier + "차 전직 직업은 아직 준비 중입니다.");
-            return;
-        }
+        // The 전직소 always opens: every class, route, job and skill can be read there, and the next tier's
+        // cards carry the button (off until the level is reached).
         pageTurner.turnToBlankPage(() -> {
-            String[] options = new String[available.size()];
-            for (int i = 0; i < available.size(); i++) {
-                Job j = available.get(i);
-                StringBuilder skills = new StringBuilder();
-                for (Skill s : j.getSkills()) {
-                    if (skills.length() > 0) skills.append(", ");
-                    skills.append(s.getName());
-                    if (s.getRequiredLevel() > j.getRequiredLevel()) skills.append(" (Lv.").append(s.getRequiredLevel()).append(")");
-                }
-                String focus = j.getFocus().isEmpty() ? "" : "  <font color='#c7a86a'>" + j.getFocus() + "</font>";
-                options[i] = "<html><b>[" + j.getJobClass() + "] " + j.getDisplayName() + "</b>" + focus
-                        + "<br><font color='#8c8f9a'>" + j.getDescription() + "</font>"
-                        + "<br>스킬: " + skills + "</html>";
-            }
-            int idx = Dialogs.choose(this, tier + "차 전직",
-                    tier + "차 전직 — 어떤 길을 이어 가시겠습니까? (직업군 제한 없음)", options, 560);
-            if (idx < 0) return;
-            Job chosen = available.get(idx);
-            if (!Dialogs.confirm(this, "전직", chosen.getDisplayName() + "(으)로 전직할까요?\n한 번 정하면 바꿀 수 없습니다.")) return;
-            player.advanceTo(chosen);
+            Job chosen = JobHallDialog.show(this, player);
+            if (chosen == null || !player.advanceTo(chosen)) return;
             refreshTown();
             StringBuilder learned = new StringBuilder();
             for (Skill s : player.getSkills()) {
@@ -893,6 +923,7 @@ public class GameFrame extends JFrame {
         // Each dungeon gets its own song as they are made; until then they share 1던전's.
         Music.play("dungeon" + (dungeonIndex + 1), "dungeon1");
         run = new RunState(dungeonIndex);
+        giveDevAugments(run);
         battlePanel.setRun(run);
         battlePanel.setBossFight(false);
         Dungeon dungeon = dungeons.get(currentDungeonIndex);
@@ -940,7 +971,7 @@ public class GameFrame extends JFrame {
         boolean couldAdvance = !player.getAvailableAdvancements().isEmpty();
         // Quest board progress: every kill counts toward matching hunts / boss requests.
         for (Quest q : player.recordKill(monster.getName())) {
-            battlePanel.logResult("[의뢰 완료] " + q.getTitle() + " — 마을 의뢰 게시판에서 보상을 받으세요.");
+            battlePanel.logResult("[퀘스트 완료!] " + q.getTitle() + " — 마을에서 보상을 받으세요. (" + KeyBindings.label(KeyBindings.Action.QUESTS) + "로 확인)");
         }
         int expGain = run.exp(monster.getExpReward()), goldGain = run.gold(monster.getGoldReward());
         player.gainExp(expGain);
@@ -958,8 +989,8 @@ public class GameFrame extends JFrame {
         rollStoryMaterial(msg);
         if (player.getLevel() > beforeLevel) {
             int gained = (player.getLevel() - beforeLevel) * Player.POINTS_PER_LEVEL;
-            msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! (스탯 포인트 +")
-                    .append(gained).append(",마을에서 분배하세요)");
+            msg.append("\n레벨 업! Lv.").append(player.getLevel()).append("이 되었습니다! 모든 능력치가 올랐다 (")
+                    .append(Player.growthText(player.getLevel())).append(") · 스탯 포인트 +").append(gained).append(" (마을에서 분배)");
             appendGrowthNotes(msg, beforeSkills, couldAdvance);
             battlePanel.showLevelUp();
         }
@@ -1034,9 +1065,14 @@ public class GameFrame extends JFrame {
         StoryMaterial m = StoryMaterial.of(currentDungeonIndex);
         int count = bossStage ? StoryMaterial.BOSS_COUNT : StoryMaterial.rollKill(rnd);
         if (m == null || count <= 0) return;
+        boolean readyBefore = Story.canHandIn(player, stage);
         player.addStoryMaterial(m, count);
         msg.append("\n[이계의 단서] ").append(m.getLabel()).append(" ").append(count).append("개 획득! (")
                 .append(player.getStoryMaterial(m)).append("개)");
+        if (!readyBefore && Story.canHandIn(player, stage)) {
+            msg.append("\n[퀘스트 완료!] ???의 부탁 ").append(stage).append("단계 재료를 모두 모았다! 광장의 ???에게 건네주세요. (")
+                    .append(KeyBindings.label(KeyBindings.Action.QUESTS)).append("로 확인)");
+        }
     }
 
     // ---------- the final story ----------
@@ -1057,10 +1093,42 @@ public class GameFrame extends JFrame {
         boolean fresh = stage == Story.FIRST_REQUEST && Story.request(stage).keySet().stream().allMatch(m -> player.getStoryMaterial(m) == 0);
         playScene(fresh ? Story.intro() : Story.requestTalk(stage));
         if (!RiftQuestDialog.show(this, player)) return;
+        afterHandIn(stage);
+    }
+
+    /** ???'s request was handed in (at ??? or from the 퀘스트 window): save, the scene, the note. */
+    private void afterHandIn(int stage) {
         autoSave();
         playScene(Story.handedIn(stage));
         refreshTown();
         townMap.toast(stage < Story.LAST_REQUEST ? "???의 다음 부탁이 생겼다! (" + (stage + 1) + "/3단계)" : "이계 약화 물약이 완성됐다!");
+    }
+
+    /**
+     * 퀘스트 (J, or the town button): ???'s request and the quest board in full. In a dungeon fight it is for
+     * reading only; in town or on the maps rewards can be taken there.
+     */
+    private void openQuests() {
+        if (player == null) return;
+        boolean fight = "BATTLE".equals(currentCard);
+        QuestJournalDialog.show(this, player, new QuestJournalDialog.Host() {
+            @Override public boolean inBattle() { return fight; }
+
+            @Override public void handIn() {
+                int stage = player.getStoryStage();
+                if (fight || !Story.handIn(player)) return;
+                afterHandIn(stage);
+            }
+
+            @Override public void claim(Quest q) {
+                if (fight || !q.isDone()) return;
+                q.payTo(player);
+                player.replaceQuest(q, dungeons, rnd);
+                autoSave();
+                refreshTown();
+            }
+        });
+        if (!fight) refreshTown();
     }
 
     /** The rift: barred until the potion is made, then the final fight (again, after the ending). */
@@ -1079,6 +1147,7 @@ public class GameFrame extends JFrame {
         playScene(Story.finaleStart(first));
         run = new RunState(dungeons.size() - 1);
         run.take(Augment.blessing());
+        giveDevAugments(run);
         battlePanel.setRun(run);
         battlePanel.setFinale();
         bossStage = true;
@@ -1127,8 +1196,10 @@ public class GameFrame extends JFrame {
                 return;
             }
             Music.play("title");
-            showCard("ENDING", true);
+            // Start the ending before the page turns onto it, so the turning page shows a blank page, not the
+            // whole text written out (which then vanished and was written again).
             endingPanel.play(player.getName());
+            showCard("ENDING", true);
         });
     }
 

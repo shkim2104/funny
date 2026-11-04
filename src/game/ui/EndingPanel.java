@@ -19,6 +19,7 @@ public final class EndingPanel extends JPanel {
 
     private final JButton back = new Sketch.Button("마을로", true);
     private final Timer timer;
+    /** When the writing began; 0 until play(), and then nothing is written yet. */
     private long start;
     private String heroName = "";
 
@@ -41,7 +42,7 @@ public final class EndingPanel extends JPanel {
             repaint();
         });
         addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override public void mouseClicked(java.awt.event.MouseEvent e) { start -= LINE_MS; }   // a click hurries it on
+            @Override public void mouseClicked(java.awt.event.MouseEvent e) { if (start != 0) start -= LINE_MS; }   // a click hurries it on
         });
     }
 
@@ -54,7 +55,7 @@ public final class EndingPanel extends JPanel {
     }
 
     private long elapsed() {
-        return System.currentTimeMillis() - start;
+        return start == 0 ? 0 : System.currentTimeMillis() - start;
     }
 
     @Override

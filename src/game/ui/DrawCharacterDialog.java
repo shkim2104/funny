@@ -85,6 +85,8 @@ public final class DrawCharacterDialog {
         this.art = art;
         Window w = (owner instanceof Window) ? (Window) owner : SwingUtilities.getWindowAncestor(owner);
         dialog = new JDialog(w, title, Dialog.ModalityType.APPLICATION_MODAL);
+        // ESC must not throw a drawing away; its own buttons (and X) still close it.
+        dialog.getRootPane().putClientProperty("noEscClose", Boolean.TRUE);
         Sketch.Page page = new Sketch.Page(new BorderLayout(12, 10), 34);
         page.setBorder(new EmptyBorder(14, 52, 14, 20));
         dialog.setContentPane(page);

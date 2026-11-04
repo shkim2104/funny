@@ -53,6 +53,13 @@ public class MapScreen extends JPanel {
     }
 
     private final List<Figure> figures = new ArrayList<>();
+    /** "!" marks over places where something finished waits (artwork pixels, shown while the test holds). */
+    private final List<Object[]> badges = new ArrayList<>();
+
+    /** Puts a "!" over the top of an area (artwork pixels) while `shown` is true. */
+    public void addBadge(Rectangle area, BooleanSupplier shown) {
+        badges.add(new Object[]{new Rectangle(area), shown});
+    }
     /** The tutorial's pointer: a blinking pencil circle on this area, and the line over the map. */
     private Rectangle guide;
     private String guideText;
@@ -71,7 +78,7 @@ public class MapScreen extends JPanel {
     public MapScreen(Image art) {
         this.art = art;
         setOpaque(true);
-        setBackground(Theme.BG);
+        setBackground(Sketch.PAPER);
 
         MouseAdapter mouseHandler = new MouseAdapter() {
             @Override
@@ -177,6 +184,47 @@ public class MapScreen extends JPanel {
         return art == null ? 0 : (int) Math.round((getWidth() - art.getWidth(null) * scale()) / 2);
     }
 
+    /**
+     * The map art's ruled lines (tools/pencil-art Backdrops.rule): from y=96, every 44 art pixels, light blue,
+     * 2.2 wide. Screen coordinates of the first line at or below the top, the gap and the pen width, so the
+     * side menu can rule its page on the very same lines.
+     */
+    static final int ART_RULE_TOP = 96, ART_RULE_GAP = 44;
+    static final Color RULE_INK = new Color(110, 150, 205, 70);
+
+    public double ruleGap() {
+        return ART_RULE_GAP * scale();
+    }
+
+    public double ruleStart() {
+        double gap = ruleGap(), y = offsetY() + ART_RULE_TOP * scale();
+        return gap <= 0 ? 0 : ((y % gap) + gap) % gap;
+    }
+
+    public float ruleWidth() {
+        return (float) Math.max(1, 2.2 * scale());
+    }
+
+    /**
+     * A strip of the notebook page from x0 to x1: the paper with its faint grain and the ruled lines from
+     * `start`, every `gap`. The map paints its margins with it and the side menu its whole width.
+     */
+    public static void paintPage(Graphics2D g, int x0, int x1, int h, double start, double gap, float width) {
+        g.setColor(Sketch.PAPER);
+        g.fillRect(x0, 0, x1 - x0, h);
+        java.util.Random r = new java.util.Random(4242);
+        int n = (x1 - x0) * h / 175;
+        for (int i = 0; i < n; i++) {
+            g.setColor(new Color(120, 110, 90, 10 + r.nextInt(16)));
+            g.fillRect(x0 + r.nextInt(Math.max(1, x1 - x0)), r.nextInt(Math.max(1, h)), 1 + r.nextInt(3), 1);
+        }
+        if (gap < 4) return;
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setStroke(new BasicStroke(width));
+        g.setColor(RULE_INK);
+        for (double y = start; y < h; y += gap) g.draw(new java.awt.geom.Line2D.Double(x0, y, x1, y));
+    }
+
     private int offsetY() {
         return art == null ? 0 : (int) Math.round((getHeight() - art.getHeight(null) * scale()) / 2);
     }
@@ -200,6 +248,10 @@ public class MapScreen extends JPanel {
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
+        // Around the map art, the same page goes on: its ruled lines continue at the art's own height and gap.
+        Graphics2D paper = (Graphics2D) g.create();
+        paintPage(paper, 0, getWidth(), getHeight(), ruleStart(), ruleGap(), ruleWidth());
+        paper.dispose();
         if (art == null) return;
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -247,6 +299,13 @@ public class MapScreen extends JPanel {
                 String label = hovered.locked.getAsBoolean() ? hovered.label + " (잠김)" : hovered.label;
                 drawPill(g2, label, mouse.x + 16, mouse.y + 28, 1f, 15f);
             }
+        }
+
+        for (Object[] b : badges) {
+            if (!((BooleanSupplier) b[1]).getAsBoolean()) continue;
+            Rectangle r = toScreen((Rectangle) b[0]);
+            double rad = Math.max(12, 20 * scale() * 1.6);
+            QuestJournalDialog.paintBang(g2, r.getCenterX(), Math.max(rad + 2, r.y - rad * 0.4), rad, r.x * 31L + r.y);
         }
 
         if (toastText != null) {
@@ -363,9 +422,9 @@ public class MapScreen extends JPanel {
             }
         }
     }
-    /** Dark translucent rounded label with white text; (x, y) is the pill's top-left. */
+    /** A yellow sticky note in pencil with the text written on it; (x, y) is the note's top-left. */
     private void drawPill(Graphics2D g2, String text, int x, int y, float alpha, float size) {
-        Font font = Theme.dosFont(Font.BOLD, size);
+        Font font = Sketch.hand(Font.BOLD, size);
         FontMetrics fm = g2.getFontMetrics(font);
         int padX = 18, padY = 10;
         int w = fm.stringWidth(text) + padX * 2;
@@ -374,10 +433,12 @@ public class MapScreen extends JPanel {
         y = Math.max(8, Math.min(y, getHeight() - h - 8));
         Graphics2D gp = (Graphics2D) g2.create();
         gp.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-        gp.setColor(new Color(16, 14, 12, 200));
-        gp.fill(new RoundRectangle2D.Float(x, y, w, h, 16, 16));
+        gp.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        gp.setColor(new Color(255, 244, 178, 245));
+        gp.fill(new RoundRectangle2D.Float(x, y, w, h, 6, 6));
+        Sketch.box(gp, x, y, w, h, text.hashCode(), 2.0f, Sketch.INK);
         gp.setFont(font);
-        gp.setColor(Color.WHITE);
+        gp.setColor(Sketch.INK);
         gp.drawString(text, x + padX, y + padY + fm.getAscent());
         gp.dispose();
     }

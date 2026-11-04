@@ -1,5 +1,6 @@
 package game.ui;
 
+import game.save.KeyBindings;
 import game.save.Settings;
 
 import javax.swing.*;
@@ -61,10 +62,11 @@ public final class SettingsDialog {
                         Settings.isPageTurn(), Settings::setPageTurn, 6141),
                 toggle("글자 크게", "연필 글씨를 조금 크게 써요. 게임을 다시 켜면 모든 화면에 적용돼요.",
                         Settings.isLargeText(), Settings::setLargeText, 6142),
-                toggle("단축키", "1~4 스킬, I 장비, S 스탯 분배, Esc 설정 창.",
+                toggle("단축키", "「키 설정」 탭의 단축키를 켜고 꺼요. (창 닫기, 개발자 모드, 전체 화면, 보유 증강은 늘 켜져 있어요)",
                         Settings.isHotkeys(), Settings::setHotkeys, 6143),
                 toggle("건물 이름 표시", "마을과 지도에서 마우스를 올리면 이름표를 띄워요.",
                         Settings.isBuildingLabels(), Settings::setBuildingLabels, 6144)));
+        tabs.addTab("키 설정", keysTab());
         tabs.addTab("저장·소리", tab(
                 toggle("창을 닫을 때 자동 저장", "게임 창을 닫거나 「종료」·「타이틀로」를 누르면 지금 캐릭터를 저장해요.",
                         Settings.isAutoSaveOnExit(), Settings::setAutoSaveOnExit, 6150),
@@ -84,9 +86,75 @@ public final class SettingsDialog {
         d.add(south, BorderLayout.SOUTH);
         d.getRootPane().setDefaultButton(close);
 
-        d.setSize(720, 720);
+        d.setSize(760, 760);
         d.setLocationRelativeTo(owner);
         d.setVisible(true);
+    }
+
+    /**
+     * 키 설정: every action with its key. Press an action's key box, then the key you want; a key another
+     * action already used on the same screen trades places with it. 기본값으로 puts every key back.
+     */
+    private static JComponent keysTab() {
+        JLabel note = Sketch.label("키 칸을 누르고 원하는 키를 누르세요. Ctrl·Shift·Alt와 함께 눌러도 돼요.", Font.PLAIN, 13f, Sketch.INK_SOFT);
+        java.util.Map<KeyBindings.Action, JButton> boxes = new java.util.LinkedHashMap<>();
+        Runnable refresh = () -> {
+            for (java.util.Map.Entry<KeyBindings.Action, JButton> e : boxes.entrySet()) e.getValue().setText(KeyBindings.label(e.getKey()));
+        };
+        java.util.List<JComponent> rows = new java.util.ArrayList<>();
+        long seed = 6600;
+        for (KeyBindings.Action a : KeyBindings.Action.values()) {
+            JButton box = new Sketch.Button(KeyBindings.label(a), true);
+            box.setFont(Sketch.hand(Font.BOLD, 16f));
+            box.setPreferredSize(new Dimension(150, 46));
+            box.setFocusTraversalKeysEnabled(false);
+            boolean[] waiting = {false};
+            box.addActionListener(e -> {
+                waiting[0] = true;
+                KeyBindings.capturing = true;
+                box.setText("키를 누르세요…");
+                box.requestFocusInWindow();
+            });
+            box.addKeyListener(new java.awt.event.KeyAdapter() {
+                @Override
+                public void keyPressed(java.awt.event.KeyEvent e) {
+                    if (!waiting[0] || !KeyBindings.assignable(e)) return;
+                    e.consume();
+                    waiting[0] = false;
+                    KeyBindings.capturing = false;
+                    KeyStroke k = KeyStroke.getKeyStroke(e.getKeyCode(), e.getModifiersEx()
+                            & (java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK | java.awt.event.InputEvent.ALT_DOWN_MASK));
+                    java.util.List<KeyBindings.Action> moved = KeyBindings.set(a, k);
+                    refresh.run();
+                    StringBuilder s = new StringBuilder(a.label + " → " + KeyBindings.label(k));
+                    for (KeyBindings.Action m : moved) s.append("   ·   ").append(m.label).append("은(는) ").append(KeyBindings.label(m)).append("(으)로 바뀌었어요");
+                    note.setText(s.toString());
+                }
+            });
+            box.addFocusListener(new java.awt.event.FocusAdapter() {
+                @Override
+                public void focusLost(java.awt.event.FocusEvent e) {
+                    if (!waiting[0]) return;
+                    waiting[0] = false;
+                    KeyBindings.capturing = false;
+                    refresh.run();
+                }
+            });
+            boxes.put(a, box);
+            rows.add(row(a.label, a.scope.label + "에서 · 기본 " + KeyBindings.label(KeyStroke.getKeyStroke(a.defaultKey)), box, seed++));
+        }
+        JButton reset = new Sketch.Button("기본값으로", false);
+        reset.addActionListener(e -> {
+            KeyBindings.resetAll();
+            refresh.run();
+            note.setText("모든 키를 기본값으로 되돌렸어요.");
+        });
+        JPanel top = new JPanel(new BorderLayout(10, 0));
+        top.setOpaque(false);
+        top.add(note, BorderLayout.CENTER);
+        top.add(reset, BorderLayout.EAST);
+        rows.add(0, top);
+        return tab(rows.toArray(new JComponent[0]));
     }
 
     /** One tab: its rows stacked from the top, scrolling if they don't fit. */

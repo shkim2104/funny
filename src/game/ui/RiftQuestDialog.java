@@ -9,7 +9,7 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.Map;
 
-/** ???'s request: the 이계의 단서 it asks for, how many the hero holds, and 건네주기 once they are all there. */
+/** ???'s request: the 이계의 단서 it asks for (where and how each drops, how many the hero holds), and 건네주기 once they are all there. */
 public final class RiftQuestDialog {
     private RiftQuestDialog() {}
 
@@ -32,7 +32,8 @@ public final class RiftQuestDialog {
         JPanel list = new JPanel(new GridLayout(need.size(), 1, 0, 10));
         list.setOpaque(false);
         int i = 0;
-        for (Map.Entry<StoryMaterial, Integer> e : need.entrySet()) list.add(row(e.getKey(), player.getStoryMaterial(e.getKey()), e.getValue(), i++));
+        for (Map.Entry<StoryMaterial, Integer> e : need.entrySet())
+            list.add(QuestJournalDialog.materialRow(e.getKey(), player.getStoryMaterial(e.getKey()), e.getValue(), i++));
         JPanel holder = new JPanel(new BorderLayout());
         holder.setOpaque(false);
         holder.add(list, BorderLayout.NORTH);
@@ -55,24 +56,9 @@ public final class RiftQuestDialog {
         d.add(south, BorderLayout.SOUTH);
         d.getRootPane().setDefaultButton(ready ? give : leave);
 
-        d.setSize(640, 210 + need.size() * 96);
+        d.setSize(760, 230 + need.size() * 104);
         d.setLocationRelativeTo(owner);
         d.setVisible(true);
         return handed[0];
-    }
-
-    private static JComponent row(StoryMaterial m, int have, int need, int index) {
-        Sketch.Box card = new Sketch.Box(new BorderLayout(14, 0), 9801L + index * 13);
-        card.setBorder(new EmptyBorder(10, 16, 10, 16));
-        card.add(new JLabel(ItemArt.storyMaterial(m, 56)), BorderLayout.WEST);
-        JPanel text = new JPanel(new GridLayout(2, 1, 0, 4));
-        text.setOpaque(false);
-        boolean done = have >= need;
-        text.add(Sketch.label(m.getLabel() + (done ? "  √" : ""), Font.BOLD, 16f, done ? new Color(54, 134, 58) : Sketch.INK));
-        Sketch.Bar bar = new Sketch.Bar(done ? new Color(54, 134, 58) : new Color(106, 44, 154), 9850L + index);
-        bar.set(Math.min(have, need), need);
-        text.add(bar);
-        card.add(text, BorderLayout.CENTER);
-        return card;
     }
 }

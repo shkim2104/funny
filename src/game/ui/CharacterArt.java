@@ -59,6 +59,12 @@ public final class CharacterArt {
     private BufferedImage flat;
     /** A forged weapon's drawing held in the front hand (GearArt layout), or null. Not saved with the hero. */
     private BufferedImage held;
+    /**
+     * Forged armor's drawing worn on the body, or null. It was drawn over the faded hero shifted by
+     * ((GEAR_W - FIG_W) / 2, -120) (DrawGearDialog), so the reverse shift puts it back on the body.
+     */
+    private BufferedImage worn;
+    static final int WORN_X = (FIG_W - GearArt.GEAR_W) / 2, WORN_Y = 120;
     /** How far a held weapon leans forward at rest, and how much of the arm's swing it follows. */
     private static final double HELD_TILT = 18, HELD_FOLLOW = 0.9;
     /** From the shoulder joint to the hand, along a hanging arm. */
@@ -141,6 +147,8 @@ public final class CharacterArt {
         limb(g2, Part.LEG, false, legL, alpha(alphaPerPart, Part.LEG));
         limb(g2, Part.LEG, true, legR, alpha(alphaPerPart, Part.LEG));
         place(g2, Part.BODY, alpha(alphaPerPart, Part.BODY));
+        // Forged armor over the body; the arms still swing on top of it.
+        if (worn != null && alpha(alphaPerPart, Part.BODY) > 0) g2.drawImage(worn, WORN_X, WORN_Y, null);
         limb(g2, Part.ARM, false, armL, alpha(alphaPerPart, Part.ARM));
         limb(g2, Part.ARM, true, armR, alpha(alphaPerPart, Part.ARM));
         if (held != null) paintHeld(g2, armR);
@@ -151,6 +159,17 @@ public final class CharacterArt {
     /** The forged weapon's drawing in hand, or null. */
     public BufferedImage getHeld() {
         return held;
+    }
+
+    /** Puts forged armor's drawing on the hero (null takes it off). */
+    public void setWorn(BufferedImage drawing) {
+        if (drawing == worn) return;
+        worn = drawing;
+        changed();
+    }
+
+    public BufferedImage getWorn() {
+        return worn;
     }
 
     /** Gives the hero a forged weapon to hold in battle (null puts it away). */

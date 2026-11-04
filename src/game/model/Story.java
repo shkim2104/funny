@@ -54,6 +54,16 @@ public final class Story {
         }
     }
 
+    /** What the request is about, a few lines for the 퀘스트 window. */
+    public static String requestSummary(int stage) {
+        switch (stage) {
+            case 1: return "하늘을 가른 그것이 이 세계로 내려오며 떨어뜨린 흔적을 모아 ???에게 가져가요. 흔적을 보면 그것이 어디서 왔는지 알 수 있대요.";
+            case 2: return "흔적은 별의 바깥을 가리켰어요. 이제 약의 힘을 담을 그릇이 필요해요. 어둠과 얼음 속에서 힘을 품은 재료를 모아요.";
+            case 3: return "마지막으로 빛과 하늘의 조각을 모으면, ???가 이계의 존재를 약하게 만드는 물약을 완성할 수 있어요.";
+            default: return "";
+        }
+    }
+
     public static String requestHint(int stage) {
         switch (stage) {
             case 1: return "초원, 어두운 동굴, 잊혀진 폐허의 몬스터에게서 모을 수 있어.";

@@ -187,4 +187,29 @@ public final class Settings {
         PROPS.setProperty("customColors", sb.toString());
         store();
     }
+
+    /** 단축키: the key chosen for an action (KeyBindings), or null for its default. */
+    public static String getKey(String action) {
+        String v = PROPS.getProperty("key." + action);
+        return v == null || v.trim().isEmpty() ? null : v.trim();
+    }
+
+    /** null puts the action back on its default key. */
+    public static void setKey(String action, String key) {
+        if (key == null) PROPS.remove("key." + action);
+        else PROPS.setProperty("key." + action, key);
+        store();
+    }
+
+    /** 개발자 모드 기본 증강: the augments (by name) the developer character starts every run with. */
+    public static java.util.Set<String> getDevAugments() {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (String s : PROPS.getProperty("devAugments", "").split(",")) if (!s.trim().isEmpty()) out.add(s.trim());
+        return out;
+    }
+
+    public static void setDevAugments(java.util.Collection<String> names) {
+        PROPS.setProperty("devAugments", String.join(",", names));
+        store();
+    }
 }

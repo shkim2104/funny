@@ -9,6 +9,8 @@ public final class GearPiece {
     private int enhance;
     private boolean locked;
     private boolean destroyed;
+    /** Its cell in the bag (가방), or -1 until Player.bagLayout() gives it one. */
+    private int slot = -1;
 
     public GearPiece(String itemName) {
         this.itemName = itemName;
@@ -54,6 +56,8 @@ public final class GearPiece {
     }
 
     void setEnhance(int enhance) { this.enhance = enhance; }
+    public int getSlot() { return slot; }
+    void setSlot(int slot) { this.slot = slot; }
     void markDestroyed() { this.destroyed = true; }
 
     /** 전승: back in one piece at the given level. */

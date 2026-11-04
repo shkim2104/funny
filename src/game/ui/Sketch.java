@@ -319,6 +319,116 @@ public final class Sketch {
         }
     }
 
+    /**
+     * A number with big pencil "-" and "+" buttons on either side: each press moves it by the step, and
+     * holding a button keeps it going. The number can also be typed in. Kept within min..max.
+     */
+    public static class Stepper extends JPanel {
+        private int value, min, max, step;
+        private final JTextField field = new JTextField();
+        private final List<Runnable> listeners = new ArrayList<>();
+
+        public Stepper(int value, int min, int max, int step) {
+            super(new BorderLayout(6, 0));
+            setOpaque(false);
+            this.min = min;
+            this.max = max;
+            this.step = Math.max(1, step);
+            field.setFont(hand(Font.BOLD, 16f));
+            field.setHorizontalAlignment(SwingConstants.RIGHT);
+            field.setForeground(INK);
+            field.setBackground(new Color(255, 253, 245));
+            field.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(INK_SOFT, 1), new EmptyBorder(4, 8, 4, 8)));
+            field.addActionListener(e -> commitText());
+            field.addFocusListener(new FocusAdapter() {
+                @Override public void focusLost(FocusEvent e) { commitText(); }
+            });
+            add(arrow("-", -1), BorderLayout.WEST);
+            add(field, BorderLayout.CENTER);
+            add(arrow("+", 1), BorderLayout.EAST);
+            setValue(value);
+        }
+
+        private JButton arrow(String text, int dir) {
+            Button b = new Button(text, dir > 0);
+            b.setFont(hand(Font.BOLD, 20f));
+            b.setBorder(new EmptyBorder(4, 6, 4, 6));
+            b.setPreferredSize(new Dimension(50, 40));
+            // A press moves once; holding it down keeps moving (after a short pause, then quickly).
+            javax.swing.Timer repeat = new javax.swing.Timer(70, e -> bump(dir));
+            repeat.setInitialDelay(420);
+            b.addMouseListener(new MouseAdapter() {
+                @Override public void mousePressed(MouseEvent e) {
+                    if (!b.isEnabled() || !SwingUtilities.isLeftMouseButton(e)) return;
+                    bump(dir);
+                    repeat.restart();
+                }
+                @Override public void mouseReleased(MouseEvent e) { repeat.stop(); }
+                @Override public void mouseExited(MouseEvent e) { repeat.stop(); }
+            });
+            return b;
+        }
+
+        private void bump(int dir) {
+            commitText();
+            long next = (long) value + (long) dir * step;
+            setValue((int) Math.max(min, Math.min(max, next)));
+        }
+
+        private void commitText() {
+            String digits = field.getText().replaceAll("[^0-9-]", "");
+            if (digits.isEmpty() || digits.equals("-")) {
+                setValue(value);
+                return;
+            }
+            try {
+                setValue((int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, Long.parseLong(digits))));
+            } catch (NumberFormatException e) {
+                setValue(value);
+            }
+        }
+
+        public int getValue() {
+            commitText();
+            return value;
+        }
+
+        public void setValue(int v) {
+            int clamped = Math.max(min, Math.min(max, v));
+            boolean changed = clamped != value;
+            value = clamped;
+            field.setText(String.format("%,d", value));
+            if (changed) for (Runnable r : listeners) r.run();
+        }
+
+        public int getStep() { return step; }
+        public void setStep(int step) { this.step = Math.max(1, step); }
+
+        public void setRange(int min, int max) {
+            this.min = min;
+            this.max = Math.max(min, max);
+            setValue(value);
+        }
+
+        public void onChange(Runnable r) { listeners.add(r); }
+
+        @Override
+        public void setEnabled(boolean on) {
+            super.setEnabled(on);
+            for (Component c : getComponents()) c.setEnabled(on);
+        }
+    }
+
+    /** A bigger pencil button for a window's main actions: taller, with larger letters. */
+    public static Button bigButton(String text, boolean primary) {
+        Button b = new Button(text, primary);
+        b.setFont(hand(Font.BOLD, 17f));
+        b.setBorder(new EmptyBorder(12, 26, 12, 26));
+        Dimension d = b.getPreferredSize();
+        b.setPreferredSize(new Dimension(Math.max(140, d.width), 50));
+        return b;
+    }
+
     /** Notebook index tabs over a pencil box; only the selected tab's content shows. */
     public static class Tabs extends JPanel {
         private final JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));

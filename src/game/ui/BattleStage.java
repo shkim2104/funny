@@ -1634,6 +1634,12 @@ public class BattleStage extends JComponent {
         if (playerArt != null) playerArt.setHeld(drawing);
     }
 
+    /** Forged armor drawn on the hero's body (null: none). */
+    public void setWornArmor(java.awt.image.BufferedImage drawing) {
+        if (playerArt != null) playerArt.setWorn(drawing);
+        repaint();
+    }
+
     public void setPlayerArt(CharacterArt art) {
         this.playerArt = art;
         repaint();

@@ -2,10 +2,13 @@ package game.model;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.TreeMap;
 
 public class Player {
     /** Stat points granted per level-up, to be spent by the player. */
@@ -437,15 +440,109 @@ public class Player {
     /** Replaces all gear from a saved line. Pieces of items that no longer exist are dropped. */
     public void decodeGear(String line) {
         gear.clear();
+        decodedGearOrder.clear();
         weapon = null;
         armor = null;
         if (line.trim().isEmpty()) return;
         for (String part : line.trim().split(";")) {
             String[] f = part.split("\\|", -1);
-            if (f.length < 3 || !isGear(ItemCatalog.get(f[0]))) continue;
+            if (f.length < 3 || !isGear(ItemCatalog.get(f[0]))) {
+                decodedGearOrder.add(null);
+                continue;
+            }
             GearPiece g = new GearPiece(f[0], Integer.parseInt(f[1]), f[2].contains("L"), f[2].contains("D"));
             gear.add(g);
+            decodedGearOrder.add(g);
             if (f[2].contains("W")) wear(g);
+        }
+    }
+
+    // ---------- 가방: which cell of the bag each thing sits in ----------
+
+    /** Potion, ether... stacks' bag cells, by item name. Gear keeps its own (GearPiece.getSlot). */
+    private final Map<String, Integer> consumableSlots = new HashMap<>();
+    /** The gear line's pieces in saved order (null where one was dropped), so the bag line can find them. */
+    private final List<GearPiece> decodedGearOrder = new ArrayList<>();
+
+    /**
+     * The bag, cell → GearPiece or consumable name (String). Anything without a cell yet (new, or from a
+     * save before the bag) goes into the first free cells: gear first (worn, then higher grade and value),
+     * then the potions. Cells of things no longer owned are freed.
+     */
+    public Map<Integer, Object> bagLayout() {
+        Map<Integer, Object> cells = new TreeMap<>();
+        List<GearPiece> loose = new ArrayList<>();
+        for (GearPiece g : gear) {
+            if (g.getSlot() >= 0 && !cells.containsKey(g.getSlot())) cells.put(g.getSlot(), g);
+            else loose.add(g);
+        }
+        Map<String, Integer> counts = getConsumableCounts();
+        consumableSlots.keySet().retainAll(counts.keySet());
+        List<String> looseItems = new ArrayList<>();
+        for (String name : counts.keySet()) {
+            Integer s = consumableSlots.get(name);
+            if (s != null && s >= 0 && !cells.containsKey(s)) cells.put(s, name);
+            else looseItems.add(name);
+        }
+        loose.sort(Comparator.comparing((GearPiece g) -> !isWorn(g)).thenComparing(GearPiece::isDestroyed)
+                .thenComparing(g -> -g.getItem().getGrade().ordinal()).thenComparing(g -> -g.getValue()));
+        int free = 0;
+        for (GearPiece g : loose) {
+            while (cells.containsKey(free)) free++;
+            g.setSlot(free);
+            cells.put(free, g);
+        }
+        for (String name : looseItems) {
+            while (cells.containsKey(free)) free++;
+            consumableSlots.put(name, free);
+            cells.put(free, name);
+        }
+        return cells;
+    }
+
+    /** Moves what is in bag cell `from` to cell `to`, swapping with whatever sits there. */
+    public void moveInBag(int from, int to) {
+        if (from == to || from < 0 || to < 0) return;
+        Map<Integer, Object> cells = bagLayout();
+        Object a = cells.get(from), b = cells.get(to);
+        if (a == null) return;
+        placeInBag(a, to);
+        if (b != null) placeInBag(b, from);
+    }
+
+    private void placeInBag(Object thing, int cell) {
+        if (thing instanceof GearPiece) ((GearPiece) thing).setSlot(cell);
+        else consumableSlots.put((String) thing, cell);
+    }
+
+    /** Save line: g(gear index):cell and c(item name):cell, joined by ','. */
+    public String encodeBag() {
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<Integer, Object> e : bagLayout().entrySet()) {
+            Object o = e.getValue();
+            parts.add((o instanceof GearPiece ? "g" + gear.indexOf(o) : "c" + o) + ":" + e.getKey());
+        }
+        return String.join(",", parts);
+    }
+
+    /** Reads the bag line written by encodeBag (after decodeGear). A missing line leaves the bag to lay itself out. */
+    public void decodeBag(String line) {
+        if (line == null || line.trim().isEmpty()) return;
+        for (String part : line.trim().split(",")) {
+            int colon = part.lastIndexOf(':');
+            if (colon < 2) continue;
+            try {
+                int cell = Integer.parseInt(part.substring(colon + 1).trim());
+                String key = part.substring(1, colon);
+                if (part.charAt(0) == 'g') {
+                    int i = Integer.parseInt(key);
+                    if (i >= 0 && i < decodedGearOrder.size() && decodedGearOrder.get(i) != null) decodedGearOrder.get(i).setSlot(cell);
+                } else if (part.charAt(0) == 'c') {
+                    consumableSlots.put(key, cell);
+                }
+            } catch (NumberFormatException ignored) {
+                // a hand-edited save: that cell is laid out again
+            }
         }
     }
 
@@ -484,6 +581,7 @@ public class Player {
     public void devSetLevel(int target) {
         target = Math.max(1, Math.min(99, target));
         if (target > level) statPoints += (target - level) * POINTS_PER_LEVEL;
+        for (int l = level + 1; l <= target; l++) grow(l);
         level = target;
         exp = 0;
         expToNext = expRequiredFor(level);
@@ -564,10 +662,35 @@ public class Player {
         }
     }
 
+    /**
+     * Growth every level up, on top of the stat points: HP, MP, ATK and DEF each level, 행운 on even
+     * levels and 공격속도 every fifth. A level up no longer refills HP and MP; what the maximum grew by is
+     * added to the current amount, so the bar doesn't look emptier.
+     */
+    public static final int LEVEL_HP = 4, LEVEL_MP = 2, LEVEL_ATK = 1, LEVEL_DEF = 1, LUCK_EVERY = 2, SPD_EVERY = 5;
+
+    /** The automatic growth of reaching `newLevel`. */
+    private void grow(int newLevel) {
+        int hpBefore = getMaxHp(), mpBefore = getMaxMp();
+        maxHp += LEVEL_HP;
+        maxMp += LEVEL_MP;
+        baseAtk += LEVEL_ATK;
+        baseDef += LEVEL_DEF;
+        if (newLevel % LUCK_EVERY == 0) luck++;
+        if (newLevel % SPD_EVERY == 0) baseSpd++;
+        hp = Math.min(getMaxHp(), hp + getMaxHp() - hpBefore);
+        mp = Math.min(getMaxMp(), mp + getMaxMp() - mpBefore);
+    }
+
+    /** "HP +4, MP +2, 공격 +1, 방어 +1, 행운 +1": what reaching `newLevel` grows, for the battle log. */
+    public static String growthText(int newLevel) {
+        return "HP +" + LEVEL_HP + ", MP +" + LEVEL_MP + ", 공격 +" + LEVEL_ATK + ", 방어 +" + LEVEL_DEF
+                + (newLevel % LUCK_EVERY == 0 ? ", 행운 +1" : "") + (newLevel % SPD_EVERY == 0 ? ", 속도 +1" : "");
+    }
+
     private void levelUp() {
         level++;
-        hp = getMaxHp();
-        mp = getMaxMp();
+        grow(level);
         statPoints += POINTS_PER_LEVEL;
         expToNext = expRequiredFor(level);
         System.out.println("\n*** 레벨 업! " + name + "이(가) Lv." + level

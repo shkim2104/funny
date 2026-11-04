@@ -17,14 +17,14 @@ public class World {
      * are a steady few turns each, since augments pile up over a run; each boss is the dungeon's real
      * test, with its own multipliers and BOSS_AUGMENT_SHARE. Tuned (with Player.TIER_BONUS) so each dungeon
      * falls at the advancement meant for it: dungeon 2 after 1차, 3~4 at 2차, 5~7 at 3차 and the final boss
-     * at 4차. A typical character with augments first clears them around Lv. 7, 17, 27, 35, 52, 61 and 66
-     * with two potions per stage (v2.3.0). Speed and gold are not scaled.
+     * at 4차. A typical character with augments first clears them around Lv. 7, 14, 24, 31, 51, 58 and 63
+     * with two potions per stage and the level-up growth (v2.4.0). Speed and gold are not scaled.
      */
-    private static final double[] HP_MUL = {1.3, 6.0, 9.7, 10.5, 16.0, 11.8, 8.9};
-    private static final double[] ATK_MUL = {0.5, 1.05, 1.34, 1.35, 2.18, 1.70, 1.40};
+    private static final double[] HP_MUL = {1.3, 6.0, 10.9, 12.08, 22.3, 15.34, 11.57};
+    private static final double[] ATK_MUL = {0.5, 1.05, 1.51, 1.55, 3.03, 2.21, 1.82};
     private static final double[] DEF_MUL = {0.8, 1.9, 2.3, 2.6, 2.75, 2.9, 3.1};
-    private static final double[] BOSS_HP_MUL = {0.75, 1.95, 4.6, 5.1, 9.15, 7.07, 5.16};
-    private static final double[] BOSS_ATK_MUL = {0.55, 0.72, 1.09, 1.1, 1.86, 1.44, 1.18};
+    private static final double[] BOSS_HP_MUL = {0.75, 1.95, 5.17, 5.87, 12.74, 9.19, 6.71};
+    private static final double[] BOSS_ATK_MUL = {0.55, 0.72, 1.23, 1.27, 2.59, 1.87, 1.53};
     private static final double[] EXP_MUL = {1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25};
     /** 중간 보스 on top of the dungeon's regular multipliers: a few regular monsters' worth, not a real boss. */
     private static final double[] MID_HP_MUL = {1.2, 1.0, 0.6, 0.65, 0.6, 0.7, 1.0};
@@ -54,7 +54,7 @@ public class World {
     // ---------- the final boss ----------
     /** 이계의 존재 as the hero meets it, after the weakening potion. */
     /** HP, ATK, DEF, SPD and 초신성's power (an array so the balance tools can try other numbers). */
-    private static final double[] FINAL = {19200, 632, 40, 24, 2.4};
+    private static final double[] FINAL = {41664, 945, 40, 24, 2.4};
     /** Without the potion it would be this much stronger (only for the balance tools: the game never lets it be fought). */
     static final double UNWEAKENED_HP = 1 / 0.6, UNWEAKENED_ATK = 1 / 0.7, UNWEAKENED_NOVA = 3.2;
     public static final String FINAL_BOSS = "이계의 존재";

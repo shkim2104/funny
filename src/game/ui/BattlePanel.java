@@ -258,6 +258,8 @@ public class BattlePanel extends JPanel {
         resetHeals();
         stage.setHeldWeapon(player.getWeapon() != null && player.getWeapon().getItem().isCrafted()
                 ? GearArt.drawing(player.getWeapon().getItemName()) : null);
+        stage.setWornArmor(player.getArmor() != null && player.getArmor().getItem().isCrafted() && !player.getArmor().isDestroyed()
+                ? GearArt.drawing(player.getArmor().getItemName()) : null);
         log.setText("");
         actionCards.show(actionArea, "ACTIONS");
         actionArea.revalidate();
@@ -458,6 +460,46 @@ public class BattlePanel extends JPanel {
             return;
         }
         useSlot(slot);
+    }
+
+    /** 공격 메뉴 key: opens the 공격 menu (a beginner just attacks, as the button does). */
+    public void hotkeyAttack() {
+        if (player == null || !attackBtn.isEnabled() || attackMenuOpen) return;
+        attackBtn.doClick();
+    }
+
+    /** 기본 공격 key: a basic attack straight away, menu or not. */
+    public void hotkeyBasic() {
+        if (player == null || !attackBtn.isEnabled() || monster == null || !monster.isAlive()) return;
+        if (player.getJob() == Job.BEGINNER) {
+            onAttack();
+            return;
+        }
+        if (!attackMenuOpen || healMenuOpen) openAttackMenu();
+        basicAttackBtn.doClick();
+    }
+
+    /** 회복 메뉴 key. */
+    public void hotkeyHeal() {
+        if (player == null || !itemBtn.isEnabled() || healMenuOpen) return;
+        itemBtn.doClick();
+    }
+
+    /** 도망 key. */
+    public void hotkeyFlee() {
+        if (player == null || !fleeBtn.isEnabled()) return;
+        fleeBtn.doClick();
+    }
+
+    /** 자동 전투 켜기/끄기 key: switches the setting, and if it is the player's turn now, starts at once. */
+    public void toggleAuto() {
+        boolean on = !Settings.isAutoBattle();
+        Settings.setAutoBattle(on);
+        appendLog("[자동 전투] " + (on ? "켜짐" : "꺼짐"));
+        if (on && !bossFight && attackBtn.isEnabled() && !attackMenuOpen && monster != null && monster.isAlive()) {
+            int id = turnId;
+            later(scaled(300), id, () -> exchange(this::playerStrike));
+        }
     }
 
     /** Tab: this run's augments and the equipped gear's effects, on a notebook page. */
