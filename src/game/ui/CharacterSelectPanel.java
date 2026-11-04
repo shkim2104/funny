@@ -1,5 +1,6 @@
 package game.ui;
 
+import game.model.DevMode;
 import game.model.Player;
 import game.save.SaveManager;
 import game.save.SaveManager.CharacterSave;
@@ -236,6 +237,16 @@ public class CharacterSelectPanel extends JPanel {
             }
             g2.setColor(Sketch.INK);
             drawCentered(g2, name, groundY + 30);
+            if (DevMode.isDev(p)) {
+                // 개발자 모드 캐릭터: a red pencil tag in the card's top corner.
+                g2.setFont(Sketch.hand(Font.BOLD, 13f));
+                String tag = "개발자 모드";
+                int tw = g2.getFontMetrics().stringWidth(tag);
+                Sketch.box(g2, w - tw - 26, 12, tw + 14, 22, seed + 11, 1.8f, Sketch.RED_PENCIL);
+                g2.setColor(Sketch.RED_PENCIL);
+                g2.drawString(tag, w - tw - 19, 28);
+                g2.setFont(Sketch.hand(Font.BOLD, 18f));
+            }
             g2.setFont(Sketch.hand(Font.BOLD, 14f));
             g2.setColor(Sketch.BLUE_PENCIL);
             drawCentered(g2, "Lv." + p.getLevel() + "  " + p.getJob().getDisplayName(), groundY + 52);

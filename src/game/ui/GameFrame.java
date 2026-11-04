@@ -1,5 +1,6 @@
 package game.ui;
 
+import game.model.DevMode;
 import game.model.Dungeon;
 import game.model.FloorReward;
 import game.model.Item;
@@ -77,6 +78,8 @@ public class GameFrame extends JFrame {
 
     private JLabel townInfoLabel;
     private JButton[] townButtons;
+    /** 개발자 모드: only shown for a character named DevMode.NAME. */
+    private JButton devButton;
     private JButton[] titleButtons;
     private CharacterSelectPanel characterSelect;
     /** File id of the character being played; 저장하기 writes back to it. */
@@ -123,6 +126,7 @@ public class GameFrame extends JFrame {
         pageTurner.setVisible(false);
         bindFullscreenToggle();
         bindHotkeys();
+        bindDevKey();
 
         showTitle();
         if (Settings.isStartFullscreen()) toggleFullscreen();
@@ -393,8 +397,11 @@ public class GameFrame extends JFrame {
         townInfoLabel = Theme.body("");
         tutorialSkipButton = menuButton("튜토리얼 건너뛰기", this::skipTutorial);
         tutorialSkipButton.setVisible(false);
+        devButton = menuButton("개발자", this::openDev);
+        devButton.setVisible(false);
         townButtons = new JButton[] {
                 tutorialSkipButton,
+                devButton,
                 menuButton("상태 보기", this::showStatus),
                 menuButton("장비 변경", this::openEquip),
                 menuButton("스탯 분배", this::openStatAlloc),
@@ -564,7 +571,67 @@ public class GameFrame extends JFrame {
                 + "<br>흑연 " + player.getMaterial(Material.GRAPHITE) + " · 심 " + player.getMaterial(Material.HARD_LEAD)
                 + " · 가루 " + player.getMaterial(Material.ERASER_DUST) + " · 색연필 " + player.getMaterial(Material.COLOR_LEAD)
                 + statPointsNote + storyNote() + "</html>");
+        devButton.setVisible(DevMode.isDev(player));
         refreshTutorial();
+    }
+
+    // ---------- 개발자 모드 ----------
+
+    /** F12 or the town button: the developer window, for the character named DevMode.NAME only. */
+    private void openDev() {
+        if (!DevMode.isDev(player) || "TITLE".equals(currentCard) || "PVP".equals(currentCard) || "ENDING".equals(currentCard)) return;
+        boolean inBattle = "BATTLE".equals(currentCard);
+        DevDialog.show(this, player, new DevDialog.Host() {
+            @Override public RunState run() { return inBattle ? run : null; }
+            @Override public void refreshRun() { battlePanel.refreshRun(); }
+            @Override public boolean canTravel() { return !inBattle; }
+            @Override public void jumpTo(int dungeon, int floor, boolean boss) { enterDungeonAt(dungeon, floor, boss); }
+            @Override public void finale() { startFinale(); }
+            @Override public void changed() {
+                autoSave();
+                if (inBattle) battlePanel.refreshRun();
+                else {
+                    refreshTown();
+                    townMap.setArt(Story.invaded(player.getStoryStage()) && invadedTownArt != null ? invadedTownArt : townArt);
+                }
+            }
+        });
+    }
+
+    private void bindDevKey() {
+        JRootPane root = getRootPane();
+        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("F12"), "devMode");
+        root.getActionMap().put("devMode", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                openDev();
+            }
+        });
+    }
+
+    /**
+     * 개발자 모드 바로 가기: a run of dungeon d that starts on `floor` (1-based; Dungeon.MID_FLOOR is the
+     * 중간 보스), or straight at the boss. Otherwise just like enterDungeon.
+     */
+    private void enterDungeonAt(int dungeonIndex, int floor, boolean boss) {
+        currentDungeonIndex = dungeonIndex;
+        Dungeon dungeon = dungeons.get(dungeonIndex);
+        currentFloor = Math.max(1, Math.min(dungeon.getFloors(), floor));
+        bossStage = boss;
+        boolean mid = !boss && dungeon.isMidFloor(currentFloor);
+        Music.play(boss || mid ? "boss" : "dungeon" + (dungeonIndex + 1), "dungeon1");
+        run = new RunState(dungeonIndex);
+        battlePanel.setRun(run);
+        battlePanel.setBossFight(boss);
+        if (mid) battlePanel.setMidBossFight();
+        Monster monster = boss ? dungeon.spawnBoss() : mid ? dungeon.spawnMidBoss() : dungeon.randomMonster(currentFloor, rnd);
+        showStage(dungeon);
+        pageTurner.turn(() -> {
+            cardLayout.show(cards, "BATTLE");
+            currentCard = "BATTLE";
+            battlePanel.setDungeon(currentDungeonIndex);
+            battlePanel.startBattle(player, monster, result -> onFightFinished(result, monster));
+        }, true);
     }
 
     // ---------- the tutorial ----------

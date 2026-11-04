@@ -2,6 +2,7 @@ package game.ui;
 
 import game.model.Augment;
 import game.model.Bonus;
+import game.model.DevMode;
 import game.model.FightStatus;
 import game.model.Item;
 import game.model.ItemCatalog;
@@ -308,6 +309,8 @@ public class BattlePanel extends JPanel {
             if (run != null && !run.getAugments().isEmpty()) appendLog("보스의 위압에 증강 효과가 약해진다!");
         }
         bonus = player.getGearBonus().plus(augments);
+        String dev = DevMode.activeText(player);
+        if (!dev.isEmpty()) appendLog("[개발자] " + dev);
         status = new FightStatus();
         firstHitDone = false;
         shieldHp = (int) Math.round(player.getMaxHp() * bonus.shield());
@@ -668,6 +671,10 @@ public class BattlePanel extends JPanel {
     /** End of a round with both sides standing: regeneration ticks, then it's the player's turn again. */
     private void roundOver() {
         int poison = status.endRound(player);
+        if (DevMode.invincible(player)) {
+            player.heal(poison);
+            poison = 0;
+        }
         if (poison > 0) {
             stage.showDamage(poison, false, false);
             logDetail("지속 피해로 HP를 " + poison + " 잃었다.");
@@ -690,6 +697,7 @@ public class BattlePanel extends JPanel {
 
     /** MP a skill costs after cost-reduction effects. */
     private int mpCost(Skill s) {
+        if (DevMode.infiniteMp(player)) return 0;
         return Math.max(0, s.getMpCost() - bonus.mpCostReduce());
     }
 
@@ -713,7 +721,9 @@ public class BattlePanel extends JPanel {
         boolean crit = forceCrit || rnd.nextInt(100) < player.getCritChance() + bonus.critChance();
         if (crit) mul *= 1.75 * (1 + bonus.critDmg());
         if (monster.consumeGuard()) mul *= 0.5;
-        return new int[]{Math.max(1, (int) Math.round(dmg * mul)), crit ? 1 : 0};
+        int total = Math.max(1, (int) Math.round(dmg * mul));
+        if (DevMode.oneHit(player)) total = Math.max(total, monster.getHp());
+        return new int[]{total, crit ? 1 : 0};
     }
 
     /** Heals the player by ratio of the damage that actually landed. */
@@ -877,7 +887,7 @@ public class BattlePanel extends JPanel {
         int dmg = Math.max(1, (int) Math.round(computeDamage(monster.getAtk(), def) * damageMul * (1 - bonus.dmgReduction())));
         int absorbed = Math.min(shieldHp, dmg);
         shieldHp -= absorbed;
-        int taken = dmg - absorbed;
+        int taken = DevMode.invincible(player) ? 0 : dmg - absorbed;
         player.takeDamage(taken);
         stage.showDamage(taken, false, false);
         logDetail(what + " " + player.getName() + "이(가) " + taken + "의 피해를 입었다!"

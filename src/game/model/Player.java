@@ -478,6 +478,36 @@ public class Player {
         else inventory.add(itemName);
     }
 
+    // ---------- 개발자 모드 only (DevDialog); normal play never calls these ----------
+
+    /** Sets the level directly. Going up gives the stat points those levels would have; going down keeps them. */
+    public void devSetLevel(int target) {
+        target = Math.max(1, Math.min(99, target));
+        if (target > level) statPoints += (target - level) * POINTS_PER_LEVEL;
+        level = target;
+        exp = 0;
+        expToNext = expRequiredFor(level);
+        hp = Math.min(hp, getMaxHp());
+        mp = Math.min(mp, getMaxMp());
+    }
+
+    public void devSetGold(int amount) { gold = Math.max(0, amount); }
+
+    public void devSetMaterial(Material m, int count) { materials[m.ordinal()] = Math.max(0, count); }
+
+    public void devAddStatPoints(int points) { statPoints = Math.max(0, statPoints + points); }
+
+    /** Gives one piece of gear already enhanced to `enhance` (0~20), or one potion/ether. */
+    public void devGive(String itemName, int enhance) {
+        if (isGear(ItemCatalog.get(itemName))) {
+            GearPiece g = new GearPiece(itemName);
+            g.setEnhance(Math.max(0, Math.min(Enhancement.MAX_LEVEL, enhance)));
+            gear.add(g);
+        } else {
+            inventory.add(itemName);
+        }
+    }
+
     /** Uses up a potion or ether, or (console shop) a plain spare piece of gear by name. */
     public boolean removeItem(String itemName) {
         if (inventory.remove(itemName)) return true;
