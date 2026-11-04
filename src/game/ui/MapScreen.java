@@ -38,6 +38,25 @@ public class MapScreen extends JPanel {
 
     private Image art;
     private final List<Hotspot> hotspots = new ArrayList<>();
+
+    /** A person standing on the map: a picture in an area of the artwork (a penciled stand-in until drawn). */
+    private static final class Figure {
+        final Image image;
+        final Rectangle area;
+        final String name;
+
+        Figure(Image image, Rectangle area, String name) {
+            this.image = image;
+            this.area = area;
+            this.name = name;
+        }
+    }
+
+    private final List<Figure> figures = new ArrayList<>();
+    /** The tutorial's pointer: a blinking pencil circle on this area, and the line over the map. */
+    private Rectangle guide;
+    private String guideText;
+    private Timer guideTimer;
     private Hotspot hovered;
     private Point mouse;
 
@@ -98,6 +117,29 @@ public class MapScreen extends JPanel {
     /** Adds a clickable area that only exists while shown returns true (e.g. during the invasion). */
     public void addShownHotspot(String label, int x, int y, int w, int h, Runnable onClick, BooleanSupplier shown) {
         hotspots.add(new Hotspot(label, new Rectangle(x, y, w, h), onClick, () -> false, shown));
+    }
+
+    /**
+     * Puts a person on the map, drawn in the area (artwork pixels), with a click area that wins over the
+     * buildings underneath. A null picture draws a penciled stand-in.
+     */
+    public void addFigure(String label, Image image, Rectangle area, Runnable onClick) {
+        figures.add(new Figure(image, area, label));
+        hotspots.add(0, new Hotspot(label, new Rectangle(area), onClick, () -> false, () -> true));
+    }
+
+    /** Points the tutorial at an area with a blinking pencil circle and a line of text; null clears it. */
+    public void setGuide(Rectangle area, String text) {
+        guide = area;
+        guideText = text;
+        if (area != null && guideTimer == null) {
+            guideTimer = new Timer(40, e -> repaint());
+            guideTimer.start();
+        } else if (area == null && guideTimer != null) {
+            guideTimer.stop();
+            guideTimer = null;
+        }
+        repaint();
     }
 
     /** Swaps the artwork (same size, so the hotspots still fit). A null picture keeps the current one. */
@@ -188,6 +230,9 @@ public class MapScreen extends JPanel {
             drawCrossOut(g2, r, s);
         }
 
+        for (Figure f : figures) drawFigure(g2, f);
+        if (guide != null) drawGuide(g2, s);
+
         if (hovered != null && !hovered.shown.getAsBoolean()) hovered = null;
         if (hovered != null) {
             Rectangle r = toScreen(hovered.area);
@@ -213,6 +258,61 @@ public class MapScreen extends JPanel {
             drawPill(g2, toastText, (getWidth() - tw) / 2 - 18, getHeight() - 90, alpha, 20f);
         }
         g2.dispose();
+    }
+
+    private void drawFigure(Graphics2D g2, Figure f) {
+        Rectangle r = toScreen(f.area);
+        Graphics2D g = (Graphics2D) g2.create();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        if (f.image != null) {
+            // Square art with the feet at the bottom: fit its height to the area, centered.
+            int side = r.height;
+            g.drawImage(f.image, r.x + (r.width - side) / 2, r.y, side, side, null);
+        } else {
+            double cx = r.getCenterX(), top = r.y + r.height * 0.1, head = r.width * 0.22;
+            Sketch.circle(g, cx, top + head, head, f.name.hashCode(), 2f, Sketch.INK);
+            Sketch.line(g, cx, top + head * 2, cx, r.y + r.height * 0.72, 1, 2f, Sketch.INK);
+            Sketch.line(g, cx - r.width * 0.25, r.y + r.height * 0.45, cx + r.width * 0.25, r.y + r.height * 0.45, 2, 2f, Sketch.INK);
+            Sketch.line(g, cx, r.y + r.height * 0.72, cx - r.width * 0.2, r.y + r.height, 3, 2f, Sketch.INK);
+            Sketch.line(g, cx, r.y + r.height * 0.72, cx + r.width * 0.2, r.y + r.height, 4, 2f, Sketch.INK);
+        }
+        g.dispose();
+    }
+
+    /** The tutorial pointer: a red pencil ring that breathes in and out, an arrow above it, the goal on top. */
+    private void drawGuide(Graphics2D g2, double s) {
+        Rectangle r = toScreen(guide);
+        double t = System.currentTimeMillis() / 1000.0, pulse = 1 + Math.sin(t * 4) * 0.05;
+        double cx = r.getCenterX(), cy = r.getCenterY(), rx = r.width * 0.62 * pulse, ry = r.height * 0.62 * pulse;
+        Graphics2D g = (Graphics2D) g2.create();
+        g.setColor(new Color(255, 236, 160, 70));
+        g.fill(new java.awt.geom.Ellipse2D.Double(cx - rx, cy - ry, rx * 2, ry * 2));
+        g.setColor(Sketch.RED_PENCIL);
+        g.setStroke(new BasicStroke((float) Math.max(3, 6 * s), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(new java.awt.geom.Ellipse2D.Double(cx - rx, cy - ry, rx * 2, ry * 2));
+        g.setStroke(new BasicStroke((float) Math.max(2, 3 * s), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(new java.awt.geom.Ellipse2D.Double(cx - rx * 1.04 + 3, cy - ry * 0.97, rx * 2.02, ry * 1.98));
+        double bob = Math.sin(t * 5) * 8, ay = cy - ry - 18 + bob, size = Math.max(16, 34 * s);
+        java.awt.geom.Path2D.Double arrow = new java.awt.geom.Path2D.Double();
+        arrow.moveTo(cx, ay);
+        arrow.lineTo(cx - size * 0.6, ay - size * 0.8);
+        arrow.lineTo(cx - size * 0.22, ay - size * 0.8);
+        arrow.lineTo(cx - size * 0.22, ay - size * 1.7);
+        arrow.lineTo(cx + size * 0.22, ay - size * 1.7);
+        arrow.lineTo(cx + size * 0.22, ay - size * 0.8);
+        arrow.lineTo(cx + size * 0.6, ay - size * 0.8);
+        arrow.closePath();
+        g.setColor(new Color(244, 200, 50));
+        g.fill(arrow);
+        g.setColor(Sketch.INK);
+        g.setStroke(new BasicStroke((float) Math.max(2, 3 * s), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(arrow);
+        g.dispose();
+        if (guideText != null && !guideText.isEmpty()) {
+            Font font = Theme.dosFont(Font.BOLD, 20f);
+            int tw = g2.getFontMetrics(font).stringWidth(guideText);
+            drawPill(g2, guideText, (getWidth() - tw) / 2 - 18, 16, 1f, 20f);
+        }
     }
 
     /**

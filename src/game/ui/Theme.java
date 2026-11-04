@@ -250,7 +250,7 @@ public final class Theme {
     /** Requests focus on the first enabled button, once it is realized on screen. */
     public static void focusFirst(JButton... buttons) {
         for (JButton b : buttons) {
-            if (b.isEnabled()) {
+            if (b.isEnabled() && b.isVisible()) {
                 SwingUtilities.invokeLater(b::requestFocusInWindow);
                 return;
             }

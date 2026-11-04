@@ -81,12 +81,23 @@ public final class Story {
 
     // ---------- the lines ----------
     public enum Speaker {
-        MYSTERY("???"), BOSS("이계의 존재"), HERO(null), NARRATION("");
+        MYSTERY("???"), BOSS("이계의 존재"), HERO(null), NARRATION(""),
+        // The town folk of the tutorial; their pictures are images/npc/{portrait}_face.png.
+        MAYOR("촌장 몽당 할아버지", "mayor"), INNKEEPER("여관 주인 졸음 할머니", "innkeeper"), MERCHANT("상인 지우 아주머니", "merchant"),
+        SMITH("대장장이 쇠심 아저씨", "smith"), QUEST_CLERK("의뢰소 직원 책갈피", "quest_clerk"), GACHA_FAIRY("뽑기 요정 반짝이", "gacha_fairy"),
+        JOB_MASTER("전직관 붓 스승", "job_master"), CURATOR("관장 먼지 박사", "curator"), GATEKEEPER("문지기 단단이", "gatekeeper");
 
         private final String name;
+        /** Picture key of a town NPC; null for the others. */
+        public final String portrait;
 
         Speaker(String name) {
+            this(name, null);
+        }
+
+        Speaker(String name, String portrait) {
             this.name = name;
+            this.portrait = portrait;
         }
 
         /** The name over the line; the hero's is the player's own. */
@@ -116,20 +127,20 @@ public final class Story {
         }
     }
 
-    private static final class Builder {
+    static final class Builder {
         final List<Line> lines = new ArrayList<>();
 
-        Builder say(Speaker s, String text) {
+        public Builder say(Speaker s, String text) {
             lines.add(new Line(s, text));
             return this;
         }
 
-        Scene end(String... choices) {
+        public Scene end(String... choices) {
             return new Scene(lines, choices);
         }
     }
 
-    private static Builder scene() {
+    static Builder scene() {
         return new Builder();
     }
 

@@ -54,6 +54,9 @@ public class Player {
     private final int[] materials = new int[Material.values().length];
     /** Final story progress (see Story), and the 이계의 단서 held for it. */
     private int storyStage;
+    /** How far the first-character tutorial has got (see Tutorial); whether its reward was paid. */
+    private int tutorialStep = Tutorial.NOT_STARTED;
+    private boolean tutorialRewarded;
     private final int[] storyMaterials = new int[StoryMaterial.values().length];
 
     public Player(String name) {
@@ -124,6 +127,11 @@ public class Player {
     private int passive(int value) {
         return hasCosmicPassive() ? Story.withPassive(value) : value;
     }
+
+    public int getTutorialStep() { return tutorialStep; }
+    public void setTutorialStep(int step) { tutorialStep = step; }
+    public boolean isTutorialRewarded() { return tutorialRewarded; }
+    public void setTutorialRewarded(boolean rewarded) { tutorialRewarded = rewarded; }
 
     public int getStoryStage() { return storyStage; }
     public void setStoryStage(int stage) { storyStage = stage; }

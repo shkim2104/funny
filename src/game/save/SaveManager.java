@@ -5,6 +5,7 @@ import game.model.Material;
 import game.model.Player;
 import game.model.Quest;
 import game.model.StoryMaterial;
+import game.model.Tutorial;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -200,6 +201,8 @@ public class SaveManager {
             clues.append(p.getStoryMaterial(m));
         }
         pw.println(clues);
+        // Tutorial: the step, and R once its reward was paid.
+        pw.println(p.getTutorialStep() + (p.isTutorialRewarded() ? ",R" : ""));
     }
 
     private static Player read(File file) {
@@ -309,6 +312,16 @@ public class SaveManager {
             String[] counts = clueLine.trim().split(",");
             StoryMaterial[] all = StoryMaterial.values();
             for (int i = 0; i < all.length && i < counts.length; i++) player.addStoryMaterial(all[i], Integer.parseInt(counts[i].trim()));
+        }
+        // Saves from before the tutorial belong to characters already playing: no tutorial for them.
+        String tutorialLine = br.readLine();
+        if (tutorialLine == null || tutorialLine.trim().isEmpty()) {
+            player.setTutorialStep(Tutorial.DONE);
+            player.setTutorialRewarded(true);
+        } else {
+            String[] parts = tutorialLine.trim().split(",");
+            player.setTutorialStep(Integer.parseInt(parts[0].trim()));
+            player.setTutorialRewarded(parts.length > 1 && parts[1].trim().equals("R"));
         }
         return player;
     }

@@ -110,7 +110,8 @@ public final class StoryDialog {
         String name = l.speaker.name(player);
         nameLabel.setText(name == null || name.isEmpty() ? " " : name);
         nameLabel.setForeground(l.speaker == Story.Speaker.BOSS ? new Color(106, 44, 154)
-                : l.speaker == Story.Speaker.MYSTERY ? Sketch.BLUE_PENCIL : Sketch.INK);
+                : l.speaker == Story.Speaker.MYSTERY ? Sketch.BLUE_PENCIL
+                : l.speaker.portrait != null ? new Color(54, 134, 58) : Sketch.INK);
         portrait.speaker = l.speaker;
         portrait.repaint();
         choiceRow.removeAll();
@@ -182,6 +183,13 @@ public final class StoryDialog {
 
     private static final BufferedImage MYSTERY = load("images/story/npc_mystery.png");
     private static final BufferedImage BOSS = load("images/story/boss_face.png");
+    private static final java.util.Map<String, BufferedImage> FACES = new java.util.HashMap<>();
+
+    /** A town NPC's portrait (images/npc/{key}_face.png), or null until it is drawn. */
+    static BufferedImage face(String key) {
+        if (!FACES.containsKey(key)) FACES.put(key, load("images/npc/" + key + "_face.png"));
+        return FACES.get(key);
+    }
 
     private final class Portrait extends JComponent {
         Story.Speaker speaker = Story.Speaker.NARRATION;
@@ -207,6 +215,12 @@ public final class StoryDialog {
                     else standIn(g2, w, h, new Color(106, 44, 154), "✦");
                     break;
                 default:
+                    if (speaker.portrait != null) {
+                        BufferedImage img = face(speaker.portrait);
+                        if (img != null) g2.drawImage(img, x, y, inner, inner, null);
+                        else standIn(g2, w, h, Sketch.INK_SOFT, speaker.name(player).substring(speaker.name(player).lastIndexOf(' ') + 1, speaker.name(player).lastIndexOf(' ') + 2));
+                        break;
+                    }
                     Sketch.hatch(g2, new Rectangle(14, 14, w - 28, h - 28), 9903, Sketch.INK_SOFT, 50, 12, 40);
             }
             g2.dispose();

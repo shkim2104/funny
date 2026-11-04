@@ -113,6 +113,7 @@ public class ArtGen {
         writeFinale(new File(root, "finale"), sheets);
         writeIcons(new File(root, "story_items"), Icons.storyItems(), 1111, sheets == null ? null : new File(sheets, "story_items_sheet.png"));
         writeIcons(new File(root, "story"), Icons.portraits(), 1212, sheets == null ? null : new File(sheets, "story_sheet.png"));
+        writeIcons(new File(root, "npc"), Townsfolk.all(), 1313, sheets == null ? null : new File(sheets, "npc_sheet.png"));
     }
 
     /** The final battle: the invaded town plaza and 이계의 존재, drawn like a dungeon's backdrop and boss. */

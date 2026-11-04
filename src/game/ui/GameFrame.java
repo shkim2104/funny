@@ -14,6 +14,7 @@ import game.model.RunState;
 import game.model.Skill;
 import game.model.Story;
 import game.model.StoryMaterial;
+import game.model.Tutorial;
 import game.model.World;
 import game.save.SaveManager;
 import game.save.Settings;
@@ -55,6 +56,22 @@ public class GameFrame extends JFrame {
     /** On town.png / town_invaded.png: where ??? stands in the plaza, and the rift in the sky. */
     private static final Rectangle MYSTERY_AREA = new Rectangle(570, 495, 100, 125), RIFT_AREA = new Rectangle(470, 0, 700, 150);
     private Image townArt, invadedTownArt;
+    /** The tutorial: where each place is on the town map, what clicking it opens, and the skip button. */
+    private final java.util.Map<Tutorial.Place, Rectangle> placeAreas = new java.util.EnumMap<>(Tutorial.Place.class);
+    private final java.util.Map<Tutorial.Place, Runnable> placeOpen = new java.util.EnumMap<>(Tutorial.Place.class);
+    private JButton tutorialSkipButton;
+    /** Town folk on the map (artwork pixels): {key, house, x, y, w, h}; the 촌장 (no house) stands in the plaza. */
+    private static final Object[][] TOWN_FOLK = {
+            {"mayor", null, 640, 690, 80, 95},
+            {"innkeeper", Tutorial.Place.INN, 290, 975, 70, 85},
+            {"merchant", Tutorial.Place.SHOP, 1030, 900, 70, 85},
+            {"smith", Tutorial.Place.SMITH, 420, 455, 70, 85},
+            {"quest_clerk", Tutorial.Place.QUEST, 305, 790, 65, 80},
+            {"gacha_fairy", Tutorial.Place.GACHA, 455, 745, 55, 65},
+            {"job_master", Tutorial.Place.JOB, 600, 1180, 70, 85},
+            {"curator", Tutorial.Place.MUSEUM, 1000, 470, 70, 85},
+            {"gatekeeper", Tutorial.Place.GATE, 815, 1150, 70, 90},
+    };
     /** Story to play once the town is on screen (the invasion's first scene, a word after losing). */
     private Story.Scene pendingTownScene;
 
@@ -199,8 +216,15 @@ public class GameFrame extends JFrame {
         player = loaded;
         currentSaveId = id;
         battlePanel.setPlayerArt(CharacterArt.load(id));
+        boolean firstVisit = loaded.getTutorialStep() == Tutorial.NOT_STARTED;
+        if (firstVisit) {
+            // A brand-new character: the 촌장 shows them around.
+            loaded.setTutorialStep(1);
+            autoSave();
+            pendingTownScene = Tutorial.welcome();
+        }
         showTown(true);
-        townMap.toast(loaded.getName() + "님, 다시 오신 것을 환영합니다!");
+        if (!firstVisit) townMap.toast(loaded.getName() + "님, 다시 오신 것을 환영합니다!");
     }
 
     /** Makes a new character in an empty slot and saves it right away, so it shows up on the select screen. */
@@ -347,19 +371,29 @@ public class GameFrame extends JFrame {
                 () -> player != null && Story.invaded(player.getStoryStage()));
         townMap.addShownHotspot("균열의 흔적", RIFT_AREA.x, RIFT_AREA.y, RIFT_AREA.width, RIFT_AREA.height, this::enterRift,
                 () -> player != null && player.getStoryStage() >= Story.ENDED);
-        townMap.addHotspot("대장간", 130, 200, 430, 350, this::openBlacksmith);
-        townMap.addHotspot("박물관", 680, 160, 395, 360, () -> townMap.toast(NOT_READY));
-        townMap.addHotspot("???", 100, 505, 165, 195, this::openMultiverse);
-        townMap.addHotspot("상점", 725, 630, 345, 340, this::openShop);
-        townMap.addHotspot("던전 입구", 860, 990, 330, 260, () -> openDungeonMap(true));
-        Rectangle hall = JobHallArt.AREA;
-        townMap.addHotspot("전직소", hall.x, hall.y, hall.width, hall.height, this::openAdvancement);
-        townMap.addHotspot("여관", 100, 880, 190, 180, this::openInn);
-        townMap.addHotspot("의뢰 게시판", 108, 718, 202, 165, this::openQuestBoard);
-        townMap.addHotspot("보물 뽑기", 450, 815, 200, 150, this::openTreasure);
+        // Every building goes through visit(), so the tutorial can point at one and hold back the rest.
+        place(Tutorial.Place.SMITH, new Rectangle(130, 200, 430, 350), this::openBlacksmith);
+        place(Tutorial.Place.MUSEUM, new Rectangle(680, 160, 395, 360), () -> townMap.toast(NOT_READY));
+        place(Tutorial.Place.PORTAL, new Rectangle(100, 505, 165, 195), this::openMultiverse);
+        place(Tutorial.Place.SHOP, new Rectangle(725, 630, 345, 340), this::openShop);
+        place(Tutorial.Place.GATE, new Rectangle(860, 990, 330, 260), () -> openDungeonMap(true));
+        place(Tutorial.Place.JOB, JobHallArt.AREA, this::openAdvancement);
+        place(Tutorial.Place.INN, new Rectangle(100, 880, 190, 180), this::openInn);
+        place(Tutorial.Place.QUEST, new Rectangle(108, 718, 202, 165), this::openQuestBoard);
+        place(Tutorial.Place.GACHA, new Rectangle(450, 815, 200, 150), this::openTreasure);
+        for (Object[] folk : TOWN_FOLK) {
+            String key = (String) folk[0];
+            Tutorial.Place keeps = (Tutorial.Place) folk[1];
+            Rectangle area = new Rectangle((int) folk[2], (int) folk[3], (int) folk[4], (int) folk[5]);
+            String name = keeps == null ? Story.Speaker.MAYOR.name(null) : keeps.keeper.name(null);
+            townMap.addFigure(name, loadImage("images/npc/" + key + ".png"), area, () -> talkTo(keeps));
+        }
 
         townInfoLabel = Theme.body("");
+        tutorialSkipButton = menuButton("튜토리얼 건너뛰기", this::skipTutorial);
+        tutorialSkipButton.setVisible(false);
         townButtons = new JButton[] {
+                tutorialSkipButton,
                 menuButton("상태 보기", this::showStatus),
                 menuButton("장비 변경", this::openEquip),
                 menuButton("스탯 분배", this::openStatAlloc),
@@ -529,6 +563,92 @@ public class GameFrame extends JFrame {
                 + "<br>흑연 " + player.getMaterial(Material.GRAPHITE) + " · 심 " + player.getMaterial(Material.HARD_LEAD)
                 + " · 가루 " + player.getMaterial(Material.ERASER_DUST)
                 + statPointsNote + storyNote() + "</html>");
+        refreshTutorial();
+    }
+
+    // ---------- the tutorial ----------
+
+    private void place(Tutorial.Place p, Rectangle area, Runnable open) {
+        placeAreas.put(p, area);
+        placeOpen.put(p, open);
+        townMap.addHotspot(p.label, area.x, area.y, area.width, area.height, () -> visit(p));
+    }
+
+    /** Puts the tutorial pointer and the skip button where the current step needs them. */
+    private void refreshTutorial() {
+        int step = player == null ? Tutorial.DONE : player.getTutorialStep();
+        boolean on = Tutorial.active(step);
+        tutorialSkipButton.setVisible(on);
+        Tutorial.Place target = on ? Tutorial.target(step) : null;
+        townMap.setGuide(target == null ? null : placeAreas.get(target), target == null ? null : Tutorial.objective(step));
+        dungeonMap.setGuide(on && step == Tutorial.FIRST_DUNGEON ? new Rectangle(DUNGEON_MAP_AREAS[0][0], DUNGEON_MAP_AREAS[0][1],
+                DUNGEON_MAP_AREAS[0][2], DUNGEON_MAP_AREAS[0][3]) : null, Tutorial.objective(step));
+    }
+
+    /** A building clicked: opened as usual, or, on the tour, explained by its keeper when it is the one pointed at. */
+    private void visit(Tutorial.Place p) {
+        int step = player.getTutorialStep();
+        Tutorial.Place target = Tutorial.active(step) ? Tutorial.target(step) : null;
+        if (target == null) {
+            placeOpen.get(p).run();
+            return;
+        }
+        if (p != target) {
+            townMap.toast("촌장님이 연필로 동그라미 친 곳을 먼저 눌러 보세요!");
+            return;
+        }
+        playScene(Tutorial.explain(p));
+        if (p == Tutorial.Place.PORTAL) playScene(Tutorial.menu());
+        player.setTutorialStep(p == Tutorial.Place.GATE ? Tutorial.FIRST_DUNGEON : step + 1);
+        autoSave();
+        refreshTown();
+        if (p == Tutorial.Place.GATE) placeOpen.get(p).run();
+    }
+
+    /** A town NPC clicked (null = the 촌장): on the tour it counts as their house; otherwise a short tip. */
+    private void talkTo(Tutorial.Place keeps) {
+        int step = player.getTutorialStep();
+        Tutorial.Place target = Tutorial.active(step) ? Tutorial.target(step) : null;
+        if (keeps == null) {
+            if (target != null) {
+                playScene(Tutorial.hint(step));
+            } else if (StoryDialog.show(this, Tutorial.mayorTalk(), player, CharacterArt.load(currentSaveId)) == 0) {
+                // The tour again, from the start (its reward is only ever paid once).
+                player.setTutorialStep(1);
+                autoSave();
+                playScene(Tutorial.welcome());
+                refreshTown();
+            }
+            return;
+        }
+        if (target != null) visit(keeps);
+        else playScene(Tutorial.tip(keeps));
+    }
+
+    private void skipTutorial() {
+        if (!Dialogs.confirm(this, "튜토리얼 건너뛰기", "마을 안내를 건너뛸까요?\n끝까지 하면 받는 선물(포션 " + Tutorial.REWARD_POTIONS
+                + "개, " + Tutorial.REWARD_GOLD + "G)은 받을 수 없어요.\n촌장님을 누르면 나중에 다시 들을 수 있어요.")) {
+            return;
+        }
+        player.setTutorialStep(Tutorial.DONE);
+        autoSave();
+        refreshTown();
+        townMap.toast("튜토리얼을 건너뛰었어요. 마을 사람들을 누르면 언제든 도움말을 들을 수 있어요.");
+    }
+
+    /** The first augment was picked: the tutorial is over (and pays out, once). */
+    private void finishTutorial() {
+        boolean reward = !player.isTutorialRewarded();
+        if (reward) {
+            for (int i = 0; i < Tutorial.REWARD_POTIONS; i++) player.addItem("포션");
+            player.earnGold(Tutorial.REWARD_GOLD);
+            player.setTutorialRewarded(true);
+            battlePanel.logResult("[튜토리얼 완료] 포션 " + Tutorial.REWARD_POTIONS + "개, " + Tutorial.REWARD_GOLD + "G를 받았다!");
+        }
+        player.setTutorialStep(Tutorial.DONE);
+        autoSave();
+        playScene(Tutorial.done(reward));
+        refreshTutorial();
     }
 
     /** Under the town info: what the final story wants next. */
@@ -680,6 +800,17 @@ public class GameFrame extends JFrame {
         if (dungeonIndex > player.getUnlockedDungeon()) {
             dungeonMap.toast("아직 때가 아니다..");
             return;
+        }
+        if (player.getTutorialStep() == Tutorial.FIRST_DUNGEON) {
+            if (dungeonIndex != 0) {
+                dungeonMap.toast("문지기 말대로 1지역 초원부터 가 보자!");
+                return;
+            }
+            // The gatekeeper speaks once more before the very first fight.
+            playScene(Tutorial.firstBattle());
+            player.setTutorialStep(Tutorial.FIRST_AUGMENT);
+            autoSave();
+            refreshTutorial();
         }
         enterDungeon(dungeonIndex);
     }
@@ -981,11 +1112,14 @@ public class GameFrame extends JFrame {
 
     /** After a kill on an augment floor: pick one of three augments for the rest of this run. */
     private void offerAugment() {
+        boolean tutorial = player.getTutorialStep() == Tutorial.FIRST_AUGMENT;
+        if (tutorial) playScene(Tutorial.firstAugment());
         Augment a = AugmentDialog.pick(this, run, player, rnd);
         if (a == null) return;
         run.take(a);
         battlePanel.refreshRun();
         battlePanel.logResult("[" + a.getTier().getLabel() + " 증강] " + a.getName() + " — " + a.getDescription());
+        if (tutorial) finishTutorial();
     }
 
     /** After a cleared or abandoned run: back on the world map, so the next dungeon is one click away. */
