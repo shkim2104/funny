@@ -123,11 +123,13 @@ public class Battle {
             String itemName = usable.get(idx - 1);
             Item item = ItemCatalog.get(itemName);
             if (item.getType() == Item.Type.POTION) {
-                player.heal(item.getValue());
-                System.out.println(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 HP를 " + item.getValue() + " 회복했다!");
+                int amount = item.restoreFor(player);
+                player.heal(amount);
+                System.out.println(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 HP를 " + amount + " 회복했다!");
             } else if (item.getType() == Item.Type.ETHER) {
-                player.restoreMp(item.getValue());
-                System.out.println(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 MP를 " + item.getValue() + " 회복했다!");
+                int amount = item.restoreFor(player);
+                player.restoreMp(amount);
+                System.out.println(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 MP를 " + amount + " 회복했다!");
             }
             player.removeItem(itemName);
         } catch (NumberFormatException e) {

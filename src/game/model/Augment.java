@@ -59,7 +59,7 @@ public final class Augment {
     static {
         Tier s = Tier.SILVER, g = Tier.GOLD, p = Tier.PRISM;
         add(s, "sword", "날카로운 칼날", Bonus.of().atkPct(0.12));
-        add(s, "shield", "단단한 피부", Bonus.of().dmgReduction(0.08));
+        add(s, "shield", "단단한 피부", Bonus.of().dmgReduction(0.04));
         add(s, "coin", "행운의 동전", Bonus.of().goldPct(0.30));
         add(s, "clover", "배움의 기쁨", Bonus.of().expPct(0.25));
         add(s, "heart", "응급 처치", Bonus.of().healAfterFight(0.05));
@@ -83,7 +83,7 @@ public final class Augment {
         add(g, "drop", "흡혈귀", Bonus.of().lifesteal(0.04));
         add(g, "star", "치명적인 일격", Bonus.of().critDmg(0.50));
         add(g, "sword", "연속 공격", Bonus.of().doubleStrike(0.25));
-        add(g, "shield", "철벽", Bonus.of().dmgReduction(0.15));
+        add(g, "shield", "철벽", Bonus.of().dmgReduction(0.075));
         add(g, "sword", "거인 사냥꾼", Bonus.of().bossDmg(0.50));
         add(g, "star", "위기의 힘", Bonus.of().lowHpDmg(0.70));
         add(g, "sword", "성장하는 검", Bonus.of().stackAtkPerKill(0.01));
@@ -105,7 +105,7 @@ public final class Augment {
         add(p, "sword", "학살자", Bonus.of().stackAtkPerKill(0.02));
         add(p, "star", "천벌", Bonus.of().critChance(20).critDmg(0.60));
         add(p, "sword", "쌍검술의 극의", Bonus.of().doubleStrike(0.50));
-        add(p, "shield", "무적의 요새", Bonus.of().dmgReduction(0.25).thorns(0.20));
+        add(p, "shield", "무적의 요새", Bonus.of().dmgReduction(0.125).thorns(0.20));
         add(p, "orb", "대마법사", Bonus.of().skillDmg(0.35).mpCostReduce(2));
         add(p, "coin", "황금비", Bonus.of().goldPct(1.50));
         add(p, "wing", "시간 가속", Bonus.of().alwaysFirst().dodge(0.12).spd(5));
@@ -114,7 +114,7 @@ public final class Augment {
 
     /** ???의 별지기의 가호: the final fight's one help in place of augments. Not in the augment pool. */
     public static Augment blessing() {
-        return new Augment("별지기의 가호", Tier.PRISM, "star", Bonus.of().shield(0.15).dmgReduction(0.12).atkPct(0.15).revive(0.35));
+        return new Augment("별지기의 가호", Tier.PRISM, "star", Bonus.of().shield(0.15).dmgReduction(0.06).atkPct(0.15).revive(0.35));
     }
 
     public static List<Augment> all() {

@@ -39,9 +39,10 @@ public class ItemCatalog {
         register(new Item("용의 갑옷", Item.Type.ARMOR, 24, 560, Item.Grade.EPIC).icon("dragon_armor"));
         register(new Item("전설의 수호 갑옷", Item.Type.ARMOR, 34, 1150, Item.Grade.LEGENDARY).icon("guardian_armor"));
 
-        register(new Item("포션", Item.Type.POTION, 30, 75, Item.Grade.COMMON).icon("potion"));
-        register(new Item("하이 포션", Item.Type.POTION, 80, 200, Item.Grade.COMMON).icon("high_potion"));
-        register(new Item("에테르", Item.Type.ETHER, 25, 175, Item.Grade.COMMON).icon("ether"));
+        // Potions and ethers restore a share (value, in %) of the maximum, so they stay worth carrying at any level.
+        register(new Item("포션", Item.Type.POTION, 25, 75, Item.Grade.COMMON).icon("potion"));
+        register(new Item("하이 포션", Item.Type.POTION, 45, 200, Item.Grade.COMMON).icon("high_potion"));
+        register(new Item("에테르", Item.Type.ETHER, 30, 175, Item.Grade.COMMON).icon("ether"));
 
         // ---------- treasure wheel only: 10 weapons + 10 armor, 고급 = step 2 ... 전설 = step 5 ----------
         gacha(weapon("날렵한 세검", 20, Item.Grade.UNCOMMON, "swift_rapier", Bonus.of().critChance(4)));

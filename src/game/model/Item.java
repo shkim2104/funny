@@ -75,14 +75,21 @@ public class Item {
         switch (type) {
             case WEAPON: base = name + " (공격력 +" + value + ", " + price + "G)"; break;
             case ARMOR: base = name + " (방어력 +" + value + ", " + price + "G)"; break;
-            case POTION: base = name + " (HP " + value + " 회복, " + price + "G)"; break;
-            case ETHER: base = name + " (MP " + value + " 회복, " + price + "G)"; break;
+            case POTION: base = name + " (최대 HP " + value + "% 회복, " + price + "G)"; break;
+            case ETHER: base = name + " (최대 MP " + value + "% 회복, " + price + "G)"; break;
             default: base = name;
         }
         if (type == Type.WEAPON || type == Type.ARMOR) {
             return "[" + grade.getLabel() + "] " + base;
         }
         return base;
+    }
+
+    /** How much a potion (HP) or ether (MP) restores for this player: value % of the maximum, at least 1. */
+    public int restoreFor(Player p) {
+        if (type == Type.POTION) return Math.max(1, (int) Math.round(p.getMaxHp() * value / 100.0));
+        if (type == Type.ETHER) return Math.max(1, (int) Math.round(p.getMaxMp() * value / 100.0));
+        return 0;
     }
 
     public String getTypeLabel() {
@@ -99,8 +106,8 @@ public class Item {
         switch (type) {
             case WEAPON: return "공격력 +" + value;
             case ARMOR: return "방어력 +" + value;
-            case POTION: return "HP " + value + " 회복";
-            case ETHER: return "MP " + value + " 회복";
+            case POTION: return "최대 HP " + value + "% 회복";
+            case ETHER: return "최대 MP " + value + "% 회복";
             default: return "";
         }
     }

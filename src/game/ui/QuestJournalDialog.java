@@ -50,7 +50,9 @@ public final class QuestJournalDialog {
         page.setBorder(new EmptyBorder(14, 52, 12, 22));
         d.setContentPane(page);
         Runnable[] after = {null};
-        int[] tab = {storyReady(player) || player.getStoryStage() >= Story.FIRST_REQUEST && player.getStoryStage() < Story.ENDED ? 0 : 1};
+        // ???의 부탁 only once the final story has begun; before that the window is the quest board alone.
+        boolean story = player.getStoryStage() >= Story.FIRST_REQUEST;
+        int[] tab = {story && (storyReady(player) || player.getStoryStage() < Story.ENDED) ? 0 : story ? 1 : 0};
         Runnable[] fill = new Runnable[1];
         fill[0] = () -> {
             page.removeAll();
@@ -62,7 +64,7 @@ public final class QuestJournalDialog {
             }
             page.add(head, BorderLayout.NORTH);
             Sketch.Tabs tabs = new Sketch.Tabs(4701);
-            tabs.addTab((storyReady(player) ? "! " : "") + "???의 부탁", Sketch.scroll(storyPage(d, player, host, after)));
+            if (story) tabs.addTab((storyReady(player) ? "! " : "") + "???의 부탁", Sketch.scroll(storyPage(d, player, host, after)));
             tabs.addTab((player.getQuests().stream().anyMatch(Quest::isDone) ? "! " : "") + "의뢰 게시판", Sketch.scroll(boardPage(player, host, fill)));
             tabs.setSelected(tab[0]);
             tabs.onChange(i -> tab[0] = i);
@@ -185,12 +187,15 @@ public final class QuestJournalDialog {
 
     private static JComponent boardPage(Player p, Host host, Runnable[] fill) {
         JPanel col = column();
-        if (p.getQuests().isEmpty()) {
-            col.add(note("붙어 있는 의뢰가 없어요.", "마을 의뢰소에 가면 새 의뢰가 붙어요.", Sketch.INK_SOFT, false));
+        long waiting = p.getQuests().stream().filter(q -> !q.isAccepted()).count();
+        if (p.getQuests().stream().noneMatch(Quest::isAccepted)) {
+            col.add(note("수락한 의뢰가 없어요.", "마을 의뢰소에서 '수락하기'를 누르면 그때부터 진행돼요."
+                    + (waiting > 0 ? " (지금 " + waiting + "개가 수락을 기다려요)" : ""), Sketch.INK_SOFT, false));
             return wrap(col);
         }
         int i = 0;
         for (Quest q : p.getQuests()) {
+            if (!q.isAccepted()) continue;
             Sketch.Box card = new Sketch.Box(new BorderLayout(14, 0), 8200 + i * 7L + q.getTitle().hashCode());
             card.setBorder(new EmptyBorder(12, 16, 12, 16));
             card.add(new JLabel(ItemArt.misc("quest_scroll", 56)), BorderLayout.WEST);
@@ -221,7 +226,8 @@ public final class QuestJournalDialog {
             col.add(card);
             i++;
         }
-        col.add(Sketch.label("끝낸 의뢰는 여기나 마을 의뢰소에서 보상을 받을 수 있어요 (던전 전투 중에는 안 돼요).", Font.PLAIN, 12f, Sketch.INK_SOFT));
+        col.add(Sketch.label("끝낸 의뢰는 여기나 마을 의뢰소에서 보상을 받을 수 있어요 (던전 전투 중에는 안 돼요)."
+                + (waiting > 0 ? " 의뢰소에 수락을 기다리는 의뢰가 " + waiting + "개 있어요." : ""), Font.PLAIN, 12f, Sketch.INK_SOFT));
         return wrap(col);
     }
 

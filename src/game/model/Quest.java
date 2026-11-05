@@ -29,12 +29,19 @@ public final class Quest {
     private final int dungeon;
     private final int need;
     private int progress;
+    /** Taken on at the board: only then do kills count. New requests wait to be accepted. */
+    private boolean accepted;
     private final int gold;
     private final int exp;
     /** A bonus item name, or null. */
     private final String item;
 
     private Quest(Type type, String target, int dungeon, int need, int progress, int gold, int exp, String item) {
+        this(type, target, dungeon, need, progress, gold, exp, item, false);
+    }
+
+    private Quest(Type type, String target, int dungeon, int need, int progress, int gold, int exp, String item, boolean accepted) {
+        this.accepted = accepted;
         this.type = type;
         this.target = target;
         this.dungeon = dungeon;
@@ -53,7 +60,10 @@ public final class Quest {
     public int getGold() { return gold; }
     public int getExp() { return exp; }
     public String getItem() { return item; }
-    public boolean isDone() { return progress >= need; }
+    public boolean isDone() { return accepted && progress >= need; }
+    public boolean isAccepted() { return accepted; }
+    /** 수락: from now on its kills count. */
+    public void accept() { accepted = true; }
 
     public String getTitle() {
         if (type == Type.HUNT) return target + " " + need + "마리 처치";
@@ -102,7 +112,7 @@ public final class Quest {
 
     /** Counts a kill toward this quest; true if that kill just completed it. */
     public boolean onKill(String monsterName) {
-        if (isDone() || !target.equals(monsterName)) return false;
+        if (!accepted || isDone() || !target.equals(monsterName)) return false;
         progress++;
         return isDone();
     }
@@ -134,15 +144,17 @@ public final class Quest {
     // ---------- save format: fields joined by '|', quests joined by ';' ----------
 
     String encode() {
-        return type + "|" + target + "|" + dungeon + "|" + need + "|" + progress + "|" + gold + "|" + exp + "|" + (item == null ? "-" : item);
+        return type + "|" + target + "|" + dungeon + "|" + need + "|" + progress + "|" + gold + "|" + exp + "|" + (item == null ? "-" : item)
+                + "|" + (accepted ? "A" : "-");
     }
 
     static Quest decode(String s) {
         String[] f = s.split("\\|");
         if (f.length < 8) return null;
         try {
+            // Saves from before 수락 have no 9th field: those requests were already running, so they count as accepted.
             return new Quest(Type.valueOf(f[0]), f[1], Integer.parseInt(f[2]), Integer.parseInt(f[3]), Integer.parseInt(f[4]),
-                    Integer.parseInt(f[5]), Integer.parseInt(f[6]), f[7].equals("-") ? null : f[7]);
+                    Integer.parseInt(f[5]), Integer.parseInt(f[6]), f[7].equals("-") ? null : f[7], f.length < 9 || "A".equals(f[8]));
         } catch (RuntimeException e) {
             return null;
         }

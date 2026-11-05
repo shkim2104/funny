@@ -1017,7 +1017,7 @@ public class BattlePanel extends JPanel {
             boolean hp = item.getType() == Item.Type.POTION;
             CommandButton b = healBtns[i];
             b.setColor(hp ? HEAL_GREEN : MANA_BLUE);
-            b.setSubtitle((hp ? "HP +" : "MP +") + item.getValue() + "  ·  " + count + "개");
+            b.setSubtitle((hp ? "HP +" : "MP +") + item.restoreFor(player) + " (" + item.getValue() + "%)  ·  " + count + "개");
             b.setDimmed(count == 0 || healsLeft() <= 0);
             b.setEnabled(count > 0 && healsLeft() > 0);
         }
@@ -1047,12 +1047,12 @@ public class BattlePanel extends JPanel {
         Item item = ItemCatalog.get(itemName);
         if (item.getType() == Item.Type.POTION) {
             int before = player.getHp();
-            player.heal(item.getValue());
+            player.heal(item.restoreFor(player));
             stage.showHeal(player.getHp() - before);
             appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 HP를 " + (player.getHp() - before) + " 회복했다!");
         } else if (item.getType() == Item.Type.ETHER) {
             int before = player.getMp();
-            player.restoreMp(item.getValue());
+            player.restoreMp(item.restoreFor(player));
             appendLog(player.getName() + "은(는) " + item.getName() + "을(를) 사용해 MP를 " + (player.getMp() - before) + " 회복했다!");
         }
         player.removeItem(itemName);

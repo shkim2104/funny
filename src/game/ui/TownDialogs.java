@@ -154,16 +154,26 @@ public final class TownDialogs {
         text.add(Sketch.label("[" + q.getKind() + "] " + q.getTitle(), Font.BOLD, 15f, q.getType() != Quest.Type.HUNT ? Sketch.RED_PENCIL : Sketch.INK));
         text.add(Sketch.label("장소: " + q.getPlace(dungeons), Font.PLAIN, 12f, Sketch.INK_SOFT));
         text.add(Sketch.label("보상: " + q.getRewardText(), Font.PLAIN, 12f, Sketch.INK_SOFT));
-        Sketch.Bar bar = new Sketch.Bar(q.isDone() ? new Color(54, 134, 58) : Sketch.BLUE_PENCIL, 8300 + index);
-        bar.set(q.getProgress(), q.getNeed());
-        text.add(bar);
+        if (q.isAccepted()) {
+            Sketch.Bar bar = new Sketch.Bar(q.isDone() ? new Color(54, 134, 58) : Sketch.BLUE_PENCIL, 8300 + index);
+            bar.set(q.getProgress(), q.getNeed());
+            text.add(bar);
+        } else {
+            text.add(Sketch.label("수락하면 그때부터 잡은 수를 세요.", Font.BOLD, 12f, Sketch.RED_PENCIL));
+        }
         card.add(text, BorderLayout.CENTER);
 
         JPanel buttons = new JPanel(new GridLayout(2, 1, 0, 6));
         buttons.setOpaque(false);
-        JButton claim = new Sketch.Button(q.isDone() ? "보상 받기" : "진행 중", q.isDone());
-        claim.setEnabled(q.isDone());
+        JButton claim = new Sketch.Button(!q.isAccepted() ? "수락하기" : q.isDone() ? "보상 받기" : "진행 중", !q.isAccepted() || q.isDone());
+        claim.setEnabled(!q.isAccepted() || q.isDone());
         claim.addActionListener(e -> {
+            if (!q.isAccepted()) {
+                q.accept();
+                note.setText("의뢰를 수락했다! 이제부터 " + q.getTarget() + "을(를) 잡으면 세요.");
+                refresh[0].run();
+                return;
+            }
             q.payTo(player);
             player.replaceQuest(q, dungeons, rnd);
             note.setText("보상을 받았다!  " + q.getRewardText());
